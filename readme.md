@@ -1,0 +1,1 @@
+# Nushell script formatter
