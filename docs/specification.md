@@ -9,13 +9,13 @@ This specification serves as a starting point to document how `nufmt` should wor
 
 There should be an `--indent` parameter to allow one to specify the number of spaces to use for indentation.
 
-### Supported Commands
+## Supported Commands
 
-This is the list of the supported commands and their idiomatic formatting.
+This is the list of the supported commands and their idiomatic formatting. Indentation will be covered by the `--indent` flag but for these examples, 2 spaces will be used.
 
-#### if
+### if
 
-The if clause should look like this. Indentation will be covered by the `--indent` flag but for these examples, 2 spaces will be used.
+The if clause should look like this. 
 
 ```rust
 if condition {
@@ -24,5 +24,15 @@ if condition {
   // some other thing
 } else {
   // else the last thing
+}
+```
+
+### for
+
+The for command should have formatting like this
+
+```rust
+for var in 0..100 {
+  // do something here
 }
 ```
