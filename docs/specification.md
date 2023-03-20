@@ -15,24 +15,20 @@ This is the list of the supported commands and their idiomatic formatting. Inden
 
 ### if
 
-The if clause should look like this. 
-
-```rust
+```bash
 if condition {
-  // some thing
+  # some thing
 } else if {
-  // some other thing
+  # some other thing
 } else {
-  // else the last thing
+  # else the last thing
 }
 ```
 
 ### for
 
-The for command should have formatting like this
-
-```rust
+```bash
 for var in 0..100 {
-  // do something here
+  # do something here
 }
 ```
