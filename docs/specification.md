@@ -54,7 +54,7 @@ http get ({
 } | url join)
 ```
 to put the emphasis on the url structure
-> :bulb: **Note**
+> **Note**
 > the  `({ ... } | url join)`
 
 - :two: put `|` at the start of the lines for readability, creating a "wall of pipes"
