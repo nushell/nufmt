@@ -54,7 +54,7 @@ http get ({
 } | url join)
 ```
 to put the emphasis on the url structure
-> **Note**
+> **Note**  
 > the  `({ ... } | url join)`
 
 - :two: put `|` at the start of the lines for readability, creating a "wall of pipes"
@@ -117,7 +117,7 @@ def foo [
 - :seven: remove trailing whitespaces
 
 - :eight: single quotes for single characters and double quotes for strings => that behaviour might change with string interpolation and paths.
-> **Warning**
+> **Warning**  
 > one should use single quotes (') or backticks (\`) to quote paths on Windows
 
 ## Supported Commands
