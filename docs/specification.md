@@ -117,6 +117,8 @@ def foo [
 - :seven: remove trailing whitespaces
 
 - :eight: single quotes for single characters and double quotes for strings => that behaviour might change with string interpolation and paths.
+> **Warning**
+> one should use single quotes (') or backticks (\`) to quote paths on Windows
 
 ## Supported Commands
 
