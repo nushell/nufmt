@@ -14,10 +14,14 @@ categories = ["command-line-utilities"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version= "2.33.3", optional = true }
+anyhow = "1.0.71"
+clap = { version = "4.3.0", optional = true, features = ["unicode", "derive"] }
+env_logger = "0.10.0"
+log = "0.4.17"
+nu-protocol = "0.80.0"
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.4"
 
 [features]
 default = ["bin"]
