@@ -16,6 +16,11 @@
 //! nufmt <file> --config nufmt.nuon
 //! ```
 
+// throw error if are docs missing
+// or finds a broken link doc
+#![deny(rustdoc::broken_intra_doc_links)]
+#![warn(missing_docs)]
+
 // for debug purposes, allow unused imports and variables
 #[allow(unused)]
 #[allow(unused_imports)]
@@ -32,8 +37,9 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
+    #[arg(help = "The file or files you want to format in nu")]
     files: Vec<PathBuf>,
-    #[arg(short, long)]
+    #[arg(short, long, help = "The configuration file")]
     config: Option<PathBuf>,
 }
 
@@ -60,10 +66,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     std::process::exit(exit_code);
 }
 
-/// sends the files to format in lib.rs
-fn execute(files: Vec<PathBuf>, mut options: Config) -> Result<i32> {
-    options = Config::default();
-
+/// Sends the files to format in lib.rs
+fn execute(files: Vec<PathBuf>, options: Config) -> Result<i32> {
     // open a session
     let out = &mut stdout();
     let mut session = Session::new(options, Some(out));
@@ -105,12 +109,19 @@ fn execute(files: Vec<PathBuf>, mut options: Config) -> Result<i32> {
 
 fn format_and_emit_report<T: Write>(session: &mut Session<'_, T>, input: Input) {
     match session.format(input) {
-        _ => todo!("Here `nufmt` gives you a FormatReport"),
+        _ => {} // _ => todo!("Here `nufmt` gives you a FormatReport"),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn clap_cli_construction() {
+        use clap::CommandFactory;
+        Cli::command().debug_assert()
+    }
 
     #[test]
     fn todo() {
