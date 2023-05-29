@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+#[derive(Debug)]
 /// Configurations available to the formatter
 pub struct Config {
     /// Number of spaces of indent.
