@@ -39,22 +39,33 @@ impl<'b, T: Write + 'b> Session<'b, T> {
     }
 }
 
-#[derive(PartialEq)]
+// This is getting deprecated. I think
+#[derive(Debug, PartialEq)]
 pub enum FileName {
     Real(PathBuf),
     Stdin,
 }
 
+#[derive(Debug)]
 pub enum Input {
     File(PathBuf),
     Text(String),
 }
 
 impl Input {
-    fn file_name(&self) -> FileName {
+    fn file_name(&self) -> Option<&PathBuf> {
         match *self {
-            Input::File(ref file) => FileName::Real(file.clone()),
-            Input::Text(..) => FileName::Stdin,
+            Input::File(ref file) => Some(file),
+            Input::Text(..) => None,
+        }
+    }
+
+    fn contents(&self) -> Vec<u8> {
+        match self {
+            Input::File(path) => std::fs::read(path).expect(
+                format!("something went wrong reading the file {}", path.display()).as_str(),
+            ),
+            Input::Text(string) => string.as_bytes().to_vec(),
         }
     }
 }
