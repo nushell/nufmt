@@ -3,8 +3,72 @@
 //!
 //! It does not do anything more than that, which makes it so fast.
 
+use log::trace;
 use std::error::Error;
 use std::io::{BufReader, BufWriter, Read, Write};
+use std::path::PathBuf;
+
+pub mod config;
+pub mod formatting;
+
+pub struct Session<'b, T: Write> {
+    pub config: config::Config,
+    pub out: Option<&'b mut T>,
+    pub has_operational_errors: bool,
+}
+
+impl<'b, T: Write + 'b> Session<'b, T> {
+    pub fn new(config: config::Config, out: Option<&'b mut T>) -> Self {
+        Self {
+            config: config,
+            out: out,
+            has_operational_errors: false,
+        }
+    }
+
+    pub fn has_operational_errors(self) -> bool {
+        self.has_operational_errors
+    }
+
+    pub fn add_operational_error(&mut self) {
+        self.has_operational_errors = true;
+    }
+
+    pub fn format(&mut self, input: Input) {
+        self.format_input_inner(input)
+    }
+}
+
+// This is getting deprecated. I think
+#[derive(Debug, PartialEq)]
+pub enum FileName {
+    Real(PathBuf),
+    Stdin,
+}
+
+#[derive(Debug)]
+pub enum Input {
+    File(PathBuf),
+    Text(String),
+}
+
+impl Input {
+    fn file_name(&self) -> Option<&PathBuf> {
+        match *self {
+            Input::File(ref file) => Some(file),
+            Input::Text(..) => None,
+        }
+    }
+
+    fn contents(&self) -> Vec<u8> {
+        match self {
+            Input::File(path) => std::fs::read(path).expect(
+                format!("something went wrong reading the file {}", path.display()).as_str(),
+            ),
+            Input::Text(string) => string.as_bytes().to_vec(),
+        }
+    }
+}
 
 ///
 /// Set the indentation used for the formatting.
@@ -22,9 +86,7 @@ pub enum Indentation<'a> {
 ///
 /// # Formats a nu string
 ///
-/// The indentation can be set to any value using [Indentation](nufmt::Indentation)
-/// The default value is two spaces
-/// The default indentation is faster than a custom one
+/// The indentation can be set to any value using [`Indentation`]. The default value is two spaces. The default indentation is faster than a custom one
 ///
 pub fn format_nu(nu: &str, indentation: Indentation) -> String {
     let mut reader = BufReader::new(nu.as_bytes());
@@ -37,9 +99,7 @@ pub fn format_nu(nu: &str, indentation: Indentation) -> String {
 ///
 /// # Formats a nu string
 ///
-/// The indentation can be set to any value using [Indentation](nufmt::Indentation)
-/// The default value is two spaces
-/// The default indentation is faster than a custom one
+/// The indentation can be set to any value using [`Indentation`]. The default value is two spaces. The default indentation is faster than a custom one
 ///
 pub fn format_nu_buffered<R, W>(
     reader: &mut BufReader<R>,
@@ -52,7 +112,7 @@ where
 {
     let mut escaped = false;
     let mut in_string = false;
-    let mut indent_level = 0usize;
+    let mut indent_level: usize = 0;
     let mut newline_requested = false; // invalidated if next character is ] or }
     let mut in_comment = false;
 
@@ -60,18 +120,23 @@ where
         let char = char?;
         // if we're in a comment, ignore and write everything until a newline
         if in_comment {
+            trace!("this character is a comment");
             match char {
                 b'\n' => {
                     in_comment = false;
                     writer.write_all(&[char])?;
                 }
                 _ => {
+                    // TODO: read the rest of the line
+                    // write all
+                    // and go to the next line
                     writer.write_all(&[char])?;
                     continue;
                 }
             }
         }
         if in_string {
+            trace!("this is inside a string");
             let mut escape_here = false;
             match char {
                 b'"' => {
@@ -104,28 +169,12 @@ where
                 }
                 b']' | b'}' => {
                     indent_level = indent_level.saturating_sub(1);
-                    if !newline_requested {
+                    if !newline_requested && request_newline {
                         // see comment below about newline_requested
-                        writer.write_all(&[b'\n'])?;
+                        // writer.write_all(&[b'\n'])?;
                         indent_buffered(writer, indent_level, indentation)?;
                     }
                 }
-                // b'[' => {
-                //     indent_level += 1;
-                //     request_newline = true;
-                // }
-                // b'{' => {
-                //     indent_level += 1;
-                //     request_newline = true;
-                // }
-                // b'}' | b']' => {
-                //     indent_level = indent_level.saturating_sub(1);
-                //     if !newline_requested {
-                //         // see comment below about newline_requested
-                //         writer.write_all(&[b'\n'])?;
-                //         indent_buffered(writer, indent_level, indentation)?;
-                //     }
-                // }
                 b':' => {
                     auto_push = false;
                     writer.write_all(&[char])?;
@@ -137,7 +186,8 @@ where
                 _ => {}
             }
 
-            if newline_requested {
+            if newline_requested && request_newline {
+                trace!("new line requested!");
                 writer.write_all(&[b'\n'])?;
                 indent_buffered(writer, indent_level, indentation)?;
             }
@@ -150,11 +200,14 @@ where
             // }
 
             if auto_push {
+                //trace!("this char is autopushed");
                 writer.write_all(&[char])?;
             }
 
             newline_requested = request_newline;
         }
+        // trace the char for guiding
+        trace!("{:?}", char as char);
     }
 
     Ok(())
@@ -187,9 +240,31 @@ mod test {
     use super::*;
 
     #[test]
-    fn ignore_comments() {
-        let nu = "# this is a comment";
-        let expected = "# this is a comment";
+    fn already_formatted() {
+        let expected = "[
+  {
+    \"a\": 0
+  },
+  {},
+  {
+    \"a\": null
+  }
+]";
+        assert_eq!(expected, format_nu(expected, Indentation::Default));
+    }
+
+    #[test]
+    fn array_of_object() {
+        let nu = "[{\"a\": 0}, {}, {\"a\": null}]";
+        let expected = "[
+  {
+    \"a\": 0
+  },
+  {},
+  {
+    \"a\": null
+  }
+]";
         assert_eq!(expected, format_nu(nu, Indentation::Default));
     }
 
@@ -197,6 +272,20 @@ mod test {
     fn echoes_primitive() {
         let nu = "1.35";
         assert_eq!(nu, format_nu(nu, Indentation::Default));
+    }
+
+    #[test]
+    fn handle_escaped_strings() {
+        let nu = "  \" hallo \\\" \" ";
+        let expected = "\" hallo \\\" \"";
+        assert_eq!(expected, format_nu(nu, Indentation::Default));
+    }
+
+    #[test]
+    fn ignore_comments() {
+        let nu = "# this is a comment";
+        let expected = "# this is a comment";
+        assert_eq!(expected, format_nu(nu, Indentation::Default));
     }
 
     #[test]
@@ -213,22 +302,6 @@ mod test {
     }
 
     #[test]
-    fn handle_escaped_strings() {
-        let nu = "  \" hallo \\\" \" ";
-        let expected = "\" hallo \\\" \"";
-        assert_eq!(expected, format_nu(nu, Indentation::Default));
-    }
-
-    #[test]
-    fn simple_object() {
-        let nu = "{\"a\":0}";
-        let expected = "{
-  \"a\": 0
-}";
-        assert_eq!(expected, format_nu(nu, Indentation::Default));
-    }
-
-    #[test]
     fn simple_array() {
         let nu = "[1,2,null]";
         let expected = "[
@@ -238,35 +311,12 @@ mod test {
 ]";
         assert_eq!(expected, format_nu(nu, Indentation::Default));
     }
-
     #[test]
-    fn array_of_object() {
-        let nu = "[{\"a\": 0}, {}, {\"a\": null}]";
-        let expected = "[
-  {
-    \"a\": 0
-  },
-  {},
-  {
-    \"a\": null
-  }
-]";
-
+    fn simple_object() {
+        let nu = "{\"a\":0}";
+        let expected = "{
+  \"a\": 0
+}";
         assert_eq!(expected, format_nu(nu, Indentation::Default));
-    }
-
-    #[test]
-    fn already_formatted() {
-        let expected = "[
-  {
-    \"a\": 0
-  },
-  {},
-  {
-    \"a\": null
-  }
-]";
-
-        assert_eq!(expected, format_nu(expected, Indentation::Default));
     }
 }

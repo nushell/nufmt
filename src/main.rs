@@ -1,79 +1,130 @@
-use clap::clap_app;
-use nufmt::{format_nu_buffered, Indentation};
+//! This is the nufmt binary documentation
+//!
+//! # Usage
+//!
+//! `nufmt` is inteded to be used as this:
+//!
+//! To format a single file
+//! ```shell
+//! nufmt file1.nu
+//! ```
+//!
+//! `TODO!`
+//!
+//! Set options file
+//! ```shell
+//! nufmt <file> --config nufmt.nuon
+//! ```
+
+// throw error if are docs missing
+// or finds a broken link doc
+#![deny(rustdoc::broken_intra_doc_links)]
+#![warn(missing_docs)]
+
+// for debug purposes, allow unused imports and variables
+#[allow(unused)]
+#[allow(unused_imports)]
+#[allow(unused_import_braces)]
+use anyhow::Result;
+use clap::Parser;
+use env_logger;
+use nufmt::config::Config;
+use nufmt::{Input, Session};
 use std::error::Error;
-use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{stdout, Write};
+use std::path::PathBuf;
+
+#[derive(Parser)]
+#[command(author, version, about)]
+struct Cli {
+    #[arg(help = "The file or files you want to format in nu")]
+    files: Vec<PathBuf>,
+    #[arg(short, long, help = "The configuration file")]
+    config: Option<PathBuf>,
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let matches = clap_app!(nufmt =>
-        (version: "1.1")
-        (author: "fdncred")
-        (about: "Formats nu from stdin or from a file")
-        (@arg stdout: -s --stdout "Output the result to stdout instead of the default output file. Windows only.")
-        (@arg indentation: -i --indent +takes_value "Set the indentation used (\\s for space, \\t for tab)")
-        (@arg output: -o --output +takes_value "The output file for the formatted nu")
-        (@arg input: "The input file to format")
-    )
-    .get_matches();
+    // set up logger
+    env_logger::init();
 
-    // Note: on-stack dynamic dispatch
-    let (mut file, mut stdin);
-    let reader: &mut dyn Read = match matches.value_of("input") {
-        Some(path) => {
-            file = File::open(path)?;
-            &mut file
-        }
-        None => {
-            stdin = std::io::stdin();
-            &mut stdin
+    let cli = Cli::parse();
+
+    let exit_code = match execute(cli.files, Config::default()) {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("{:#}", e);
+            1
         }
     };
+    // Make sure standard output is flushed before we exit.
+    std::io::stdout().flush().unwrap();
 
-    let replaced_indent = matches.value_of("indentation").map(|value| {
-        value
-            .to_lowercase()
-            .chars()
-            .filter(|c| ['s', 't'].contains(c))
-            .collect::<String>()
-            .replace("s", " ")
-            .replace("t", "\t")
-    });
+    // Exit with given exit code.
+    //
+    // NOTE: this immediately terminates the process without doing any cleanup,
+    // so make sure to finish all necessary cleanup before this is called.
+    std::process::exit(exit_code);
+}
 
-    let indent = match replaced_indent {
-        Some(ref str) => Indentation::Custom(str),
-        None => Indentation::Default,
-    };
+/// Sends the files to format in lib.rs
+fn execute(files: Vec<PathBuf>, options: Config) -> Result<i32> {
+    // open a session
+    let out = &mut stdout();
+    let mut session = Session::new(options, Some(out));
 
-    let mut output = matches.value_of("output");
-    let mut windows_output_default_file: Option<String> = None;
-
-    #[cfg(windows)]
-    if !matches.is_present("stdout") {
-        if let Some(file) = matches.value_of("input") {
-            // on windows, set the default output file if no stdout flag is provided
-            // this makes it work with drag and drop in windows explorer
-            windows_output_default_file = Some(file.replace(".nu", "_f.nu"))
+    for file in files {
+        // TODO: this would be a great place to create an enum like
+        // enum
+        // enum File {
+        //     stdin,
+        //     single_file,
+        //     folder,
+        //     _mod,
+        // }
+        if !file.exists() {
+            eprintln!("Error: {} not found!", file.to_str().unwrap());
+            session.add_operational_error()
+        } else if file.is_dir() {
+            // TODO: recursive search
+            eprintln!(
+                "Error: {} is a directory. Please pass files only.",
+                file.to_str().unwrap()
+            );
+            session.add_operational_error()
+        } else {
+            // send the file to lib.rs
+            println!("formatting file: {:?}", file);
+            format_and_emit_report(&mut session, Input::File(file));
         }
     }
 
-    output = windows_output_default_file.as_deref().or(output);
-
-    // Note: on-stack dynamic dispatch
-    let (mut file, mut stdout);
-    let writer: &mut dyn Write = match output {
-        Some(filename) => {
-            file = File::create(filename)?;
-            &mut file
-        }
-        None => {
-            stdout = std::io::stdout();
-            &mut stdout
-        }
+    let exit_code = if session.has_operational_errors() {
+        1
+    } else {
+        0
     };
 
-    let mut reader = BufReader::new(reader);
-    let mut writer = BufWriter::new(writer);
-    format_nu_buffered(&mut reader, &mut writer, indent)?;
+    Ok(exit_code)
+}
 
-    Ok(())
+fn format_and_emit_report<T: Write>(session: &mut Session<'_, T>, input: Input) {
+    match session.format(input) {
+        _ => {} // _ => todo!("Here `nufmt` gives you a FormatReport"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clap_cli_construction() {
+        use clap::CommandFactory;
+        Cli::command().debug_assert()
+    }
+
+    #[test]
+    fn todo() {
+        todo!("First fix the library fixes, then we can do the binary tests.")
+    }
 }
