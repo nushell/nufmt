@@ -1,0 +1,18 @@
+on: [push, pull_request]
+
+name: Clippy check
+
+jobs:
+  clippy_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Rust toolchain and cache
+        uses: actions-rust-lang/setup-rust-toolchain@v1.4.4
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --no-deps

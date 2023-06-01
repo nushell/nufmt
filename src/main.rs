@@ -27,7 +27,6 @@
 #[allow(unused_import_braces)]
 use anyhow::Result;
 use clap::Parser;
-use env_logger;
 use nufmt::config::Config;
 use nufmt::{Input, Session};
 use std::error::Error;
@@ -108,9 +107,7 @@ fn execute(files: Vec<PathBuf>, options: Config) -> Result<i32> {
 }
 
 fn format_and_emit_report<T: Write>(session: &mut Session<'_, T>, input: Input) {
-    match session.format(input) {
-        _ => {} // _ => todo!("Here `nufmt` gives you a FormatReport"),
-    }
+    session.format(input);
 }
 
 #[cfg(test)]
