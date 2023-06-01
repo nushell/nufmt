@@ -20,8 +20,8 @@ pub struct Session<'b, T: Write> {
 impl<'b, T: Write + 'b> Session<'b, T> {
     pub fn new(config: config::Config, out: Option<&'b mut T>) -> Self {
         Self {
-            config: config,
-            out: out,
+            config,
+            out,
             has_operational_errors: false,
         }
     }
@@ -62,9 +62,9 @@ impl Input {
 
     fn contents(&self) -> Vec<u8> {
         match self {
-            Input::File(path) => std::fs::read(path).expect(
-                format!("something went wrong reading the file {}", path.display()).as_str(),
-            ),
+            Input::File(path) => std::fs::read(path).unwrap_or_else(|_| {
+                panic!("something went wrong reading the file {}", path.display())
+            }),
             Input::Text(string) => string.as_bytes().to_vec(),
         }
     }

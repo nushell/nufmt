@@ -26,9 +26,9 @@ impl Config {
     /// You cannot skip any field yet.
     pub fn new(tab_spaces: usize, max_width: usize, margin: usize) -> Self {
         Config {
-            tab_spaces: tab_spaces,
-            max_width: max_width,
-            margin: margin,
+            tab_spaces,
+            max_width,
+            margin,
         }
     }
 }
