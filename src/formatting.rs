@@ -1,39 +1,18 @@
-use crate::{config::Config, Input, Session};
-use log::{debug, trace};
+use crate::config::Config;
+use log::trace;
 use nu_parser::{flatten_block, parse, FlatShape};
 use nu_protocol::engine::{self, StateWorkingSet};
-use std::fs::File;
-use std::io::Write;
-
-impl<'b, T: Write + 'b> Session<'b, T> {
-    pub fn format_input_inner(&mut self, input: Input) {
-        println!("formatting ...💭");
-        format_project(input, &self.config);
-    }
-}
 
 // Format an entire crate (or subset of the module tree)
-//
-// TODO: It is possible that this fucntion return some value.
-// For example a Vec[u8], or a String to pass to another function
-// which writes the file, or add the indentation.
-fn format_project(input: Input, config: &Config) {
-    debug!("using config:{:?}", config);
+pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     // nice place to measure parsing and formatting time
     // let mut timer = Timer::start();
     // parsing starts
 
-    let main_file = input.file_name();
-    let main_file_as_str = main_file.unwrap().as_path().to_str().unwrap();
-    // TODO: if input is stdin, format the string
-    // let input_is_stdin = main_file == Input::Text;
-
-    let contents = input.contents();
-
     let engine_state = engine::EngineState::new();
     let mut working_set = StateWorkingSet::new(&engine_state);
 
-    let parsed_block = parse(&mut working_set, Some(main_file_as_str), &contents, false);
+    let parsed_block = parse(&mut working_set, None, contents, false);
     trace!("parsed block:\n{:?}\n", &parsed_block);
     // flat is a list of (Span , Flatshape)
     //
@@ -44,7 +23,6 @@ fn format_project(input: Input, config: &Config) {
     // timer = timer.done_parsing()
 
     // formatting starts
-    let mut writer = File::create(main_file.unwrap()).unwrap();
     let mut out: Vec<u8> = vec![];
 
     for (span, shape) in flat {
@@ -93,24 +71,14 @@ fn format_project(input: Input, config: &Config) {
                 out = insert_newline(out);
             }
 
-            _ => (),
+            _ => out.extend(c_bites),
         }
     }
-    // writing
-
     // just before writing, append a new line to the file.
     out = insert_newline(out);
-    // TODO: check if the last byte is already b'\n'
-
-    // now write the file
-    let file_bites = out.as_slice();
-    trace!("writing {:?}", out);
-    writer
-        .write_all(file_bites)
-        .expect("something went wrong writing");
-    trace!("written")
 
     // timer = timer.done_formatting()
+    out
 }
 
 fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
