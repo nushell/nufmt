@@ -3,71 +3,45 @@
 //!
 //! It does not do anything more than that, which makes it so fast.
 
-use log::trace;
+use config::Config;
+use formatting::format_inner;
+use log::{debug, trace};
 use std::error::Error;
+use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
 
 pub mod config;
 pub mod formatting;
 
-pub struct Session<'b, T: Write> {
-    pub config: config::Config,
-    pub out: Option<&'b mut T>,
-    pub has_operational_errors: bool,
+/// Reads the file and format it. After that, writes the file inplace
+pub fn format_single_file(file: &PathBuf, config: &Config) {
+    // read the contents of the file
+    let contents = std::fs::read(file)
+        .unwrap_or_else(|_| panic!("something went wrong reading the file {}", file.display()));
+
+    // obtain the formatted file
+    let formatted_bytes = format_inner(&contents, config);
+
+    // compare the contents
+    if formatted_bytes == contents {
+        debug!("File is formatted correctly.")
+    }
+
+    // write down the file to path
+    let mut writer = File::create(file).unwrap();
+    let file_bites = formatted_bytes.as_slice();
+    trace!("writing {:?}", formatted_bytes);
+    writer
+        .write_all(file_bites)
+        .expect("something went wrong writing");
+    trace!("written")
 }
 
-impl<'b, T: Write + 'b> Session<'b, T> {
-    pub fn new(config: config::Config, out: Option<&'b mut T>) -> Self {
-        Self {
-            config,
-            out,
-            has_operational_errors: false,
-        }
-    }
-
-    pub fn has_operational_errors(self) -> bool {
-        self.has_operational_errors
-    }
-
-    pub fn add_operational_error(&mut self) {
-        self.has_operational_errors = true;
-    }
-
-    pub fn format(&mut self, input: Input) {
-        self.format_input_inner(input)
-    }
-}
-
-// This is getting deprecated. I think
-#[derive(Debug, PartialEq)]
-pub enum FileName {
-    Real(PathBuf),
-    Stdin,
-}
-
-#[derive(Debug)]
-pub enum Input {
-    File(PathBuf),
-    Text(String),
-}
-
-impl Input {
-    fn file_name(&self) -> Option<&PathBuf> {
-        match *self {
-            Input::File(ref file) => Some(file),
-            Input::Text(..) => None,
-        }
-    }
-
-    fn contents(&self) -> Vec<u8> {
-        match self {
-            Input::File(path) => std::fs::read(path).unwrap_or_else(|_| {
-                panic!("something went wrong reading the file {}", path.display())
-            }),
-            Input::Text(string) => string.as_bytes().to_vec(),
-        }
-    }
+pub fn format_string(input_string: &String, config: &Config) -> String {
+    let contents = input_string.as_bytes();
+    let formatted_bytes = format_inner(contents, config);
+    String::from_utf8(formatted_bytes).unwrap()
 }
 
 ///
@@ -240,23 +214,10 @@ mod test {
     use super::*;
 
     #[test]
-    fn already_formatted() {
-        let expected = "[
-  {
-    \"a\": 0
-  },
-  {},
-  {
-    \"a\": null
-  }
-]";
-        assert_eq!(expected, format_nu(expected, Indentation::Default));
-    }
-
-    #[test]
     fn array_of_object() {
-        let nu = "[{\"a\": 0}, {}, {\"a\": null}]";
-        let expected = "[
+        let expected = String::from("[{\"a\":0},{},{\"a\":null}]\n");
+        let nu = String::from(
+            "[
   {
     \"a\": 0
   },
@@ -264,8 +225,9 @@ mod test {
   {
     \"a\": null
   }
-]";
-        assert_eq!(expected, format_nu(nu, Indentation::Default));
+]",
+        );
+        assert_eq!(expected, format_string(&nu, &Config::default()));
     }
 
     #[test]
@@ -298,25 +260,6 @@ mod test {
     fn remove_leading_whitespace() {
         let nu = "   0";
         let expected = "0";
-        assert_eq!(expected, format_nu(nu, Indentation::Default));
-    }
-
-    #[test]
-    fn simple_array() {
-        let nu = "[1,2,null]";
-        let expected = "[
-  1,
-  2,
-  null
-]";
-        assert_eq!(expected, format_nu(nu, Indentation::Default));
-    }
-    #[test]
-    fn simple_object() {
-        let nu = "{\"a\":0}";
-        let expected = "{
-  \"a\": 0
-}";
         assert_eq!(expected, format_nu(nu, Indentation::Default));
     }
 }
