@@ -152,9 +152,4 @@ mod tests {
         use clap::CommandFactory;
         Cli::command().debug_assert()
     }
-
-    #[test]
-    fn todo() {
-        todo!("First fix the library fixes, then we can do the binary tests.")
-    }
 }
