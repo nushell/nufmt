@@ -3,6 +3,8 @@ use log::trace;
 use nu_parser::{flatten_block, parse, FlatShape};
 use nu_protocol::engine::{self, StateWorkingSet};
 
+mod comments;
+
 // Format an entire crate (or subset of the module tree)
 pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     // nice place to measure parsing and formatting time
@@ -12,6 +14,10 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     let engine_state = engine::EngineState::new();
     let mut working_set = StateWorkingSet::new(&engine_state);
 
+    // Just before parsing, we need save the comments
+    // so we split the contents by sections,
+    // using the separator Token = Comment and next Token = Eol
+    let comments_result = comments::split_by_comments(contents);
     let parsed_block = parse(&mut working_set, None, contents, false);
     trace!("parsed block:\n{:?}\n", &parsed_block);
     // flat is a list of (Span , Flatshape)
