@@ -21,6 +21,9 @@ log = "0.4.17"
 nu-parser = "0.80.0"
 nu-protocol = "0.80.0"
 
+[dev-dependencies]
+criterion = "0.5.1"
+
 [features]
 default = ["bin"]
 bin = ["clap"]
@@ -33,3 +36,7 @@ path = "src/lib.rs"
 name = "nufmt"
 path = "src/main.rs"
 required-features = ["bin"]
+
+[[bench]]
+name = "file-format-bench"
+harness = false
