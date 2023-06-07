@@ -11,8 +11,8 @@
 [mit-url]: LICENSE
 [discord-badge]: https://img.shields.io/discord/678763474494423051?logo=discord&label=discord&color=brightgreen
 [discord-url]: https://discord.gg/NtAbbGn
-[ci-badge]: https://github.com/AucaCoyan/nufmt/actions/workflows/main.yml/badge.svg
-[ci-url]: https://github.com/AucaCoyan/nufmt/actions/workflows/main.yml
+[ci-badge]: https://github.com/nushell/nufmt/actions/workflows/main.yml/badge.svg
+[ci-url]: https://github.com/nushell/nufmt/actions/workflows/main.yml
 [nushell-badge]: https://img.shields.io/badge/nushell-v0.80.0-green
 [nushell-url]: https://crates.io/crates/nu
 
