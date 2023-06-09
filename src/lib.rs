@@ -48,7 +48,6 @@ mod test {
 
     #[test]
     fn array_of_object() {
-        let expected = String::from("[{\"a\":0},{},{\"a\":null}]\n");
         let nu = String::from(
             "[
   {
@@ -60,25 +59,24 @@ mod test {
   }
 ]",
         );
+        let expected = String::from("[{\"a\":0},{},{\"a\":null}]\n");
         assert_eq!(expected, format_string(&nu, &Config::default()));
     }
 
     #[test]
     fn echoes_primitive() {
-        let nu = String::from("1.35\n");
-        assert_eq!(nu, format_string(&nu, &Config::default()));
+        let nu = String::from("1.35");
+        let expected = String::from("1.35\n");
+        assert_eq!(expected, format_string(&nu, &Config::default()));
     }
 
     #[test]
     fn handle_escaped_strings() {
-        let nu = String::from("  \" hallo \\\" \" \n");
-        let expected = String::from("\" hallo \\\" \"\n");
+        let nu = String::from("  \"hallo\\\"\"");
+        let expected = String::from("\"hallo\\\"\"\n");
         assert_eq!(expected, format_string(&nu, &Config::default()));
     }
 
-    // comments aren't a part of Spans,
-    // we need another way of reading a skipping comments
-    // otherwise the nufmt directly remove them.
     #[test]
     fn ignore_comments() {
         let nu = String::from(
@@ -90,8 +88,9 @@ mod test {
 
     #[test]
     fn ignore_whitespace_in_string() {
-        let nu = String::from("\" hallo \"\n");
-        assert_eq!(nu, format_string(&nu, &Config::default()));
+        let nu = String::from("\" hallo \"");
+        let expected = String::from("\" hallo \"\n");
+        assert_eq!(expected, format_string(&nu, &Config::default()));
     }
 
     #[test]
