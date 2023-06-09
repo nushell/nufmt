@@ -77,11 +77,8 @@ mod test {
         assert_eq!(expected, format_string(&nu, &Config::default()));
     }
 
-    // comments aren't a part of Spans,
-    // we need another way of reading a skipping comments
-    // otherwise the nufmt directly remove them.
     #[test]
-    #[ignore]
+    #[ignore = "comments aren't a part of Spans,"]
     fn ignore_comments() {
         let nu = String::from("# this is a comment");
         let expected = String::from("# this is a comment");
