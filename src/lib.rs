@@ -66,13 +66,14 @@ mod test {
 
     #[test]
     fn echoes_primitive() {
-        let nu = String::from("1.35\n");
-        assert_eq!(nu, format_string(&nu, &Config::default()));
+        let nu = String::from("1.35");
+        let expected = String::from("1.35\n");
+        assert_eq!(expected, format_string(&nu, &Config::default()));
     }
 
     #[test]
     fn handle_escaped_strings() {
-        let nu = String::from("  \"hallo\\\"\" \n");
+        let nu = String::from("  \"hallo\\\"\"");
         let expected = String::from("\"hallo\\\"\"\n");
         assert_eq!(expected, format_string(&nu, &Config::default()));
     }
@@ -87,8 +88,9 @@ mod test {
 
     #[test]
     fn ignore_whitespace_in_string() {
-        let nu = String::from("\" hallo \"\n");
-        assert_eq!(nu, format_string(&nu, &Config::default()));
+        let nu = String::from("\" hallo \"");
+        let expected = String::from("\" hallo \"\n");
+        assert_eq!(expected, format_string(&nu, &Config::default()));
     }
 
     #[test]
