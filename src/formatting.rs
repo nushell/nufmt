@@ -1,37 +1,67 @@
 use crate::config::Config;
 use log::trace;
 use nu_parser::{flatten_block, parse, FlatShape};
-use nu_protocol::engine::{self, StateWorkingSet};
+use nu_protocol::{
+    ast::Block,
+    engine::{self, StateWorkingSet},
+    Span,
+};
 
-mod comments;
-
-// Format an entire crate (or subset of the module tree)
+// Format an array of bytes
+//
+// Reading the file gives you a list of bytes
 pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
-    // nice place to measure parsing and formatting time
+    // nice place to measure formatting time
     // let mut timer = Timer::start();
-    // parsing starts
 
+    // parsing starts
     let engine_state = engine::EngineState::new();
     let mut working_set = StateWorkingSet::new(&engine_state);
 
-    // Just before parsing, we need save the comments
-    // so we split the contents by sections,
-    // using the separator Token = Comment and next Token = Eol
-    let comments_result = comments::split_by_comments(contents);
     let parsed_block = parse(&mut working_set, None, contents, false);
-    trace!("parsed block:\n{:?}\n", &parsed_block);
+    trace!("parsed block:\n{:?}", &parsed_block);
+
+    // check if the block has at least 1 pipeline
+    if !block_has_pipilnes(&parsed_block) {
+        trace!("block has no pipelines!");
+        println!("File has no code to format.");
+        return contents.to_vec();
+    }
     // flat is a list of (Span , Flatshape)
     //
     // Span is the piece of code. You can stringfy the contents.
     // Flatshape is an enum of the type of token read by the AST.
     let flat = flatten_block(&working_set, &parsed_block);
-    trace!("flattened block:\n{:#?}\n", &flat);
+    trace!("flattened block:\n{:?}", &flat);
     // timer = timer.done_parsing()
 
     // formatting starts
     let mut out: Vec<u8> = vec![];
 
-    for (span, shape) in flat {
+    let mut start = 0;
+    let end_of_file = contents.len();
+
+    for (span, shape) in flat.clone().into_iter() {
+        // check if span skipped some bytes before the current span
+        if span.start > start {
+            trace!(
+                "Span didn't started on the beginning! span {0}, start: {1}",
+                span.start,
+                start
+            );
+            let skipped_contents = &contents[start..span.start];
+            let printable = String::from_utf8_lossy(skipped_contents).to_string();
+            trace!("contents: {:?}", printable);
+            if skipped_contents.contains(&b'#') {
+                trace!("This have a comment. Writing.");
+                out.extend(trim_ascii_whitespace(skipped_contents));
+                out.push(b'\n');
+            } else {
+                trace!("The contents doesn't have a '#'. Skipping.")
+            }
+        }
+
+        // get the span contents and format it
         let mut c_bites = working_set.get_span_contents(span);
         let content = String::from_utf8_lossy(c_bites).to_string();
         trace!("shape is {shape}");
@@ -79,6 +109,28 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
 
             _ => out.extend(c_bites),
         }
+
+        // check if span skipped some bytes between the final spann and the end of file
+        if is_last_span(span, &flat) && span.end < end_of_file {
+            trace!(
+                "The last span doesn't end the file! span: {0}, end: {1}",
+                span.end,
+                end_of_file
+            );
+            let remaining_contents = &contents[span.end..end_of_file];
+            let printable = String::from_utf8_lossy(remaining_contents).to_string();
+            trace!("contents: {:?}", printable);
+            if remaining_contents.contains(&b'#') {
+                trace!("This have a comment. Writing.");
+                out.push(b'\n');
+                out.extend(trim_ascii_whitespace(remaining_contents));
+            } else {
+                trace!("The contents doesn't have a '#'. Skipping.")
+            }
+        }
+
+        // cleanup
+        start = span.end + 1;
     }
     // just before writing, append a new line to the file.
     out = insert_newline(out);
@@ -102,4 +154,12 @@ pub fn trim_ascii_whitespace(x: &[u8]) -> &[u8] {
     };
     let to = x.iter().rposition(|x| !x.is_ascii_whitespace()).unwrap();
     &x[from..=to]
+}
+
+fn block_has_pipilnes(block: &Block) -> bool {
+    !block.pipelines.is_empty()
+}
+
+fn is_last_span(span: Span, flat: &[(Span, FlatShape)]) -> bool {
+    span == flat.last().unwrap().0
 }

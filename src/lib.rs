@@ -30,7 +30,6 @@ pub fn format_single_file(file: &PathBuf, config: &Config) {
     // write down the file to path
     let mut writer = File::create(file).unwrap();
     let file_bites = formatted_bytes.as_slice();
-    trace!("writing {:?}", formatted_bytes);
     writer
         .write_all(file_bites)
         .expect("something went wrong writing");
@@ -81,10 +80,11 @@ mod test {
     // we need another way of reading a skipping comments
     // otherwise the nufmt directly remove them.
     #[test]
-    #[ignore]
     fn ignore_comments() {
-        let nu = String::from("# this is a comment");
-        let expected = String::from("# this is a comment");
+        let nu = String::from(
+            "# beginning of script comment\n\n let one = 1\ndef my-func [\n    param1:int # inline comment\n]{ print(param1) \n}\nmyfunc(one)\n\n\n\n\n\n# final comment\n\n\n");
+        let expected = String::from(
+            "# beginning of script comment\nlet one = 1\ndef my-func [\n    param1:int # inline comment\n]{ print(param1) \n}\nmyfunc(one) \n# final comment\n");
         assert_eq!(expected, format_string(&nu, &Config::default()));
     }
 
