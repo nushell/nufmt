@@ -733,48 +733,44 @@ dependencies = [
 
 [[package]]
 name = "nu-engine"
-version = "0.80.0"
+version = "0.81.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c5a63e1a390ceafa336ac4332724502a478b5dec2f67b24fd1d19fcd4d019b0"
+checksum = "4235fe928b81457e353959b51f7789bbbd5f0bc581281a4d23894f512842718d"
 dependencies = [
- "chrono",
  "nu-glob",
  "nu-path",
  "nu-protocol",
  "nu-utils",
- "serde",
  "sysinfo",
 ]
 
 [[package]]
 name = "nu-glob"
-version = "0.80.0"
+version = "0.81.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "922b20eb03387d5aa1d41bc9dbdd47799648c5417a0632328b3e367cb035b31f"
+checksum = "6a413281323e07a2367c7fdbf2e4afa4c941349df4e6bf3d937d6888eb39e28d"
 
 [[package]]
 name = "nu-parser"
-version = "0.80.0"
+version = "0.81.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b08bff634f103a958b184d7664207271a9a99ffc9a45b80709c71c1af5d2e63"
+checksum = "ef1e339b58cf9c0dea3fd769075454a46bbabdd074bc35d5815eefbc4e039711"
 dependencies = [
  "bytesize",
  "chrono",
  "itertools",
  "log",
- "miette",
  "nu-engine",
  "nu-path",
  "nu-protocol",
  "serde_json",
- "thiserror",
 ]
 
 [[package]]
 name = "nu-path"
-version = "0.80.0"
+version = "0.81.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "109b3cb16c1f1a134b19f63aa7d633af5f0ec61f25c5cb96e0f775c3794e9773"
+checksum = "2906ffcb3924486695884b229d31ea812316c3332c99644d461c1b2b07868ab0"
 dependencies = [
  "dirs-next",
  "omnipath",
@@ -783,9 +779,9 @@ dependencies = [
 
 [[package]]
 name = "nu-protocol"
-version = "0.80.0"
+version = "0.81.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd7943cef88db9b614326b924125a7342e1a46e4eb9e82547becf917765f62d4"
+checksum = "55622cd4b1f4bfb3d1ed7f8d935bc40e818ab16a07c34c217085aa42754bca67"
 dependencies = [
  "byte-unit",
  "chrono",
@@ -800,16 +796,15 @@ dependencies = [
  "serde_json",
  "strum",
  "strum_macros",
- "sys-locale",
  "thiserror",
  "typetag",
 ]
 
 [[package]]
 name = "nu-utils"
-version = "0.80.0"
+version = "0.81.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8da43579f039c9428df85f28fc58c4b1732ba2a7a9971c1b56dbe39b0a8e8ac3"
+checksum = "163536ef0adb8f8c66d168aa018a7bb66a6c8174a5e805f6e30ebd2aed33f47c"
 dependencies = [
  "crossterm_winapi",
  "log",
@@ -1174,9 +1169,9 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.28.4"
+version = "0.29.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4c2f3ca6693feb29a89724516f016488e9aafc7f37264f898593ee4b942f31b"
+checksum = "9557d0845b86eea8182f7b10dff120214fb6cd9fd937b6f4917714e546a38695"
 dependencies = [
  "cfg-if",
  "core-foundation-sys",
