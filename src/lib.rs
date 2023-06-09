@@ -72,8 +72,8 @@ mod test {
 
     #[test]
     fn handle_escaped_strings() {
-        let nu = String::from("  \" hallo \\\" \" \n");
-        let expected = String::from("\" hallo \\\" \"\n");
+        let nu = String::from("  \"hallo\\\"\" \n");
+        let expected = String::from("\"hallo\\\"\"\n");
         assert_eq!(expected, format_string(&nu, &Config::default()));
     }
 
