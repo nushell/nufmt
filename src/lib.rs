@@ -49,7 +49,6 @@ mod test {
 
     #[test]
     fn array_of_object() {
-        let expected = String::from("[{\"a\":0},{},{\"a\":null}]\n");
         let nu = String::from(
             "[
   {
@@ -61,6 +60,7 @@ mod test {
   }
 ]",
         );
+        let expected = String::from("[{\"a\":0},{},{\"a\":null}]\n");
         assert_eq!(expected, format_string(&nu, &Config::default()));
     }
 
