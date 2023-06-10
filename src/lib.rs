@@ -46,10 +46,16 @@ pub fn format_string(input_string: &String, config: &Config) -> String {
 mod test {
     use super::*;
 
+    fn run_test(input: &str, expected: &str) {
+        assert_eq!(
+            expected.to_string(),
+            format_string(&input.to_string(), &Config::default())
+        );
+    }
+
     #[test]
     fn array_of_object() {
-        let nu = String::from(
-            "[
+        let input = "[
   {
     \"a\": 0
   },
@@ -57,30 +63,28 @@ mod test {
   {
     \"a\": null
   }
-]",
-        );
-        let expected = String::from("[{\"a\":0},{},{\"a\":null}]\n");
-        assert_eq!(expected, format_string(&nu, &Config::default()));
+]";
+        let expected = "[{\"a\":0},{},{\"a\":null}]\n";
+        run_test(input, expected);
     }
 
     #[test]
     fn echoes_primitive() {
-        let nu = String::from("1.35");
-        let expected = String::from("1.35\n");
-        assert_eq!(expected, format_string(&nu, &Config::default()));
+        let input = "1.35";
+        let expected = "1.35\n";
+        run_test(input, expected);
     }
 
     #[test]
     fn handle_escaped_strings() {
-        let nu = String::from("  \"hallo\\\"\"");
-        let expected = String::from("\"hallo\\\"\"\n");
-        assert_eq!(expected, format_string(&nu, &Config::default()));
+        let input = "  \"hallo\\\"\"";
+        let expected = "\"hallo\\\"\"\n";
+        run_test(input, expected);
     }
 
     #[test]
     fn ignore_comments() {
-        let nu = String::from(
-            "# beginning of script comment
+        let input = "# beginning of script comment
 
 let one = 1
 def my-func [
@@ -96,32 +100,29 @@ myfunc(one)
 # final comment
 
 
-",
-        );
-        let expected = String::from(
-            "# beginning of script comment
+";
+        let expected = "# beginning of script comment
 let one = 1
 def my-func [
     param1:int # inline comment
 ]{ print(param1) 
 }
 myfunc(one) 
-# final comment\n",
-        );
-        assert_eq!(expected, format_string(&nu, &Config::default()));
+# final comment\n";
+        run_test(input, expected);
     }
 
     #[test]
     fn ignore_whitespace_in_string() {
-        let nu = String::from("\" hallo \"");
-        let expected = String::from("\" hallo \"\n");
-        assert_eq!(expected, format_string(&nu, &Config::default()));
+        let input = "\" hallo \"";
+        let expected = "\" hallo \"\n";
+        run_test(input, expected);
     }
 
     #[test]
     fn remove_leading_whitespace() {
-        let nu = String::from("   0");
-        let expected = String::from("0\n");
-        assert_eq!(expected, format_string(&nu, &Config::default()));
+        let input = "   0";
+        let expected = "0\n";
+        run_test(input, expected);
     }
 }
