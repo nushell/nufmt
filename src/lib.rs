@@ -80,9 +80,34 @@ mod test {
     #[test]
     fn ignore_comments() {
         let nu = String::from(
-            "# beginning of script comment\n\n let one = 1\ndef my-func [\n    param1:int # inline comment\n]{ print(param1) \n}\nmyfunc(one)\n\n\n\n\n\n# final comment\n\n\n");
+            "# beginning of script comment
+
+let one = 1
+def my-func [
+    param1:int # inline comment
+]{ print(param1) 
+}
+myfunc(one)
+
+
+
+
+
+# final comment
+
+
+",
+        );
         let expected = String::from(
-            "# beginning of script comment\nlet one = 1\ndef my-func [\n    param1:int # inline comment\n]{ print(param1) \n}\nmyfunc(one) \n# final comment\n");
+            "# beginning of script comment
+let one = 1
+def my-func [
+    param1:int # inline comment
+]{ print(param1) 
+}
+myfunc(one) 
+# final comment\n",
+        );
         assert_eq!(expected, format_string(&nu, &Config::default()));
     }
 
