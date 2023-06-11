@@ -36,10 +36,15 @@
 //!
 //! - `-v` or `--version` prints the version and exit
 
-// throw error if finds a broken link in doc
-#![deny(rustdoc::broken_intra_doc_links)]
-// or docs are missing for public members
-#![warn(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)] // throw error if finds a broken link in doc
+#![warn(missing_docs // or docs are missing for public members
+        ,clippy::missing_docs_in_private_items // warn if docs are missing in private items
+        ,clippy::explicit_iter_loop // warn if you find array.iter(), &array will do the same
+        ,clippy::explicit_into_iter_loop // same with into_iter()
+        ,clippy::semicolon_if_nothing_returned // consistent semicolon endings
+        ,clippy::doc_markdown // warn if _ :: or ` are missing in .md
+        ,clippy::manual_let_else // warn if a match has only 1 arm => do if let
+)]
 
 use anyhow::{Ok, Result};
 use clap::Parser;
@@ -50,17 +55,25 @@ use std::error::Error;
 use std::io::Write;
 use std::path::PathBuf;
 
+/// wrapper to the successful exit code
 const SUCCESSFUL_EXIT: i32 = 0;
+/// wrapper to the failure exit code
 const FAILED_EXIT: i32 = 1;
 
+/// Main CLI struct.
+///
+/// The derive Clippy API starts from defining the CLI struct
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
+    /// The list of files passed in the cmdline
+    /// It is required and it cannot be used with `--stdin`
     #[arg(
         required_unless_present("stdin"),
         help = "The file or files you want to format in nu"
     )]
     files: Vec<PathBuf>,
+    /// The string you pass in stdin. You can pass only one string.
     #[arg(
         short,
         long,
@@ -68,6 +81,8 @@ struct Cli {
         help = "Format the code passed in stdin as a string."
     )]
     stdin: Option<String>,
+    /// The optional config file you can pass in the cmdline
+    /// You can only pass a file config, not a flag config
     #[arg(short, long, help = "The configuration file")]
     config: Option<PathBuf>,
 }
@@ -123,7 +138,7 @@ fn execute_string(string: Option<String>, options: &Config) -> Result<i32> {
 /// Sends the files to format in lib.rs
 fn execute_files(files: Vec<PathBuf>, options: &Config) -> Result<i32> {
     // walk the files in the vec of files
-    for file in files.iter() {
+    for file in &files {
         if !file.exists() {
             eprintln!("Error: {} not found!", file.to_str().unwrap());
             return Ok(FAILED_EXIT);
@@ -133,11 +148,10 @@ fn execute_files(files: Vec<PathBuf>, options: &Config) -> Result<i32> {
                 file.to_str().unwrap()
             );
             return Ok(FAILED_EXIT);
-        } else {
-            // send the file to lib.rs
-            println!("formatting file: {:?}", file);
-            format_single_file(file, options);
         }
+        // send the file to lib.rs
+        println!("formatting file: {:?}", file);
+        format_single_file(file, options);
     }
 
     Ok(SUCCESSFUL_EXIT)
