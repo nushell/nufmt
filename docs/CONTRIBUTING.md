@@ -1,4 +1,4 @@
-https://discord.gg/NtAbbGn# Contributing to `nufmt`
+# Contributing to `nufmt`
 
 Salutations! Thanks for coming by and the interest into this project!
 We would like to order the contributions like this:
