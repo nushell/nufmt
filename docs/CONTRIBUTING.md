@@ -14,5 +14,5 @@ We would like to order the contributions like this:
 
 This is a list of things we would like to have and mantain across time. Please do your best to abide by.
 
-- Everything should be explained: rust docs, comments, drawings, pick what makes you comfortable, but it is important to make it clear. There will be always some new guy or gal into the project we want to welcome 😄.
-- Use clear variable names and try to evade confusing abbreviations. Think that your peer may not be fully fluent in english 💬.
+- Everything should be explained: rust docs, comments, drawings, pick what makes you comfortable, but it is important to make it clear. There will always be some new guy or gal into the project we want to welcome 😄.
+- Use clear variable names and try to avoid confusing abbreviations. Think that your peers may not be fully fluent in english 💬.
