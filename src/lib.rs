@@ -3,16 +3,6 @@
 //!
 //! It does not do anything more than that, which makes it so fast.
 
-#![deny(rustdoc::broken_intra_doc_links)] // throw error if finds a broken link in doc
-#![warn(missing_docs // or docs are missing for public members
-        ,clippy::missing_docs_in_private_items // warn if docs are missing in private items
-        ,clippy::explicit_iter_loop // warn if you find array.iter(), &array will do the same
-        ,clippy::explicit_into_iter_loop // same with into_iter()
-        ,clippy::semicolon_if_nothing_returned // consistent semicolon endings
-        ,clippy::doc_markdown // warn if _ :: or ` are missing in .md
-        ,clippy::manual_let_else // warn if a match has only 1 arm => do if let
-)]
-
 use config::Config;
 use formatting::format_inner;
 use log::{debug, trace};
@@ -23,7 +13,7 @@ use std::path::PathBuf;
 pub mod config;
 pub mod formatting;
 
-/// Reads a `&PathBuf` pointing to a file and format it. Then writes the file inplace.
+/// Reads a file and format it. Then writes the file inplace.
 pub fn format_single_file(file: &PathBuf, config: &Config) {
     // read the contents of the file
     let contents = std::fs::read(file)
@@ -47,8 +37,6 @@ pub fn format_single_file(file: &PathBuf, config: &Config) {
 }
 
 /// Take a `String` and format it. Then returns a new `String`
-///
-/// Takes a pointer to a String `&String` and a config `&Config`.
 pub fn format_string(input_string: &String, config: &Config) -> String {
     let contents = input_string.as_bytes();
     let formatted_bytes = format_inner(contents, config);

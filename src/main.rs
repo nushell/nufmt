@@ -36,16 +36,6 @@
 //!
 //! - `-v` or `--version` prints the version and exit
 
-#![deny(rustdoc::broken_intra_doc_links)] // throw error if finds a broken link in doc
-#![warn(missing_docs // or docs are missing for public members
-        ,clippy::missing_docs_in_private_items // warn if docs are missing in private items
-        ,clippy::explicit_iter_loop // warn if you find array.iter(), &array will do the same
-        ,clippy::explicit_into_iter_loop // same with into_iter()
-        ,clippy::semicolon_if_nothing_returned // consistent semicolon endings
-        ,clippy::doc_markdown // warn if _ :: or ` are missing in .md
-        ,clippy::manual_let_else // warn if a match has only 1 arm => do if let
-)]
-
 use anyhow::{Ok, Result};
 use clap::Parser;
 use log::trace;

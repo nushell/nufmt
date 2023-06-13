@@ -27,7 +27,7 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     trace!("parsed block:\n{:?}", &parsed_block);
 
     // check if the block has at least 1 pipeline
-    if !block_has_pipilnes(&parsed_block) {
+    if !block_has_pipelines(&parsed_block) {
         trace!("block has no pipelines!");
         println!("File has no code to format.");
         return contents.to_vec();
@@ -177,13 +177,11 @@ pub fn trim_ascii_whitespace(x: &[u8]) -> &[u8] {
 /// We don't want to return a blank file if that is the case,
 /// so this check gives the opportunity to `nufmt`
 /// to know when not to touch the file at all in the implementation.
-fn block_has_pipilnes(block: &Block) -> bool {
+fn block_has_pipelines(block: &Block) -> bool {
     !block.pipelines.is_empty()
 }
 
 /// Returns true if the `Span` is the last Span in the slice of `flat`
-///
-/// Takes a Span and a slice of tuples `(Span, FlatShape)`.
 fn is_last_span(span: Span, flat: &[(Span, FlatShape)]) -> bool {
     span == flat.last().unwrap().0
 }
