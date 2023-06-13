@@ -121,6 +121,20 @@ myfunc(one)
     }
 
     #[test]
+    fn add_new_line() {
+        let input = "null";
+        let expected = "null\n";
+        run_test(input, expected);
+    }
+
+    #[test]
+    fn remove_additional_lines() {
+        let input = "let 'one' = 1\n\n\n";
+        let expected = "let 'one'\n";
+        run_test(input, expected);
+    }
+
+    #[test]
     fn remove_leading_whitespace() {
         let input = "   0";
         let expected = "0\n";
