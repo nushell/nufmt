@@ -13,7 +13,7 @@ use std::path::PathBuf;
 pub mod config;
 pub mod formatting;
 
-/// Reads the file and format it. After that, writes the file inplace
+/// Reads a file and format it. Then writes the file inplace.
 pub fn format_single_file(file: &PathBuf, config: &Config) {
     // read the contents of the file
     let contents = std::fs::read(file)
@@ -24,7 +24,7 @@ pub fn format_single_file(file: &PathBuf, config: &Config) {
 
     // compare the contents
     if formatted_bytes == contents {
-        debug!("File is formatted correctly.")
+        debug!("File is formatted correctly.");
     }
 
     // write down the file to path
@@ -33,9 +33,10 @@ pub fn format_single_file(file: &PathBuf, config: &Config) {
     writer
         .write_all(file_bites)
         .expect("something went wrong writing");
-    trace!("written")
+    trace!("written");
 }
 
+/// Take a `String` and format it. Then returns a new `String`
 pub fn format_string(input_string: &String, config: &Config) -> String {
     let contents = input_string.as_bytes();
     let formatted_bytes = format_inner(contents, config);

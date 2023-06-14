@@ -1,3 +1,7 @@
+//! Config module
+//!
+//! This keeps all the options, tweaks and dials of the configuration.
+
 use anyhow::Result;
 
 #[derive(Debug)]
@@ -34,6 +38,6 @@ impl Config {
 }
 
 /// Returns a default config.
-pub fn load_config(/* file_path: Option<&Path> */) -> Result<Config> {
+pub fn load(/* file_path: Option<&Path> */) -> Result<Config> {
     Ok(Config::default())
 }

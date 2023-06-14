@@ -1,3 +1,8 @@
+//! Formatting module
+//!
+//! In this module occurs most of the magic in `nufmt`.
+//! It has functions to format slice of bytes and some help functions to separate concerns while doing the job.
+//!
 use crate::config::Config;
 use log::trace;
 use nu_parser::{flatten_block, parse, FlatShape};
@@ -7,9 +12,9 @@ use nu_protocol::{
     Span,
 };
 
-// Format an array of bytes
-//
-// Reading the file gives you a list of bytes
+/// Format an array of bytes
+///
+/// Reading the file gives you a list of bytes
 pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     // nice place to measure formatting time
     // let mut timer = Timer::start();
@@ -22,7 +27,7 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     trace!("parsed block:\n{:?}", &parsed_block);
 
     // check if the block has at least 1 pipeline
-    if !block_has_pipilnes(&parsed_block) {
+    if !block_has_pipelines(&parsed_block) {
         trace!("block has no pipelines!");
         println!("File has no code to format.");
         return contents.to_vec();
@@ -41,7 +46,7 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     let mut start = 0;
     let end_of_file = contents.len();
 
-    for (span, shape) in flat.clone().into_iter() {
+    for (span, shape) in flat.clone() {
         // check if span skipped some bytes before the current span
         if span.start > start {
             trace!(
@@ -57,7 +62,7 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 out.extend(trim_ascii_whitespace(skipped_contents));
                 out.push(b'\n');
             } else {
-                trace!("The contents doesn't have a '#'. Skipping.")
+                trace!("The contents doesn't have a '#'. Skipping.");
             }
         }
 
@@ -73,14 +78,14 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 c_bites = trim_ascii_whitespace(c_bites);
                 let printable = String::from_utf8_lossy(c_bites).to_string();
                 trace!("stripped the whitespace, result: {:?}", printable);
-                out.extend(c_bites)
+                out.extend(c_bites);
             }
             FlatShape::Pipe => {
                 // here you don't have to strip the whitespace.
                 // The pipe is just a pipe `|`.
                 //
                 // return the pipe AND a space after that
-                out.extend("| ".to_string().bytes())
+                out.extend("| ".to_string().bytes());
             }
             FlatShape::External => {
                 // External are some key commands
@@ -125,7 +130,7 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 out.push(b'\n');
                 out.extend(trim_ascii_whitespace(remaining_contents));
             } else {
-                trace!("The contents doesn't have a '#'. Skipping.")
+                trace!("The contents doesn't have a '#'. Skipping.");
             }
         }
 
@@ -139,6 +144,10 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     out
 }
 
+/// A wrapper to insert a new line
+///
+/// It is used frequently in `nufmt`, so
+/// we have a wrapper to improve readability of the code.
 fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
     // If I need cfg windows, then I need \r\n
     // let newline = vec![b'\r', b'\n'];
@@ -147,19 +156,32 @@ fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
     bytes
 }
 
+/// Given a slice of bytes, strip all spaces, new lines and tabs found within
+///
+/// Because you don't know how the incoming code is formatted,
+/// the best way to format is to strip all the whitespace
+/// and afterwards include the new lines and indentation correctly
+/// according to the configuration
 pub fn trim_ascii_whitespace(x: &[u8]) -> &[u8] {
-    let from = match x.iter().position(|x| !x.is_ascii_whitespace()) {
-        Some(i) => i,
-        None => return &x[0..0],
-    };
+    let Some(from) = x.iter().position(|x| !x.is_ascii_whitespace()) else { return &x[0..0] };
     let to = x.iter().rposition(|x| !x.is_ascii_whitespace()).unwrap();
     &x[from..=to]
 }
 
-fn block_has_pipilnes(block: &Block) -> bool {
+/// Returns true if the Block has at least 1 Pipeline
+///
+/// This function exists because sometimes is passed to `nufmt` an empty String,
+/// or a nu code which the parser can't identify something runnable
+/// (like a list of comments)
+///
+/// We don't want to return a blank file if that is the case,
+/// so this check gives the opportunity to `nufmt`
+/// to know when not to touch the file at all in the implementation.
+fn block_has_pipelines(block: &Block) -> bool {
     !block.pipelines.is_empty()
 }
 
+/// Returns true if the `Span` is the last Span in the slice of `flat`
 fn is_last_span(span: Span, flat: &[(Span, FlatShape)]) -> bool {
     span == flat.last().unwrap().0
 }

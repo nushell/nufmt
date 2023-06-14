@@ -72,6 +72,4 @@ nufmt my-file1.nu my-file2.nu my-file3.nu
 
 ## Contributing
 
-Submit an issue, or come and say hi in the [Discord](https://discord.gg/NtAbbGn)!
-
-You can mention @AucaCoyan who is active on this repo.
+We have a [contribution guide](docs/CONTRIBUTING.md). If you still have doubts, you can mention @AucaCoyan who is active on this repo.
