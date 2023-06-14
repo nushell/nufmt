@@ -30,7 +30,18 @@ jobs:
       - name: Setup Rust toolchain and cache
         uses: actions-rust-lang/setup-rust-toolchain@v1.4.4
       - name: Clippy
-        run: cargo clippy --no-deps
+        run: |
+          cargo clippy \
+            --no-deps \
+          -- \
+            -D rustdoc::broken_intra_doc_links \
+            -W missing_docs \
+            -W clippy::missing_docs_in_private_items \
+            -W clippy::explicit_iter_loop \
+            -W clippy::explicit_into_iter_loop \
+            -W clippy::semicolon_if_nothing_returned \
+            -W clippy::doc_markdown \
+            -W clippy::manual_let_else
 
   test:
     name: test rust files
