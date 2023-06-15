@@ -45,8 +45,11 @@ export def clippy [
 
     try {(
         cargo clippy
+            --all-targets
+            --no-deps
             --workspace
         --
+            -D warnings
             -D rustdoc::broken_intra_doc_links
             -W missing_docs
             -W clippy::missing_docs_in_private_items

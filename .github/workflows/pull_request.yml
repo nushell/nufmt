@@ -25,7 +25,9 @@ jobs:
       - name: Clippy
         run: |
           cargo clippy \
+            --all-targets \
             --no-deps \
+            --workspace \
           -- \
             -D rustdoc::broken_intra_doc_links \
             -W missing_docs \
