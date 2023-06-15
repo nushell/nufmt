@@ -1,40 +1,4 @@
-//! This is the nufmt binary documentation
-//!
-//! # Usage
-//!
-//! ```text
-//! nufmt [OPTIONS] [FILES] ...
-//! ```
-//! ## Files
-//!
-//! `Files` are a list of files. It cannot be used combined with `--stdin`.
-//! You can format many files with one command!. For example:
-//!
-//! ```text
-//! nufmt my-file1.nu my-file2.nu my-file3.nu
-//! ```
-//!
-//! ## Options
-//!
-//! - `-s` or `--stdin` formats from `stdin`, returns to `stdout` as a String. It cannot be used combined with `files`.
-//!
-//! - `-c` or `--config` pass the config file path.
-//!
-//!     Sample:
-//!
-//!     ```text
-//!     nufmt <files> --config my-config.json
-//!     ```
-//!
-//!     or
-//!
-//!     ```text
-//!     nufmt --stdin <string> --config my-stdin-config.json
-//!     ```
-//!
-//! - `-h` or `--help` show help and exit
-//!
-//! - `-v` or `--version` prints the version and exit
+#![doc = include_str!("../README.md")]
 
 use anyhow::{Ok, Result};
 use clap::Parser;
