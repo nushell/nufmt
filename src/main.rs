@@ -2,7 +2,7 @@
 
 use anyhow::{Ok, Result};
 use clap::Parser;
-use log::trace;
+use log::{trace, error, info};
 use nu_formatter::config::Config;
 use nu_formatter::{format_single_file, format_string};
 use std::error::Error;
@@ -94,17 +94,17 @@ fn execute_files(files: Vec<PathBuf>, options: &Config) -> Result<i32> {
     // walk the files in the vec of files
     for file in &files {
         if !file.exists() {
-            eprintln!("Error: {} not found!", file.to_str().unwrap());
+            error!("Error: {} not found!", file.to_str().unwrap());
             return Ok(FAILED_EXIT);
         } else if file.is_dir() {
-            eprintln!(
+            error!(
                 "Error: {} is a directory. Please pass files only.",
                 file.to_str().unwrap()
             );
             return Ok(FAILED_EXIT);
         }
         // send the file to lib.rs
-        println!("formatting file: {:?}", file);
+        info!("formatting file: {:?}", file);
         format_single_file(file, options);
     }
 

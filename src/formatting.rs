@@ -4,7 +4,7 @@
 //! It has functions to format slice of bytes and some help functions to separate concerns while doing the job.
 //!
 use crate::config::Config;
-use log::trace;
+use log::{info, trace};
 use nu_parser::{flatten_block, parse, FlatShape};
 use nu_protocol::{
     ast::Block,
@@ -29,7 +29,7 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     // check if the block has at least 1 pipeline
     if !block_has_pipelines(&parsed_block) {
         trace!("block has no pipelines!");
-        println!("File has no code to format.");
+        info!("File has no code to format.");
         return contents.to_vec();
     }
     // flat is a list of (Span , Flatshape)
