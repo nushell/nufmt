@@ -1,18 +1,17 @@
 #![doc = include_str!("../README.md")]
 
-use anyhow::{Ok, Result};
 use clap::Parser;
-use log::{trace, error, info};
+use log::{error, info, trace};
 use nu_formatter::config::Config;
 use nu_formatter::{format_single_file, format_string};
-use std::error::Error;
 use std::io::Write;
 use std::path::PathBuf;
 
 /// wrapper to the successful exit code
-const SUCCESSFUL_EXIT: i32 = 0;
-/// wrapper to the failure exit code
-const FAILED_EXIT: i32 = 1;
+enum ExitCode {
+    Success,
+    Failure,
+}
 
 /// Main CLI struct.
 ///
@@ -41,8 +40,19 @@ struct Cli {
     config: Option<PathBuf>,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    // set up logger
+fn exit_with_code(exit_code: ExitCode) {
+    let code = match exit_code {
+        ExitCode::Success => 0,
+        ExitCode::Failure => 1,
+    };
+    trace!("exit code: {code}");
+
+    // NOTE: this immediately terminates the process without doing any cleanup,
+    // so make sure to finish all necessary cleanup before this is called.
+    std::process::exit(code);
+}
+
+fn main() {
     env_logger::init();
 
     let cli = Cli::parse();
@@ -61,50 +71,43 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let exit_code = match cli.files[..] {
-        [] => execute_string(cli.stdin, &cli_config)?,
-        _ => execute_files(cli.files, &cli_config)?,
+        [] => execute_string(cli.stdin, &cli_config),
+        _ => execute_files(cli.files, &cli_config),
     };
 
     // Make sure standard output is flushed before we exit.
     std::io::stdout().flush().unwrap();
 
-    trace!("exit code: {exit_code}");
-    // Exit with given exit code.
-    //
-    // NOTE: this immediately terminates the process without doing any cleanup,
-    // so make sure to finish all necessary cleanup before this is called.
-    std::process::exit(exit_code);
+    exit_with_code(exit_code);
 }
 
-/// returns the string formatted to `stdout`
-fn execute_string(string: Option<String>, options: &Config) -> Result<i32> {
-    // format the string
+/// format a string passed via stdin and output it directly to stdout
+fn execute_string(string: Option<String>, options: &Config) -> ExitCode {
     let output = format_string(&string.unwrap(), options);
     println!("output: \n{output}");
 
-    Ok(SUCCESSFUL_EXIT)
+    ExitCode::Success
 }
 
 /// Sends the files to format in lib.rs
-fn execute_files(files: Vec<PathBuf>, options: &Config) -> Result<i32> {
-    // walk the files in the vec of files
+fn execute_files(files: Vec<PathBuf>, options: &Config) -> ExitCode {
     for file in &files {
         if !file.exists() {
             error!("Error: {} not found!", file.to_str().unwrap());
-            return Ok(FAILED_EXIT);
+            return ExitCode::Failure;
         } else if file.is_dir() {
             error!(
                 "Error: {} is a directory. Please pass files only.",
                 file.to_str().unwrap()
             );
-            return Ok(FAILED_EXIT);
+            return ExitCode::Failure;
         }
         // send the file to lib.rs
         info!("formatting file: {:?}", file);
         format_single_file(file, options);
     }
 
-    Ok(SUCCESSFUL_EXIT)
+    ExitCode::Success
 }
 
 #[cfg(test)]
