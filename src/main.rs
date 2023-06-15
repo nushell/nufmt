@@ -3,7 +3,6 @@
 use clap::Parser;
 use log::{error, info, trace};
 use nu_formatter::config::Config;
-use nu_formatter::{format_single_file, format_string};
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -71,8 +70,8 @@ fn main() {
     };
 
     let exit_code = match cli.files[..] {
-        [] => execute_string(cli.stdin, &cli_config),
-        _ => execute_files(cli.files, &cli_config),
+        [] => format_string(cli.stdin, &cli_config),
+        _ => format_files(cli.files, &cli_config),
     };
 
     // Make sure standard output is flushed before we exit.
@@ -82,15 +81,15 @@ fn main() {
 }
 
 /// format a string passed via stdin and output it directly to stdout
-fn execute_string(string: Option<String>, options: &Config) -> ExitCode {
-    let output = format_string(&string.unwrap(), options);
+fn format_string(string: Option<String>, options: &Config) -> ExitCode {
+    let output = nu_formatter::format_string(&string.unwrap(), options);
     println!("output: \n{output}");
 
     ExitCode::Success
 }
 
 /// Sends the files to format in lib.rs
-fn execute_files(files: Vec<PathBuf>, options: &Config) -> ExitCode {
+fn format_files(files: Vec<PathBuf>, options: &Config) -> ExitCode {
     for file in &files {
         if !file.exists() {
             error!("Error: {} not found!", file.to_str().unwrap());
@@ -104,7 +103,7 @@ fn execute_files(files: Vec<PathBuf>, options: &Config) -> ExitCode {
         }
         // send the file to lib.rs
         info!("formatting file: {:?}", file);
-        format_single_file(file, options);
+        nu_formatter::format_single_file(file, options);
     }
 
     ExitCode::Success
