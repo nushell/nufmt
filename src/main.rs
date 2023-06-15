@@ -39,8 +39,8 @@
 use anyhow::{Ok, Result};
 use clap::Parser;
 use log::trace;
-use nufmt::config::Config;
-use nufmt::{format_single_file, format_string};
+use nu_formatter::config::Config;
+use nu_formatter::{format_single_file, format_string};
 use std::error::Error;
 use std::io::Write;
 use std::path::PathBuf;

@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use nufmt::{config::Config, format_single_file};
+use nu_formatter::{config::Config, format_single_file};
 use std::{io, path::PathBuf};
 
 fn format_massive_nu(file: &PathBuf) -> io::Result<()> {
