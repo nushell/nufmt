@@ -137,8 +137,8 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
         // cleanup
         start = span.end + 1;
     }
-    // just before writing, append a new line to the file.
-    out = insert_newline(out);
+    // just before writing, check if a new line is needed.
+    out = add_newline_at_end_of_file(out);
 
     // timer = timer.done_formatting()
     out
@@ -154,6 +154,14 @@ fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
     let newline = vec![b'\n'];
     bytes.extend(newline.iter());
     bytes
+}
+
+/// Checks if it missing a new line. If true, adds it.
+fn add_newline_at_end_of_file(out: Vec<u8>) -> Vec<u8> {
+    match out.last() {
+        Some(&b'\n') => out,
+        _ => insert_newline(out),
+    }
 }
 
 /// Given a slice of bytes, strip all spaces, new lines and tabs found within
