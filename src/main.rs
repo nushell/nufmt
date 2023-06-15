@@ -60,11 +60,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    // Note the deref and reborrow here to obtain a slice
-    // so rust doesnt complain for the [] arm
-    let exit_code = match &*cli.files {
-        // if cli.files is an empty list,
-        // it means the flag --stdin was passed
+    let exit_code = match cli.files[..] {
         [] => execute_string(cli.stdin, &cli_config)?,
         _ => execute_files(cli.files, &cli_config)?,
     };
