@@ -29,6 +29,7 @@ jobs:
             --no-deps \
             --workspace \
           -- \
+            -D warnings \
             -D rustdoc::broken_intra_doc_links \
             -W clippy::explicit_iter_loop \
             -W clippy::explicit_into_iter_loop \
