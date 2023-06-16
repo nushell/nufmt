@@ -149,10 +149,9 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
 /// It is used frequently in `nufmt`, so
 /// we have a wrapper to improve readability of the code.
 fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
-    // If I need cfg windows, then I need \r\n
-    // let newline = vec![b'\r', b'\n'];
-    let newline = vec![b'\n'];
-    bytes.extend(newline.iter());
+    #[cfg(windows)]
+    bytes.extend(b"\r");
+    bytes.extend(b"\n");
     bytes
 }
 
