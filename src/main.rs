@@ -107,6 +107,6 @@ mod tests {
     #[test]
     fn clap_cli_construction() {
         use clap::CommandFactory;
-        Cli::command().debug_assert()
+        Cli::command().debug_assert();
     }
 }

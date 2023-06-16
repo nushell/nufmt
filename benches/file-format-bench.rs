@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("Format massive nu", |b| {
-        b.iter(|| format_single_file(&PathBuf::from("./benches/example.nu"), &Config::default()))
+        b.iter(|| format_single_file(&PathBuf::from("./benches/example.nu"), &Config::default()));
     });
 }
 

@@ -1,4 +1,4 @@
-//! nu_formatter is a library for formatting nu.
+//! `nu_formatter` is a library for formatting nu.
 //!
 //! It does not do anything more than that, which makes it so fast.
 use config::Config;
