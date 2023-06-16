@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 pub mod config;
-pub mod formatting;
+mod formatting;
 
 /// format a Nushell file inplace
 pub fn format_single_file(file: &PathBuf, config: &Config) {

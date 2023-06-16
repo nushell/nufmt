@@ -13,7 +13,7 @@ use nu_protocol::{
 /// format an array of bytes
 ///
 /// Reading the file gives you a list of bytes
-pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
+pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     let engine_state = engine::EngineState::new();
     let mut working_set = StateWorkingSet::new(&engine_state);
 
@@ -129,7 +129,7 @@ fn add_newline_at_end_of_file(out: Vec<u8>) -> Vec<u8> {
 /// the best way to format is to strip all the whitespace
 /// and afterwards include the new lines and indentation correctly
 /// according to the configuration
-pub fn trim_ascii_whitespace(x: &[u8]) -> &[u8] {
+fn trim_ascii_whitespace(x: &[u8]) -> &[u8] {
     let Some(from) = x.iter().position(|x| !x.is_ascii_whitespace()) else { return &x[0..0] };
     let to = x.iter().rposition(|x| !x.is_ascii_whitespace()).unwrap();
     &x[from..=to]
