@@ -111,8 +111,6 @@ pub fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
 
 /// insert a newline at the end of a buffer
 fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
-    #[cfg(windows)]
-    bytes.extend(b"\r");
     bytes.extend(b"\n");
     bytes
 }
