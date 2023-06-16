@@ -1,84 +1,49 @@
-//! This is the nufmt binary documentation
-//!
-//! # Usage
-//!
-//! ```text
-//! nufmt [OPTIONS] [FILES] ...
-//! ```
-//! ## Files
-//!
-//! `Files` are a list of files. It cannot be used combined with `--stdin`.
-//! You can format many files with one command!. For example:
-//!
-//! ```text
-//! nufmt my-file1.nu my-file2.nu my-file3.nu
-//! ```
-//!
-//! ## Options
-//!
-//! - `-s` or `--stdin` formats from `stdin`, returns to `stdout` as a String. It cannot be used combined with `files`.
-//!
-//! - `-c` or `--config` pass the config file path.
-//!
-//!     Sample:
-//!
-//!     ```text
-//!     nufmt <files> --config my-config.json
-//!     ```
-//!
-//!     or
-//!
-//!     ```text
-//!     nufmt --stdin <string> --config my-stdin-config.json
-//!     ```
-//!
-//! - `-h` or `--help` show help and exit
-//!
-//! - `-v` or `--version` prints the version and exit
+#![doc = include_str!("../README.md")]
 
-use anyhow::{Ok, Result};
 use clap::Parser;
-use log::trace;
-use nufmt::config::Config;
-use nufmt::{format_single_file, format_string};
-use std::error::Error;
+use log::{error, info, trace};
+use nu_formatter::config::Config;
 use std::io::Write;
 use std::path::PathBuf;
 
-/// wrapper to the successful exit code
-const SUCCESSFUL_EXIT: i32 = 0;
-/// wrapper to the failure exit code
-const FAILED_EXIT: i32 = 1;
+enum ExitCode {
+    Success,
+    Failure,
+}
 
-/// Main CLI struct.
-///
-/// The derive Clippy API starts from defining the CLI struct
+/// the CLI signature of the `nufmt` executable.
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
-    /// The list of files passed in the cmdline
-    /// It is required and it cannot be used with `--stdin`
     #[arg(
         required_unless_present("stdin"),
-        help = "The file or files you want to format in nu"
+        help = "one of more Nushell files you want to format"
     )]
     files: Vec<PathBuf>,
-    /// The string you pass in stdin. You can pass only one string.
     #[arg(
         short,
         long,
         conflicts_with = "files",
-        help = "Format the code passed in stdin as a string."
+        help = "a string of Nushell directly given to the formatter"
     )]
     stdin: Option<String>,
-    /// The optional config file you can pass in the cmdline
-    /// You can only pass a file config, not a flag config
-    #[arg(short, long, help = "The configuration file")]
+    #[arg(short, long, help = "the configuration file")]
     config: Option<PathBuf>,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    // set up logger
+fn exit_with_code(exit_code: ExitCode) {
+    let code = match exit_code {
+        ExitCode::Success => 0,
+        ExitCode::Failure => 1,
+    };
+    trace!("exit code: {code}");
+
+    // NOTE: this immediately terminates the process without doing any cleanup,
+    // so make sure to finish all necessary cleanup before this is called.
+    std::process::exit(code);
+}
+
+fn main() {
     env_logger::init();
 
     let cli = Cli::parse();
@@ -96,55 +61,43 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    // Note the deref and reborrow here to obtain a slice
-    // so rust doesnt complain for the [] arm
-    let exit_code = match &*cli.files {
-        // if cli.files is an empty list,
-        // it means the flag --stdin was passed
-        [] => execute_string(cli.stdin, &cli_config)?,
-        _ => execute_files(cli.files, &cli_config)?,
+    let exit_code = match cli.files[..] {
+        [] => format_string(cli.stdin, &cli_config),
+        _ => format_files(cli.files, &cli_config),
     };
 
-    // Make sure standard output is flushed before we exit.
     std::io::stdout().flush().unwrap();
 
-    trace!("exit code: {exit_code}");
-    // Exit with given exit code.
-    //
-    // NOTE: this immediately terminates the process without doing any cleanup,
-    // so make sure to finish all necessary cleanup before this is called.
-    std::process::exit(exit_code);
+    exit_with_code(exit_code);
 }
 
-/// returns the string formatted to `stdout`
-fn execute_string(string: Option<String>, options: &Config) -> Result<i32> {
-    // format the string
-    let output = format_string(&string.unwrap(), options);
+/// format a string passed via stdin and output it directly to stdout
+fn format_string(string: Option<String>, options: &Config) -> ExitCode {
+    let output = nu_formatter::format_string(&string.unwrap(), options);
     println!("output: \n{output}");
 
-    Ok(SUCCESSFUL_EXIT)
+    ExitCode::Success
 }
 
-/// Sends the files to format in lib.rs
-fn execute_files(files: Vec<PathBuf>, options: &Config) -> Result<i32> {
-    // walk the files in the vec of files
+/// format a list of files, possibly one, and modify them inplace
+fn format_files(files: Vec<PathBuf>, options: &Config) -> ExitCode {
     for file in &files {
         if !file.exists() {
-            eprintln!("Error: {} not found!", file.to_str().unwrap());
-            return Ok(FAILED_EXIT);
+            error!("Error: {} not found!", file.to_str().unwrap());
+            return ExitCode::Failure;
         } else if file.is_dir() {
-            eprintln!(
+            error!(
                 "Error: {} is a directory. Please pass files only.",
                 file.to_str().unwrap()
             );
-            return Ok(FAILED_EXIT);
+            return ExitCode::Failure;
         }
-        // send the file to lib.rs
-        println!("formatting file: {:?}", file);
-        format_single_file(file, options);
+
+        info!("formatting file: {:?}", file);
+        nu_formatter::format_single_file(file, options);
     }
 
-    Ok(SUCCESSFUL_EXIT)
+    ExitCode::Success
 }
 
 #[cfg(test)]
@@ -154,6 +107,6 @@ mod tests {
     #[test]
     fn clap_cli_construction() {
         use clap::CommandFactory;
-        Cli::command().debug_assert()
+        Cli::command().debug_assert();
     }
 }

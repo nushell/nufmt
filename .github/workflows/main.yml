@@ -32,11 +32,12 @@ jobs:
       - name: Clippy
         run: |
           cargo clippy \
+            --all-targets \
             --no-deps \
+            --workspace \
           -- \
+            -D warnings \
             -D rustdoc::broken_intra_doc_links \
-            -W missing_docs \
-            -W clippy::missing_docs_in_private_items \
             -W clippy::explicit_iter_loop \
             -W clippy::explicit_into_iter_loop \
             -W clippy::semicolon_if_nothing_returned \

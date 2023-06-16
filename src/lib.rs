@@ -1,8 +1,6 @@
-//!
-//! nufmt is a library for formatting nu.
+//! `nu_formatter` is a library for formatting nu.
 //!
 //! It does not do anything more than that, which makes it so fast.
-
 use config::Config;
 use formatting::format_inner;
 use log::{debug, trace};
@@ -11,23 +9,19 @@ use std::io::Write;
 use std::path::PathBuf;
 
 pub mod config;
-pub mod formatting;
+mod formatting;
 
-/// Reads a file and format it. Then writes the file inplace.
+/// format a Nushell file inplace
 pub fn format_single_file(file: &PathBuf, config: &Config) {
-    // read the contents of the file
     let contents = std::fs::read(file)
         .unwrap_or_else(|_| panic!("something went wrong reading the file {}", file.display()));
 
-    // obtain the formatted file
     let formatted_bytes = format_inner(&contents, config);
 
-    // compare the contents
     if formatted_bytes == contents {
         debug!("File is formatted correctly.");
     }
 
-    // write down the file to path
     let mut writer = File::create(file).unwrap();
     let file_bites = formatted_bytes.as_slice();
     writer
@@ -36,7 +30,7 @@ pub fn format_single_file(file: &PathBuf, config: &Config) {
     trace!("written");
 }
 
-/// Take a `String` and format it. Then returns a new `String`
+/// format a string of Nushell code
 pub fn format_string(input_string: &String, config: &Config) -> String {
     let contents = input_string.as_bytes();
     let formatted_bytes = format_inner(contents, config);

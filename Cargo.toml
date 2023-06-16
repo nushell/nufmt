@@ -29,7 +29,7 @@ default = ["bin"]
 bin = ["clap"]
 
 [lib]
-name = "nufmt"
+name = "nu_formatter"
 path = "src/lib.rs"
 
 [[bin]]
