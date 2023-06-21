@@ -2,19 +2,23 @@
 //!
 //! It has functions to format slice of bytes and some help functions to separate concerns while doing the job.
 use crate::config::Config;
-use log::{info, trace};
+use log::{error, info, trace};
 use nu_parser::{flatten_block, parse, FlatShape};
 use nu_protocol::{
     ast::Block,
-    engine::{self, StateWorkingSet},
+    engine::{EngineState, StateWorkingSet},
     Span,
 };
+
+fn get_engine_state() -> EngineState {
+    nu_cmd_lang::create_default_context()
+}
 
 /// format an array of bytes
 ///
 /// Reading the file gives you a list of bytes
 pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
-    let engine_state = engine::EngineState::new();
+    let engine_state = get_engine_state();
     let mut working_set = StateWorkingSet::new(&engine_state);
 
     let parsed_block = parse(&mut working_set, None, contents, false);
@@ -60,21 +64,38 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
         trace!("shape contents: {:?}", &content);
 
         match shape {
-            FlatShape::String | FlatShape::Int | FlatShape::Nothing => out.extend(c_bites),
+            FlatShape::Int | FlatShape::Nothing | FlatShape::Block => out.extend(c_bites),
             FlatShape::List | FlatShape::Record => {
                 c_bites = trim_ascii_whitespace(c_bites);
                 let printable = String::from_utf8_lossy(c_bites).to_string();
                 trace!("stripped the whitespace, result: {:?}", printable);
                 out.extend(c_bites);
             }
+            FlatShape::String => {
+                out.extend(c_bites);
+                // add a space after the string, so the parser doen't misleads the string into a long thingy
+                out.extend(b" ");
+            }
             FlatShape::Pipe => {
                 out.extend(b"| ");
             }
-            FlatShape::External | FlatShape::ExternalArg => {
+            FlatShape::InternalCall(declid) => {
+                trace!("Called Internal call with {declid}");
+                out.extend(c_bites);
+                // add a space after "external def", etc
+                out.extend(b" ");
+            }
+            FlatShape::External | FlatShape::ExternalArg | FlatShape::Signature => {
+                out.extend(c_bites);
+                out.extend(b" ");
+            }
+            FlatShape::VarDecl(varid) | FlatShape::Variable(varid) => {
+                trace!("Called variable or vardecl with {varid}");
                 out.extend(c_bites);
                 out.extend(b" ");
             }
             FlatShape::Garbage => {
+                error!("found garbage 😢 {content}");
                 out.extend(c_bites);
                 out = insert_newline(out);
             }
