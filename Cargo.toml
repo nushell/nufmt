@@ -5,8 +5,8 @@ edition = "2018"
 authors = ["The NuShell Contributors"]
 license = "MIT"
 description = "Formats nushell extremely fast"
-homepage = "https://github.com/fdncred/nufmt"
-repository = "https://github.com/fdncred/nufmt"
+homepage = "https://github.com/nushell/nufmt"
+repository = "https://github.com/nushell/nufmt"
 readme = "README.md"
 keywords = ["nu", "nushell", "formatting", "cli"]
 categories = ["command-line-utilities"]
@@ -18,8 +18,14 @@ anyhow = "1.0.71"
 clap = { version = "4.3.0", optional = true, features = ["unicode", "derive"] }
 env_logger = "0.10.0"
 log = "0.4.17"
-nu-parser = "0.81.0"
-nu-protocol = "0.81.0"
+nu-cli = { path = "../nushell/crates/nu-cli", version = "0.81.1", features = [
+    "plugin",
+] }
+nu-cmd-lang = { path = "../nushell/crates/nu-cmd-lang", version = "0.81.1" }
+nu-command = { path = "../nushell/crates/nu-command", version = "0.81.1" }
+nu-explore = { path = "../nushell/crates/nu-explore", version = "0.81.1" }
+nu-parser = { path = "../nushell/crates/nu-parser", version = "0.81.1" }
+nu-protocol = { path = "../nushell/crates/nu-protocol", version = "0.81.1" }
 
 [dev-dependencies]
 criterion = "0.5.1"
