@@ -2,7 +2,7 @@
 //!
 //! It does not do anything more than that, which makes it so fast.
 use config::Config;
-use formatting::format_inner;
+use formatting::{add_newline_at_end_of_file, format_inner};
 use log::{debug, trace};
 use std::fs::File;
 use std::io::Write;
@@ -16,7 +16,7 @@ pub fn format_single_file(file: &PathBuf, config: &Config) {
     let contents = std::fs::read(file)
         .unwrap_or_else(|_| panic!("something went wrong reading the file {}", file.display()));
 
-    let formatted_bytes = format_inner(&contents, config);
+    let formatted_bytes = add_newline_at_end_of_file(format_inner(&contents, config));
 
     if formatted_bytes == contents {
         debug!("File is formatted correctly.");

@@ -104,7 +104,6 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
 
         start = span.end + 1;
     }
-    out = add_newline_at_end_of_file(out);
 
     out
 }
@@ -116,7 +115,7 @@ fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
 }
 
 /// make sure there is a newline at the end of a buffer
-fn add_newline_at_end_of_file(out: Vec<u8>) -> Vec<u8> {
+pub(crate) fn add_newline_at_end_of_file(out: Vec<u8>) -> Vec<u8> {
     match out.last() {
         Some(&b'\n') => out,
         _ => insert_newline(out),
