@@ -2,7 +2,7 @@
 //!
 //! It does not do anything more than that, which makes it so fast.
 use config::Config;
-use formatting::format_inner;
+use formatting::{add_newline_at_end_of_file, format_inner};
 use log::{debug, trace};
 use std::fs::File;
 use std::io::Write;
@@ -16,7 +16,7 @@ pub fn format_single_file(file: &PathBuf, config: &Config) {
     let contents = std::fs::read(file)
         .unwrap_or_else(|_| panic!("something went wrong reading the file {}", file.display()));
 
-    let formatted_bytes = format_inner(&contents, config);
+    let formatted_bytes = add_newline_at_end_of_file(format_inner(&contents, config));
 
     if formatted_bytes == contents {
         debug!("File is formatted correctly.");
@@ -59,21 +59,21 @@ mod test {
     \"a\": null
   }
 ]";
-        let expected = "[{\"a\":0},{},{\"a\":null}]\n";
+        let expected = "[{\"a\":0},{},{\"a\":null}]";
         run_test(input, expected);
     }
 
     #[test]
     fn echoes_primitive() {
         let input = "1.35";
-        let expected = "1.35\n";
+        let expected = input;
         run_test(input, expected);
     }
 
     #[test]
     fn handle_escaped_strings() {
-        let input = "  \"hallo\\\"\"";
-        let expected = "\"hallo\\\"\"\n";
+        let input = "\"hallo\\\"\"";
+        let expected = input;
         run_test(input, expected);
     }
 
@@ -103,21 +103,14 @@ def my-func [
 ]{ print(param1) 
 }
 myfunc(one) 
-# final comment\n";
+# final comment";
         run_test(input, expected);
     }
 
     #[test]
     fn ignore_whitespace_in_string() {
         let input = "\" hallo \"";
-        let expected = "\" hallo \"\n";
-        run_test(input, expected);
-    }
-
-    #[test]
-    fn add_new_line() {
-        let input = "null";
-        let expected = "null\n";
+        let expected = input;
         run_test(input, expected);
     }
 
@@ -131,7 +124,7 @@ myfunc(one)
     #[test]
     fn remove_leading_whitespace() {
         let input = "   0";
-        let expected = "0\n";
+        let expected = "0";
         run_test(input, expected);
     }
 }
