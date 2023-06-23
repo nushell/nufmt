@@ -36,6 +36,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     let mut out: Vec<u8> = vec![];
     let mut start = 0;
     let end_of_file = contents.len();
+    let mut inside_string_interpolation = false;
 
     for (span, shape) in flat.clone() {
         if span.start > start {
@@ -60,7 +61,6 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
 
         let mut c_bites = working_set.get_span_contents(span);
         let content = String::from_utf8_lossy(c_bites).to_string();
-        let mut inside_string_interpolation = false;
         trace!("shape is {shape}");
         trace!("shape contents: {:?}", &content);
 
@@ -71,7 +71,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 inside_string_interpolation = !inside_string_interpolation;
                 trace!("inside_string_interpolation 🚚: {inside_string_interpolation}")
             }
-            FlatShape::List | FlatShape::Record => {
+            FlatShape::List | FlatShape::Record | FlatShape::Block => {
                 c_bites = trim_ascii_whitespace(c_bites);
                 let printable = String::from_utf8_lossy(c_bites).to_string();
                 trace!("stripped the whitespace, result: {:?}", printable);
@@ -81,7 +81,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 out.extend(c_bites);
                 // add a space after the string only if NOT inside a string interpolation block $" ()"
                 if !inside_string_interpolation {
-                    // add a space after the string, so the parser doen't misleads the string into garbage
+                    // add a space after the string, or you would probably break functionality of the code
                     out.extend(b" ");
                 }
             }
@@ -97,8 +97,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             FlatShape::External
             | FlatShape::ExternalArg
             | FlatShape::Signature
-            | FlatShape::Keyword
-            | FlatShape::Block => {
+            | FlatShape::Keyword => {
                 out.extend(c_bites);
                 out.extend(b" ");
             }
