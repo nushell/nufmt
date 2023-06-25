@@ -71,11 +71,17 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 inside_string_interpolation = !inside_string_interpolation;
                 trace!("inside_string_interpolation 🚚: {inside_string_interpolation}")
             }
-            FlatShape::List | FlatShape::Record | FlatShape::Block => {
+            FlatShape::List | FlatShape::Record => {
                 c_bites = trim_ascii_whitespace(c_bites);
-                let printable = String::from_utf8_lossy(c_bites).to_string();
-                trace!("stripped the whitespace, result: {:?}", printable);
                 out.extend(c_bites);
+            }
+            FlatShape::Block | FlatShape::Closure => {
+                c_bites = trim_ascii_whitespace(c_bites);
+                out.extend(c_bites);
+                if !inside_string_interpolation {
+                    // add a space after the string, or you would probably break functionality of the code
+                    out.extend(b" ");
+                }
             }
             FlatShape::String => {
                 out.extend(c_bites);
@@ -90,14 +96,10 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             }
             FlatShape::InternalCall(declid) => {
                 trace!("Called Internal call with {declid}");
-                out.extend(c_bites);
-                // add a space after "external def", etc
-                out.extend(b" ");
+                out = resolve_call(c_bites, declid, out);
             }
-            FlatShape::External
-            | FlatShape::ExternalArg
-            | FlatShape::Signature
-            | FlatShape::Keyword => {
+            FlatShape::External => out = resolve_external(c_bites, out),
+            FlatShape::ExternalArg | FlatShape::Signature | FlatShape::Keyword => {
                 out.extend(c_bites);
                 out.extend(b" ");
             }
@@ -147,6 +149,33 @@ fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
     bytes
 }
 
+#[allow(clippy::wildcard_in_or_patterns)]
+fn resolve_call(c_bytes: &[u8], declid: usize, mut out: Vec<u8>) -> Vec<u8> {
+    out = match declid {
+        // DeclId for `if`
+        22 => insert_newline(out),
+        // DeclId for `let`
+        30 => insert_newline(out),
+        // DeclId for 6 = `export def-env`
+        // or anything else
+        6 | _ => out,
+    };
+    out.extend(c_bytes);
+    // add a space after "external def", etc
+    out.extend(b" ");
+    out
+}
+
+fn resolve_external(c_bytes: &[u8], mut out: Vec<u8>) -> Vec<u8> {
+    out = match c_bytes {
+        [b'c', b'd'] => insert_newline(out),
+        _ => out,
+    };
+    out.extend(c_bytes);
+    out.extend(b" ");
+    out
+}
+
 /// make sure there is a newline at the end of a buffer
 pub(crate) fn add_newline_at_end_of_file(out: Vec<u8>) -> Vec<u8> {
     match out.last() {
@@ -164,7 +193,10 @@ pub(crate) fn add_newline_at_end_of_file(out: Vec<u8>) -> Vec<u8> {
 fn trim_ascii_whitespace(x: &[u8]) -> &[u8] {
     let Some(from) = x.iter().position(|x| !x.is_ascii_whitespace()) else { return &x[0..0] };
     let to = x.iter().rposition(|x| !x.is_ascii_whitespace()).unwrap();
-    &x[from..=to]
+    let result = &x[from..=to];
+    let printable = String::from_utf8_lossy(result).to_string();
+    trace!("stripped the whitespace, result: {:?}", printable);
+    result
 }
 
 /// return true if the Nushell block has at least 1 pipeline
