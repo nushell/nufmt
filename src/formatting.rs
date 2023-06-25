@@ -54,32 +54,32 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             }
         }
 
-        let mut c_bites = working_set.get_span_contents(span);
-        let content = String::from_utf8_lossy(c_bites).to_string();
+        let mut bytes = working_set.get_span_contents(span);
+        let content = String::from_utf8_lossy(bytes).to_string();
         trace!("shape is {shape}");
         trace!("shape contents: {:?}", &content);
 
         match shape {
-            FlatShape::String | FlatShape::Int | FlatShape::Nothing => out.extend(c_bites),
+            FlatShape::String | FlatShape::Int | FlatShape::Nothing => out.extend(bytes),
             FlatShape::List | FlatShape::Record => {
-                c_bites = trim_ascii_whitespace(c_bites);
-                let printable = String::from_utf8_lossy(c_bites).to_string();
+                bytes = trim_ascii_whitespace(bytes);
+                let printable = String::from_utf8_lossy(bytes).to_string();
                 trace!("stripped the whitespace, result: {:?}", printable);
-                out.extend(c_bites);
+                out.extend(bytes);
             }
             FlatShape::Pipe => {
                 out.extend(b"| ");
             }
             FlatShape::External | FlatShape::ExternalArg => {
-                out.extend(c_bites);
+                out.extend(bytes);
                 out.extend(b" ");
             }
             FlatShape::Garbage => {
-                out.extend(c_bites);
+                out.extend(bytes);
                 out = insert_newline(out);
             }
 
-            _ => out.extend(c_bites),
+            _ => out.extend(bytes),
         }
 
         if is_last_span(span, &flat) && span.end < end_of_file {

@@ -23,9 +23,9 @@ pub fn format_single_file(file: &PathBuf, config: &Config) {
     }
 
     let mut writer = File::create(file).unwrap();
-    let file_bites = formatted_bytes.as_slice();
+    let file_bytes = formatted_bytes.as_slice();
     writer
-        .write_all(file_bites)
+        .write_all(file_bytes)
         .expect("something went wrong writing");
     trace!("written");
 }
