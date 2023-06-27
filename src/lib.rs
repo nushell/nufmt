@@ -19,7 +19,7 @@ pub fn format_single_file(file: &PathBuf, config: &Config) {
     let formatted_bytes = add_newline_at_end_of_file(format_inner(&contents, config));
 
     if formatted_bytes == contents {
-        debug!("File is formatted correctly.");
+        debug!("File is already formatted correctly.");
     }
 
     let mut writer = File::create(file).unwrap();
