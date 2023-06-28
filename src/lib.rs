@@ -41,11 +41,14 @@ pub fn format_string(input_string: &String, config: &Config) -> String {
 mod test {
     use super::*;
 
+    /// test that
+    /// 1. formatting the input gives the expected result
+    /// 2. formatting the output of `nufmt` a second time does not change the content
     fn run_test(input: &str, expected: &str) {
-        assert_eq!(
-            expected.to_string(),
-            format_string(&input.to_string(), &Config::default())
-        );
+        let formatted = format_string(&input.to_string(), &Config::default());
+
+        assert_eq!(expected.to_string(), formatted);
+        assert_eq!(formatted, format_string(&formatted, &Config::default()));
     }
 
     #[test]
