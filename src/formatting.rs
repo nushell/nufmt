@@ -50,13 +50,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             let printable = String::from_utf8_lossy(skipped_contents).to_string();
             trace!("contents: {:?}", printable);
 
-            if skipped_contents.contains(&b'#') {
-                trace!("This have a comment. Writing.");
-                out.extend(trim_ascii_whitespace(skipped_contents));
-                out.push(b'\n');
-            } else {
-                trace!("The contents doesn't have a '#'. Skipping.");
-            }
+            out = write_only_if_have_comments(skipped_contents, out);
         }
 
         let mut bytes = working_set.get_span_contents(span);
@@ -128,13 +122,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             let printable = String::from_utf8_lossy(remaining_contents).to_string();
             trace!("contents: {:?}", printable);
 
-            if remaining_contents.contains(&b'#') {
-                trace!("This have a comment. Writing.");
-                out.push(b'\n');
-                out.extend(trim_ascii_whitespace(remaining_contents));
-            } else {
-                trace!("The contents doesn't have a '#'. Skipping.");
-            }
+            out = write_only_if_have_comments(remaining_contents, out)
         }
 
         start = span.end + 1;
@@ -147,6 +135,18 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
 fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
     bytes.extend(b"\n");
     bytes
+}
+
+/// given a list of `bytes` and a `out`put to write only the bytes if they contain `#`
+fn write_only_if_have_comments(bytes: &[u8], mut out: Vec<u8>) -> Vec<u8> {
+    if bytes.contains(&b'#') {
+        trace!("This have a comment. Writing.");
+        out.push(b'\n');
+        out.extend(trim_ascii_whitespace(bytes));
+    } else {
+        trace!("The contents doesn't have a '#'. Skipping.");
+    }
+    out
 }
 
 #[allow(clippy::wildcard_in_or_patterns)]
