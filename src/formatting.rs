@@ -59,32 +59,32 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             }
         }
 
-        let mut c_bites = working_set.get_span_contents(span);
-        let content = String::from_utf8_lossy(c_bites).to_string();
+        let mut bytes = working_set.get_span_contents(span);
+        let content = String::from_utf8_lossy(bytes).to_string();
         trace!("shape is {shape}");
         trace!("shape contents: {:?}", &content);
 
         match shape {
-            FlatShape::Int | FlatShape::Nothing => out.extend(c_bites),
+            FlatShape::Int | FlatShape::Nothing => out.extend(bytes),
             FlatShape::StringInterpolation => {
-                out.extend(c_bites);
+                out.extend(bytes);
                 inside_string_interpolation = !inside_string_interpolation;
                 trace!("inside_string_interpolation 🚚: {inside_string_interpolation}")
             }
             FlatShape::List | FlatShape::Record => {
-                c_bites = trim_ascii_whitespace(c_bites);
-                out.extend(c_bites);
+                bytes = trim_ascii_whitespace(bytes);
+                out.extend(bytes);
             }
             FlatShape::Block | FlatShape::Closure => {
-                c_bites = trim_ascii_whitespace(c_bites);
-                out.extend(c_bites);
+                bytes = trim_ascii_whitespace(bytes);
+                out.extend(bytes);
                 if !inside_string_interpolation {
                     // add a space after the string, or you would probably break functionality of the code
                     out.extend(b" ");
                 }
             }
             FlatShape::String => {
-                out.extend(c_bites);
+                out.extend(bytes);
                 // add a space after the string only if NOT inside a string interpolation block $" ()"
                 if !inside_string_interpolation {
                     // add a space after the string, or you would probably break functionality of the code
@@ -96,25 +96,25 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             }
             FlatShape::InternalCall(declid) => {
                 trace!("Called Internal call with {declid}");
-                out = resolve_call(c_bites, declid, out);
+                out = resolve_call(bytes, declid, out);
             }
-            FlatShape::External => out = resolve_external(c_bites, out),
+            FlatShape::External => out = resolve_external(bytes, out),
             FlatShape::ExternalArg | FlatShape::Signature | FlatShape::Keyword => {
-                out.extend(c_bites);
+                out.extend(bytes);
                 out.extend(b" ");
             }
             FlatShape::VarDecl(varid) | FlatShape::Variable(varid) => {
                 trace!("Called variable or vardecl with {varid}");
-                out.extend(c_bites);
+                out.extend(bytes);
                 out.extend(b" ");
             }
             FlatShape::Garbage => {
                 error!("found garbage 😢 {content}");
-                out.extend(c_bites);
+                out.extend(bytes);
                 out = insert_newline(out);
             }
 
-            _ => out.extend(c_bites),
+            _ => out.extend(bytes),
         }
 
         if is_last_span(span, &flat) && span.end < end_of_file {

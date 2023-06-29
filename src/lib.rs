@@ -19,13 +19,13 @@ pub fn format_single_file(file: &PathBuf, config: &Config) {
     let formatted_bytes = add_newline_at_end_of_file(format_inner(&contents, config));
 
     if formatted_bytes == contents {
-        debug!("File is formatted correctly.");
+        debug!("File is already formatted correctly.");
     }
 
     let mut writer = File::create(file).unwrap();
-    let file_bites = formatted_bytes.as_slice();
+    let file_bytes = formatted_bytes.as_slice();
     writer
-        .write_all(file_bites)
+        .write_all(file_bytes)
         .expect("something went wrong writing");
     trace!("written");
 }
@@ -41,11 +41,14 @@ pub fn format_string(input_string: &String, config: &Config) -> String {
 mod test {
     use super::*;
 
+    /// test that
+    /// 1. formatting the input gives the expected result
+    /// 2. formatting the output of `nufmt` a second time does not change the content
     fn run_test(input: &str, expected: &str) {
-        assert_eq!(
-            expected.to_string(),
-            format_string(&input.to_string(), &Config::default())
-        );
+        let formatted = format_string(&input.to_string(), &Config::default());
+
+        assert_eq!(expected.to_string(), formatted);
+        assert_eq!(formatted, format_string(&formatted, &Config::default()));
     }
 
     #[test]
