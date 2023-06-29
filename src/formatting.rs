@@ -69,7 +69,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             FlatShape::StringInterpolation => {
                 out.extend(bytes);
                 inside_string_interpolation = !inside_string_interpolation;
-                trace!("inside_string_interpolation 🚚: {inside_string_interpolation}")
+                trace!("inside_string_interpolation 🚚: {inside_string_interpolation}");
             }
             FlatShape::List | FlatShape::Record => {
                 bytes = trim_ascii_whitespace(bytes);
