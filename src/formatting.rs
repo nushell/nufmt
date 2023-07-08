@@ -82,15 +82,12 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 bytes = trim_ascii_whitespace(bytes);
                 out.extend(bytes);
                 if !inside_string_interpolation {
-                    // add a space after the string, or you would probably break functionality of the code
                     out.extend(b" ");
                 }
             }
             FlatShape::String => {
                 out.extend(bytes);
-                // add a space after the string only if NOT inside a string interpolation block $" ()"
                 if !inside_string_interpolation {
-                    // add a space after the string, or you would probably break functionality of the code
                     out.extend(b" ");
                 }
             }
@@ -166,7 +163,6 @@ fn resolve_call(c_bytes: &[u8], declid: usize, mut out: Vec<u8>) -> Vec<u8> {
         DeclId::ExportDefEnv | _ => out,
     };
     out.extend(c_bytes);
-    // add a space after "external def", etc
     out.extend(b" ");
     out
 }
