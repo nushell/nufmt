@@ -10,6 +10,15 @@ use nu_protocol::{
     Span,
 };
 
+struct DeclId;
+
+#[allow(non_upper_case_globals)]
+impl DeclId {
+    const If: usize = 22;
+    const Let: usize = 30;
+    const ExportDefEnv: usize = 6;
+}
+
 fn get_engine_state() -> EngineState {
     nu_cmd_lang::create_default_context()
 }
@@ -152,13 +161,9 @@ fn write_only_if_have_comments(bytes: &[u8], mut out: Vec<u8>) -> Vec<u8> {
 #[allow(clippy::wildcard_in_or_patterns)]
 fn resolve_call(c_bytes: &[u8], declid: usize, mut out: Vec<u8>) -> Vec<u8> {
     out = match declid {
-        // DeclId for `if`
-        22 => insert_newline(out),
-        // DeclId for `let`
-        30 => insert_newline(out),
-        // DeclId for 6 = `export def-env`
-        // or anything else
-        6 | _ => out,
+        DeclId::If => insert_newline(out),
+        DeclId::Let => insert_newline(out),
+        DeclId::ExportDefEnv | _ => out,
     };
     out.extend(c_bytes);
     // add a space after "external def", etc
