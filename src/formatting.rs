@@ -128,7 +128,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             let printable = String::from_utf8_lossy(remaining_contents).to_string();
             trace!("contents: {:?}", printable);
 
-            out = write_only_if_have_comments(remaining_contents, out)
+            out = write_only_if_have_comments(remaining_contents, out);
         }
 
         start = span.end + 1;
