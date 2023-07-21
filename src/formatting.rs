@@ -59,7 +59,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             let printable = String::from_utf8_lossy(skipped_contents).to_string();
             trace!("contents: {:?}", printable);
 
-            out = write_only_if_have_comments(skipped_contents, out);
+            out = write_only_if_have_comments(skipped_contents, out, true);
         }
 
         let mut bytes = working_set.get_span_contents(span);
@@ -130,7 +130,11 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             let printable = String::from_utf8_lossy(remaining_contents).to_string();
             trace!("contents: {:?}", printable);
 
+<<<<<<< HEAD
             out = write_only_if_have_comments(remaining_contents, out);
+=======
+            out = write_only_if_have_comments(remaining_contents, out, false);
+>>>>>>> 8d0769e (:construction: advance on write comments function)
         }
 
         start = span.end + 1;
@@ -146,11 +150,31 @@ fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
 }
 
 /// given a list of `bytes` and a `out`put to write only the bytes if they contain `#`
-fn write_only_if_have_comments(bytes: &[u8], mut out: Vec<u8>) -> Vec<u8> {
+///
+/// One tiny little detail: the order of bytes is important to nufmt.
+/// It is not the same to have
+/// `bytes` + `out` (you have to put \n after bytes)
+/// `bytes` + \n + `out`
+///
+/// than having:
+/// `out` + `bytes` (you have to put \n before bytes)
+/// `out` + \n + `bytes`
+///
+/// That's why `bytes_before_content` bool is for
+fn write_only_if_have_comments(
+    bytes: &[u8],
+    mut out: Vec<u8>,
+    bytes_before_content: bool,
+) -> Vec<u8> {
     if bytes.contains(&b'#') {
         trace!("This have a comment. Writing.");
-        out.push(b'\n');
-        out.extend(trim_ascii_whitespace(bytes));
+        if bytes_before_content {
+            out.extend(trim_ascii_whitespace(bytes));
+            out = insert_newline(out);
+        } else {
+            out = insert_newline(out);
+            out.extend(trim_ascii_whitespace(bytes));
+        }
     } else {
         trace!("The contents doesn't have a '#'. Skipping.");
     }
