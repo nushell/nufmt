@@ -64,13 +64,11 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
 
         let mut bytes = working_set.get_span_contents(span);
         let content = String::from_utf8_lossy(bytes).to_string();
-        let mut bytes = working_set.get_span_contents(span);
-        let content = String::from_utf8_lossy(bytes).to_string();
         trace!("shape is {shape}");
         trace!("shape contents: {:?}", &content);
 
         match shape {
-            FlatShape::String | FlatShape::Int | FlatShape::Nothing => out.extend(bytes),
+            FlatShape::Int | FlatShape::Nothing => out.extend(bytes),
             FlatShape::StringInterpolation => {
                 out.extend(bytes);
                 inside_string_interpolation = !inside_string_interpolation;
@@ -130,11 +128,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             let printable = String::from_utf8_lossy(remaining_contents).to_string();
             trace!("contents: {:?}", printable);
 
-<<<<<<< HEAD
-            out = write_only_if_have_comments(remaining_contents, out);
-=======
             out = write_only_if_have_comments(remaining_contents, out, false);
->>>>>>> 8d0769e (:construction: advance on write comments function)
         }
 
         start = span.end + 1;

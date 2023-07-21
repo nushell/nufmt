@@ -8,7 +8,7 @@
 [![nushell version][nushell-badge]][nushell-url]
 
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg?color=brightgreen
-[mit-url]: LICENSE
+[mit-url]: https://github.com/nushell/nufmt/blob/main/LICENSE
 [discord-badge]: https://img.shields.io/discord/678763474494423051?logo=discord&label=discord&color=brightgreen
 [discord-url]: https://discord.gg/NtAbbGn
 [ci-badge]: https://github.com/nushell/nufmt/actions/workflows/main.yml/badge.svg
