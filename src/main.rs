@@ -3,8 +3,11 @@
 use clap::Parser;
 use log::{error, info, trace};
 use nu_formatter::config::Config;
-use std::io::Write;
-use std::path::PathBuf;
+use std::{
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 enum ExitCode {
     Success,
@@ -86,18 +89,48 @@ fn format_files(files: Vec<PathBuf>, options: &Config) -> ExitCode {
             error!("Error: {} not found!", file.to_str().unwrap());
             return ExitCode::Failure;
         } else if file.is_dir() {
-            error!(
-                "Error: {} is a directory. Please pass files only.",
-                file.to_str().unwrap()
-            );
-            return ExitCode::Failure;
+            for path in recurse_files(file).unwrap() {
+                if is_file_extension(&path, ".nu") {
+                    info!("formatting file: {:?}", &path);
+                    nu_formatter::format_single_file(&path, options);
+                } else {
+                    info!("not nu file: skipping");
+                }
+            }
+            // Files only
+        } else {
+            info!("formatting file: {:?}", file);
+            nu_formatter::format_single_file(file, options);
         }
-
-        info!("formatting file: {:?}", file);
-        nu_formatter::format_single_file(file, options);
     }
 
     ExitCode::Success
+}
+
+fn recurse_files(path: impl AsRef<Path>) -> std::io::Result<Vec<PathBuf>> {
+    let mut buf = vec![];
+    let entries = fs::read_dir(path)?;
+
+    for entry in entries {
+        let entry = entry?;
+        let meta = entry.metadata()?;
+
+        if meta.is_dir() {
+            let mut subdir = recurse_files(entry.path())?;
+            buf.append(&mut subdir);
+        }
+
+        if meta.is_file() {
+            buf.push(entry.path());
+        }
+    }
+
+    Ok(buf)
+}
+
+/// Get the file extension
+fn is_file_extension(file: &Path, extension: &str) -> bool {
+    String::from(file.to_str().unwrap()).ends_with(extension)
 }
 
 #[cfg(test)]
