@@ -3,3 +3,6 @@
 
 # Nix
 result
+
+# Direnv
+.direnv
