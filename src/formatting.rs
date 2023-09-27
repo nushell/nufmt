@@ -129,7 +129,9 @@ pub(crate) fn add_newline_at_end_of_file(out: Vec<u8>) -> Vec<u8> {
 /// and afterwards include the new lines and indentation correctly
 /// according to the configuration
 fn trim_ascii_whitespace(x: &[u8]) -> &[u8] {
-    let Some(from) = x.iter().position(|x| !x.is_ascii_whitespace()) else { return &x[0..0] };
+    let Some(from) = x.iter().position(|x| !x.is_ascii_whitespace()) else {
+        return &x[0..0];
+    };
     let to = x.iter().rposition(|x| !x.is_ascii_whitespace()).unwrap();
     &x[from..=to]
 }
