@@ -72,4 +72,4 @@ nufmt my-file1.nu my-file2.nu my-file3.nu
 
 ## Contributing
 
-We have a [contribution guide](docs/CONTRIBUTING.md). If you still have doubts, you can mention @AucaCoyan who is active on this repo.
+We have a [contribution guide](CONTRIBUTING.md). If you still have doubts, you can mention @AucaCoyan who is active on this repo.
