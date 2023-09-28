@@ -1,15 +1,9 @@
 use clap::Parser;
 
-use log::{error, info, trace};
-use std::{
-    fs,
-    io::Write,
-    path::{Path, PathBuf},
-};
+use log::trace;
+use std::{io::Write, path::PathBuf};
 
 use nufmt::{config::Config, format_directory, format_string};
-
-use crate::utils::*;
 
 /// the CLI signature of the `nufmt` executable.
 #[derive(Parser)]
@@ -60,5 +54,3 @@ fn main() {
 
     std::io::stdout().flush().unwrap();
 }
-
-mod utils;
