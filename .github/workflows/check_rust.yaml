@@ -1,0 +1,59 @@
+name: Rust
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  format:
+    name: format rust files
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v3
+      - name: Setup Rust toolchain and cache
+        uses: actions-rust-lang/setup-rust-toolchain@v1.4.4
+      - name: format files
+        run: cargo fmt --all --check
+
+  lint:
+    name: lint all rust files
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v3
+      - name: Setup Rust toolchain and cache
+        uses: actions-rust-lang/setup-rust-toolchain@v1.4.4
+      - name: Clippy
+        run: |
+          cargo clippy \
+            --all-targets \
+            --no-deps \
+            --workspace \
+          -- \
+            -D warnings \
+            -D rustdoc::broken_intra_doc_links \
+            -W clippy::explicit_iter_loop \
+            -W clippy::explicit_into_iter_loop \
+            -W clippy::semicolon_if_nothing_returned \
+            -W clippy::doc_markdown \
+            -W clippy::manual_let_else
+
+  test:
+    name: test rust files
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+          - os: ubuntu-latest
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v3
+      - name: Setup Rust toolchain and cache
+        uses: actions-rust-lang/setup-rust-toolchain@v1.4.4
+      - name: run tests
+        run: cargo test --workspace
