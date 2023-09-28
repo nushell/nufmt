@@ -2,7 +2,18 @@
 name = "nufmt"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
+authors = ["The NuShell Contributors"]
+description = "Formats nushell extremely fast"
+homepage = "https://github.com/nushell/nufmt"
+repository = "https://github.com/nushell/nufmt"
+readme = "README.md"
+keywords = ["nu", "nushell", "formatting", "cli"]
+categories = ["command-line-utilities"]
 
 [dependencies]
+env_logger = "0.10.0"
+log = "0.4.17"
+nu-parser = "0.81.0"
+nu-protocol = "0.81.0"
+
