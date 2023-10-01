@@ -16,6 +16,7 @@ struct DeclId;
 impl DeclId {
     const If: usize = 22;
     const Let: usize = 30;
+    const Def: usize = 5;
     const ExportDefEnv: usize = 6;
 }
 
@@ -45,7 +46,6 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     let mut out: Vec<u8> = vec![];
     let mut start = 0;
     let end_of_file = contents.len();
-    let mut inside_string_interpolation = false;
 
     for (span, shape) in flat.clone() {
         if span.start > start {
@@ -59,7 +59,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             let printable = String::from_utf8_lossy(skipped_contents).to_string();
             trace!("contents: {:?}", printable);
 
-            out = write_only_if_have_comments(skipped_contents, out, true);
+            out = write_only_if_have_hastag_or_equal(skipped_contents, out, true);
         }
 
         let mut bytes = working_set.get_span_contents(span);
@@ -71,8 +71,6 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             FlatShape::Int | FlatShape::Nothing => out.extend(bytes),
             FlatShape::StringInterpolation => {
                 out.extend(bytes);
-                inside_string_interpolation = !inside_string_interpolation;
-                trace!("inside_string_interpolation 🚚: {inside_string_interpolation}");
             }
             FlatShape::List | FlatShape::Record => {
                 bytes = trim_ascii_whitespace(bytes);
@@ -81,15 +79,9 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             FlatShape::Block | FlatShape::Closure => {
                 bytes = trim_ascii_whitespace(bytes);
                 out.extend(bytes);
-                if !inside_string_interpolation {
-                    out.extend(b" ");
-                }
             }
             FlatShape::String => {
                 out.extend(bytes);
-                if !inside_string_interpolation {
-                    out.extend(b" ");
-                }
             }
             FlatShape::Pipe => {
                 out.extend(b"| ");
@@ -107,6 +99,10 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 trace!("Called variable or vardecl with {varid}");
                 out.extend(bytes);
                 out.extend(b" ");
+            }
+            FlatShape::Signature => {
+                out.extend(bytes);
+                out = insert_newline(out);
             }
             FlatShape::Garbage => {
                 error!("found garbage 😢 {content}");
@@ -128,7 +124,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             let printable = String::from_utf8_lossy(remaining_contents).to_string();
             trace!("contents: {:?}", printable);
 
-            out = write_only_if_have_comments(remaining_contents, out, false);
+            out = write_only_if_have_hastag_or_equal(remaining_contents, out, false);
         }
 
         start = span.end + 1;
@@ -143,7 +139,7 @@ fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
     bytes
 }
 
-/// given a list of `bytes` and a `out`put to write only the bytes if they contain `#`
+/// given a list of `bytes` and a `out`put to write only the bytes if they contain `#` or `=`
 ///
 /// One tiny little detail: the order of bytes is important to nufmt.
 /// It is not the same to have
@@ -155,7 +151,7 @@ fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
 /// `out` + \n + `bytes`
 ///
 /// That's why `bytes_before_content` bool is for
-fn write_only_if_have_comments(
+fn write_only_if_have_hastag_or_equal(
     bytes: &[u8],
     mut out: Vec<u8>,
     bytes_before_content: bool,
@@ -169,6 +165,9 @@ fn write_only_if_have_comments(
             out = insert_newline(out);
             out.extend(trim_ascii_whitespace(bytes));
         }
+    } else if bytes.contains(&b'=') {
+        out.extend(trim_ascii_whitespace(bytes));
+        out.extend(b" ");
     } else {
         trace!("The contents doesn't have a '#'. Skipping.");
     }
@@ -180,6 +179,7 @@ fn resolve_call(c_bytes: &[u8], declid: usize, mut out: Vec<u8>) -> Vec<u8> {
     out = match declid {
         DeclId::If => insert_newline(out),
         DeclId::Let => insert_newline(out),
+        DeclId::Def => insert_newline(out),
         DeclId::ExportDefEnv | _ => out,
     };
     out.extend(c_bytes);
@@ -212,7 +212,9 @@ pub(crate) fn add_newline_at_end_of_file(out: Vec<u8>) -> Vec<u8> {
 /// and afterwards include the new lines and indentation correctly
 /// according to the configuration
 fn trim_ascii_whitespace(x: &[u8]) -> &[u8] {
-    let Some(from) = x.iter().position(|x| !x.is_ascii_whitespace()) else { return &x[0..0] };
+    let Some(from) = x.iter().position(|x| !x.is_ascii_whitespace()) else {
+        return &x[0..0];
+    };
     let to = x.iter().rposition(|x| !x.is_ascii_whitespace()).unwrap();
     let result = &x[from..=to];
     let printable = String::from_utf8_lossy(result).to_string();
