@@ -1,14 +1,9 @@
-//! In this module occurs most of the magic in `nufmt`.
-//!
-//! It has functions to format slice of bytes and some help functions to separate concerns while doing the job.
 use crate::config::Config;
+use crate::utils::*;
+
 use log::{info, trace};
 use nu_parser::{flatten_block, parse, FlatShape};
-use nu_protocol::{
-    ast::Block,
-    engine::{self, StateWorkingSet},
-    Span,
-};
+use nu_protocol::engine::{self, StateWorkingSet};
 
 /// format an array of bytes
 ///
@@ -134,22 +129,4 @@ fn trim_ascii_whitespace(x: &[u8]) -> &[u8] {
     };
     let to = x.iter().rposition(|x| !x.is_ascii_whitespace()).unwrap();
     &x[from..=to]
-}
-
-/// return true if the Nushell block has at least 1 pipeline
-///
-/// This function exists because sometimes is passed to `nufmt` an empty String,
-/// or a nu code which the parser can't identify something runnable
-/// (like a list of comments)
-///
-/// We don't want to return a blank file if that is the case,
-/// so this check gives the opportunity to `nufmt`
-/// to know when not to touch the file at all in the implementation.
-fn block_has_pipelines(block: &Block) -> bool {
-    !block.pipelines.is_empty()
-}
-
-/// return true if the given span is the last one
-fn is_last_span(span: Span, flat: &[(Span, FlatShape)]) -> bool {
-    span == flat.last().unwrap().0
 }

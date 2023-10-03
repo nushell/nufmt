@@ -1,13 +1,10 @@
-# This workflow run when something is pushed on main and it does
-# normal checks like in the normal PRs
-
-# Jobs on pull request
-name: CI on main
+name: Rust
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+  pull_request:
 
 jobs:
   format:
