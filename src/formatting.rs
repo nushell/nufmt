@@ -101,6 +101,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 out.extend(b" ");
             }
             FlatShape::Signature => {
+                out.extend(b" ");
                 out.extend(bytes);
                 out = insert_newline(out);
             }
