@@ -100,11 +100,6 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 out.extend(bytes);
                 out.extend(b" ");
             }
-            FlatShape::Signature => {
-                out.extend(b" ");
-                out.extend(bytes);
-                out = insert_newline(out);
-            }
             FlatShape::Garbage => {
                 error!("found garbage 😢 {content}");
                 out.extend(bytes);
