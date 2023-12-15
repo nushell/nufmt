@@ -47,7 +47,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     let mut start = 0;
     let end_of_file = contents.len();
 
-    let mut def_name = false;
+    let mut after_a_def = false;
 
     for (span, shape) in flat.clone() {
         if span.start > start {
@@ -84,7 +84,8 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             }
             FlatShape::String => {
                 out.extend(bytes);
-                if def_name {
+                // if it'a string after a `def`, add a space before the `[`
+                if after_a_def {
                     out.extend(b" ");
                 }
             }
@@ -94,7 +95,8 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             FlatShape::InternalCall(declid) => {
                 trace!("Called Internal call with {declid}");
                 out = resolve_call(bytes, declid, out);
-                def_name = declid == 5;
+                // make the def_name bool true if its a `def` keyword
+                after_a_def = declid == 5;
             }
             FlatShape::External => out = resolve_external(bytes, out),
             FlatShape::ExternalArg | FlatShape::Signature | FlatShape::Keyword => {
