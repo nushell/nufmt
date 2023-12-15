@@ -47,6 +47,8 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     let mut start = 0;
     let end_of_file = contents.len();
 
+    let mut def_name = false;
+
     for (span, shape) in flat.clone() {
         if span.start > start {
             trace!(
@@ -82,6 +84,9 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             }
             FlatShape::String => {
                 out.extend(bytes);
+                if def_name {
+                    out.extend(b" ");
+                }
             }
             FlatShape::Pipe => {
                 out.extend(b"| ");
@@ -89,11 +94,13 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             FlatShape::InternalCall(declid) => {
                 trace!("Called Internal call with {declid}");
                 out = resolve_call(bytes, declid, out);
+                def_name = declid == 5;
             }
             FlatShape::External => out = resolve_external(bytes, out),
             FlatShape::ExternalArg | FlatShape::Signature | FlatShape::Keyword => {
                 out.extend(bytes);
-                out.extend(b" ");
+                // out.extend(b" ");
+                out = insert_newline(out);
             }
             FlatShape::VarDecl(varid) | FlatShape::Variable(varid) => {
                 trace!("Called variable or vardecl with {varid}");
