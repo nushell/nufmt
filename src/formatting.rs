@@ -95,8 +95,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             FlatShape::InternalCall(declid) => {
                 trace!("Called Internal call with {declid}");
                 out = resolve_call(bytes, declid, out);
-                // make the def_name bool true if its a `def` keyword
-                after_a_def = declid == 5;
+                after_a_def = declid == DeclId::Def;
             }
             FlatShape::External => out = resolve_external(bytes, out),
             FlatShape::ExternalArg | FlatShape::Signature | FlatShape::Keyword => {
