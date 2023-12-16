@@ -155,7 +155,7 @@ fn insert_newline(mut bytes: Vec<u8>) -> Vec<u8> {
 /// `out` + `bytes` (you have to put \n before bytes)
 /// `out` + \n + `bytes`
 ///
-/// That's why `bytes_before_content` bool is for
+/// That's what `bytes_before_content` bool is for
 fn write_only_if_have_hastag_or_equal(
     bytes: &[u8],
     mut out: Vec<u8>,
