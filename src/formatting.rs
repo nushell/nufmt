@@ -101,7 +101,6 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             FlatShape::External => out = resolve_external(bytes, out),
             FlatShape::ExternalArg | FlatShape::Signature | FlatShape::Keyword => {
                 out.extend(bytes);
-                // out.extend(b" ");
                 out = insert_newline(out);
             }
             FlatShape::VarDecl(varid) | FlatShape::Variable(varid) => {
