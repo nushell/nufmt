@@ -6,3 +6,7 @@ result
 
 # Direnv
 .direnv
+
+# editors
+.idea/
+.vscode/

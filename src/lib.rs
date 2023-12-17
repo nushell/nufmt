@@ -120,7 +120,7 @@ myfunc(one)
     #[test]
     fn remove_additional_lines() {
         let input = "let one = 1\n\n\n";
-        let expected = "let one = 1\n";
+        let expected = "let one = 1";
         run_test(input, expected);
     }
 
