@@ -10,3 +10,4 @@ result
 # editors
 .idea/
 .vscode/
+tests/
