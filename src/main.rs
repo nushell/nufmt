@@ -150,14 +150,10 @@ mod tests {
     #[test]
     fn pipe_stdin_to_cli() {
         // TODO: create a file instead of reading one in the repo
-        let mut file = File::create("./tests/foo.txt").unwrap();
+        let mut file = File::create("tests.txt").unwrap();
         file.write_all(b"Hello, world!").unwrap();
         let mut binding = AssertCommand::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
-        let result = dbg!(binding
-            .arg("-s")
-            .arg("-")
-            .pipe_stdin("./tests/foo.txt")
-            .ok());
+        let result = dbg!(binding.arg("-s").arg("-").pipe_stdin("tests.txt").ok());
 
         result.unwrap().assert().success();
     }
