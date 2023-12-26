@@ -31,7 +31,7 @@ struct Cli {
         conflicts_with = "files",
         help = "a string of Nushell directly given to the formatter"
     )]
-    stdin: MaybeStdin<String>,
+    stdin: Option<MaybeStdin<String>>,
     #[arg(short, long, help = "the configuration file")]
     config: Option<PathBuf>,
 }
@@ -77,8 +77,8 @@ fn main() {
 }
 
 /// format a string passed via stdin and output it directly to stdout
-fn format_string(string: MaybeStdin<String>, options: &Config) -> ExitCode {
-    let output = nu_formatter::format_string(&string, options);
+fn format_string(string: Option<MaybeStdin<String>>, options: &Config) -> ExitCode {
+    let output = nu_formatter::format_string(&string.unwrap(), options);
     println!("output: \n{output}");
 
     ExitCode::Success
@@ -140,6 +140,7 @@ mod tests {
     use super::*;
     use assert_cmd::Command as AssertCommand;
     use clap::CommandFactory;
+    use std::fs::File;
 
     #[test]
     fn clap_cli_construction() {
@@ -149,11 +150,13 @@ mod tests {
     #[test]
     fn pipe_stdin_to_cli() {
         // TODO: create a file instead of reading one in the repo
+        let mut file = File::create("./tests/foo.txt").unwrap();
+        file.write_all(b"Hello, world!").unwrap();
         let mut binding = AssertCommand::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
         let result = dbg!(binding
             .arg("-s")
             .arg("-")
-            .pipe_stdin("./simplefile.txt")
+            .pipe_stdin("./tests/foo.txt")
             .ok());
 
         result.unwrap().assert().success();
