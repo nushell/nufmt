@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 use clap::Parser;
+use clap_stdin::MaybeStdin;
 use log::{error, info, trace};
 use nu_formatter::config::Config;
 use std::{
@@ -20,16 +21,17 @@ enum ExitCode {
 struct Cli {
     #[arg(
         required_unless_present("stdin"),
-        help = "one of more Nushell files you want to format"
+        help = "one of more Nushell files/folders you want to format"
     )]
     files: Vec<PathBuf>,
+    #[clap(default_value = "-")]
     #[arg(
         short,
         long,
         conflicts_with = "files",
         help = "a string of Nushell directly given to the formatter"
     )]
-    stdin: Option<String>,
+    stdin: MaybeStdin<String>,
     #[arg(short, long, help = "the configuration file")]
     config: Option<PathBuf>,
 }
@@ -75,8 +77,8 @@ fn main() {
 }
 
 /// format a string passed via stdin and output it directly to stdout
-fn format_string(string: Option<String>, options: &Config) -> ExitCode {
-    let output = nu_formatter::format_string(&string.unwrap(), options);
+fn format_string(string: MaybeStdin<String>, options: &Config) -> ExitCode {
+    let output = nu_formatter::format_string(&string, options);
     println!("output: \n{output}");
 
     ExitCode::Success
@@ -136,10 +138,24 @@ fn is_file_extension(file: &Path, extension: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_cmd::Command as AssertCommand;
+    use clap::CommandFactory;
 
     #[test]
     fn clap_cli_construction() {
-        use clap::CommandFactory;
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn pipe_stdin_to_cli() {
+        // TODO: create a file instead of reading one in the repo
+        let mut binding = AssertCommand::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let result = dbg!(binding
+            .arg("-s")
+            .arg("-")
+            .pipe_stdin("./simplefile.txt")
+            .ok());
+
+        result.unwrap().assert().success();
     }
 }
