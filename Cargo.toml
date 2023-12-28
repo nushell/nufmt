@@ -15,7 +15,9 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow = "1.0.71"
+assert_cmd = "2.0.12"
 clap = { version = "4.3.0", optional = true, features = ["unicode", "derive"] }
+clap-stdin = "0.3.0"
 env_logger = "0.10.0"
 log = "0.4.17"
 nu-cmd-lang = "0.88.1"
