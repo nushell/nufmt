@@ -152,7 +152,7 @@ mod tests {
         // TODO: create a file instead of reading one in the repo
         let mut file = File::create("tests.txt").unwrap();
         file.write_all(b"Hello, world!").unwrap();
-        let mut binding = AssertCommand::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut binding = AssertCommand::cargo_bin("nufmt").unwrap();
         let result = dbg!(binding.arg("-s").arg("-").pipe_stdin("tests.txt").ok());
 
         result.unwrap().assert().success();
