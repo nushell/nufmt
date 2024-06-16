@@ -13,8 +13,8 @@ def pretty-print-command [] {
 
 # check standard code formatting and apply the changes
 export def fmt [
-    --check: bool  # do not apply the format changes, only check the syntax
-    --verbose: bool # print extra information about the command's progress
+    --check  # do not apply the format changes, only check the syntax
+    --verbose # print extra information about the command's progress
 ] {
     if $verbose {
         print $"running ('toolkit fmt' | pretty-print-command)"
@@ -37,7 +37,7 @@ export def fmt [
 #
 # > it is important to make `clippy` happy :relieved:
 export def clippy [
-    --verbose: bool # print extra information about the command's progress
+    --verbose # print extra information about the command's progress
 ] {
     if $verbose {
         print $"running ('toolkit clippy' | pretty-print-command)"
@@ -65,7 +65,7 @@ export def clippy [
 
 # check that all the tests pass
 export def test [
-    --fast: bool  # use the "nextext" `cargo` subcommand to speed up the tests (see [`cargo-nextest`](https://nexte.st/) and [`nextest-rs/nextest`](https://github.com/nextest-rs/nextest))
+    --fast  # use the "nextext" `cargo` subcommand to speed up the tests (see [`cargo-nextest`](https://nexte.st/) and [`nextest-rs/nextest`](https://github.com/nextest-rs/nextest))
 ] {
     if $fast {
         cargo nextest run --all
