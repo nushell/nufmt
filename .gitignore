@@ -10,3 +10,5 @@ result
 # editors
 .idea/
 .vscode/
+tests/
+tests.txt

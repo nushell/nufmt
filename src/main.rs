@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 use clap::Parser;
+use clap_stdin::{FileOrStdin, MaybeStdin};
 use log::{error, info, trace};
 use nu_formatter::config::Config;
 use std::{
@@ -20,16 +21,9 @@ enum ExitCode {
 struct Cli {
     #[arg(
         required_unless_present("stdin"),
-        help = "one of more Nushell files you want to format"
+        help = "one of more Nushell files/folders you want to format"
     )]
-    files: Vec<PathBuf>,
-    #[arg(
-        short,
-        long,
-        conflicts_with = "files",
-        help = "a string of Nushell directly given to the formatter"
-    )]
-    stdin: Option<String>,
+    input: FileOrStdin,
     #[arg(short, long, help = "the configuration file")]
     config: Option<PathBuf>,
 }
@@ -43,6 +37,7 @@ fn exit_with_code(exit_code: ExitCode) {
 
     // NOTE: this immediately terminates the process without doing any cleanup,
     // so make sure to finish all necessary cleanup before this is called.
+    std::io::stdout().flush().unwrap();
     std::process::exit(code);
 }
 
@@ -50,8 +45,7 @@ fn main() {
     env_logger::init();
 
     let cli = Cli::parse();
-    trace!("recieved cli.files: {:?}", cli.files);
-    trace!("recieved cli.stdin: {:?}", cli.stdin);
+    trace!("recieved cli.input: {:?}", cli.input);
     trace!("recieved cli.config: {:?}", cli.config);
 
     let cli_config = match cli.config {
@@ -64,19 +58,31 @@ fn main() {
         }
     };
 
-    let exit_code = match cli.files[..] {
-        [] => format_string(cli.stdin, &cli_config),
-        _ => format_files(cli.files, &cli_config),
+    let exit_code = if !file.exists() {
+        error!("Error: {} not found!", file.to_str().unwrap());
+        return ExitCode::Failure;
+    } else if file.is_dir() {
+        for path in recurse_files(file).unwrap() {
+            if is_file_extension(&path, ".nu") {
+                info!("formatting file: {:?}", &path);
+                nu_formatter::format_single_file(&path, options);
+            } else {
+                info!("not nu file: skipping");
+            }
+        }
+        // Files only
+    } else {
+        info!("formatting file: {:?}", file);
+        nu_formatter::format_single_file(file, options);
     };
-
-    std::io::stdout().flush().unwrap();
+    //format_string(cli.input.contents().unwrap(), &cli_config);
 
     exit_with_code(exit_code);
 }
 
 /// format a string passed via stdin and output it directly to stdout
-fn format_string(string: Option<String>, options: &Config) -> ExitCode {
-    let output = nu_formatter::format_string(&string.unwrap(), options);
+fn format_string(string: String, options: &Config) -> ExitCode {
+    let output = nu_formatter::format_string(&string, options);
     println!("output: \n{output}");
 
     ExitCode::Success
@@ -136,10 +142,23 @@ fn is_file_extension(file: &Path, extension: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_cmd::Command as AssertCommand;
+    use clap::CommandFactory;
+    use std::fs::File;
 
     #[test]
     fn clap_cli_construction() {
-        use clap::CommandFactory;
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn pipe_stdin_to_cli() {
+        // TODO: create a file instead of reading one in the repo
+        let mut file = File::create("tests.txt").unwrap();
+        file.write_all(b"Hello, world!").unwrap();
+        let mut binding = AssertCommand::cargo_bin("nufmt").unwrap();
+        let result = dbg!(binding.arg("-s").arg("-").pipe_stdin("tests.txt").ok());
+
+        result.unwrap().assert().success();
     }
 }
