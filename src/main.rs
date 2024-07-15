@@ -68,7 +68,7 @@ fn main() {
 
     let exit_code = match cli.files[..] {
         [] if cli.stdin => {
-            let stdin_input = io::stdin().lines().map(|x| x.unwrap()).collect::<String>();
+            let stdin_input = io::stdin().lines().map(|x| x.unwrap()).collect();
             format_string(Some(stdin_input), &cli_config)
         }
         _ => format_files(cli.files, &cli_config),
