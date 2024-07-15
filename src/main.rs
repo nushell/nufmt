@@ -5,7 +5,7 @@ use log::{error, info, trace};
 use nu_formatter::config::Config;
 use std::{
     fs,
-    io::Write,
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 
@@ -23,13 +23,15 @@ struct Cli {
         help = "one of more Nushell files you want to format"
     )]
     files: Vec<PathBuf>,
+
     #[arg(
         short,
         long,
         conflicts_with = "files",
         help = "a string of Nushell directly given to the formatter"
     )]
-    stdin: Option<String>,
+    stdin: bool,
+
     #[arg(short, long, help = "the configuration file")]
     config: Option<PathBuf>,
 }
@@ -65,7 +67,10 @@ fn main() {
     };
 
     let exit_code = match cli.files[..] {
-        [] => format_string(cli.stdin, &cli_config),
+        [] if cli.stdin => {
+            let stdin_input = io::stdin().lines().map(|x| x.unwrap()).collect::<String>();
+            format_string(Some(stdin_input), &cli_config)
+        }
         _ => format_files(cli.files, &cli_config),
     };
 
@@ -77,7 +82,7 @@ fn main() {
 /// format a string passed via stdin and output it directly to stdout
 fn format_string(string: Option<String>, options: &Config) -> ExitCode {
     let output = nu_formatter::format_string(&string.unwrap(), options);
-    println!("output: \n{output}");
+    println!("{output}");
 
     ExitCode::Success
 }
