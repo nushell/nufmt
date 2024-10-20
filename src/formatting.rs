@@ -93,6 +93,8 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 out.extend(b"| ");
             }
             FlatShape::InternalCall(declid) => {
+                let declid = declid.get();
+
                 trace!("Called Internal call with {declid}");
                 out = resolve_call(bytes, declid, out);
                 after_a_def = declid == DeclId::Def;
@@ -103,7 +105,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 out = insert_newline(out);
             }
             FlatShape::VarDecl(varid) | FlatShape::Variable(varid) => {
-                trace!("Called variable or vardecl with {varid}");
+                trace!("Called variable or vardecl with {}", varid.get());
                 out.extend(bytes);
                 out.extend(b" ");
             }
