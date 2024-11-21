@@ -34,6 +34,11 @@ Some of the outputs deletes comments, break the functionality of the script or d
 
 To use the formatter, test it first and use it with caution!.
 
+## Installation
+
+- `cargo install --git https://github.com/nushell/nufmt`
+- Using our bundled Nix flake.
+
 ## Usage
 
 If you still want to use it, or test it to contribute, this is the `--help`.
