@@ -13,7 +13,7 @@
 [discord-url]: https://discord.gg/NtAbbGn
 [ci-badge]: https://github.com/nushell/nufmt/actions/workflows/main.yml/badge.svg
 [ci-url]: https://github.com/nushell/nufmt/actions/workflows/main.yml
-[nushell-badge]: https://img.shields.io/badge/nushell-v0.88.1-green
+[nushell-badge]: https://img.shields.io/badge/nushell-v0.103.0-green
 [nushell-url]: https://crates.io/crates/nu
 
 </div>
@@ -28,7 +28,9 @@
 
 ## Status
 
-This project is still very much in beta. Expect bugs, unconsistent behaviour. Do not use in productive nushell scripts!
+> [!IMPORTANT]
+> `nufmt` is in a pre-alpha state, not suitable for usage at all.
+> Do not use in productive nushell scripts!
 
 Some of the outputs deletes comments, break the functionality of the script or doesn't format at all.
 
