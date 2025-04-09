@@ -28,7 +28,9 @@
 
 ## Status
 
-This project is still very much in beta. Expect bugs, unconsistent behaviour. Do not use in productive nushell scripts!
+> [!IMPORTANT]
+> `nufmt` is in a pre-alpha state, not suitable for usage at all.
+> Do not use in productive nushell scripts!
 
 Some of the outputs deletes comments, break the functionality of the script or doesn't format at all.
 
