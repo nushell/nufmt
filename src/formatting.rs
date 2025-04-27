@@ -14,10 +14,10 @@ struct DeclId;
 
 #[allow(non_upper_case_globals)]
 impl DeclId {
-    const If: usize = 22;
-    const Let: usize = 30;
     const Def: usize = 5;
-    const ExportDefEnv: usize = 6;
+    const ExportDefEnv: usize = 13;
+    const If: usize = 21;
+    const Let: usize = 28;
 }
 
 fn get_engine_state() -> EngineState {
@@ -183,7 +183,6 @@ fn write_only_if_have_hastag_or_equal(
 fn resolve_call(c_bytes: &[u8], declid: usize, mut out: Vec<u8>) -> Vec<u8> {
     out = match declid {
         DeclId::If => insert_newline(out),
-        DeclId::Let => insert_newline(out),
         DeclId::Def => insert_newline(out),
         DeclId::ExportDefEnv | _ => out,
     };
