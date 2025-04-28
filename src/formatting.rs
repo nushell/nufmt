@@ -10,18 +10,13 @@ use nu_protocol::{
     DeclId, Span,
 };
 
-#[derive(Debug, Clone)]
-struct NewDeclId<'a> {
-    decls: &'a Vec<(Vec<u8>, DeclId)>,
+trait DeclsExt {
+    fn get_decl_name(&self, decl_id: usize) -> Option<&str>;
 }
 
-impl<'a> NewDeclId<'a> {
-    pub fn new(decls: &'a Vec<(Vec<u8>, DeclId)>) -> NewDeclId<'a> {
-        NewDeclId { decls }
-    }
-
-    pub fn get_decl_name(&'a self, decl_id: usize) -> Option<&'a str> {
-        for decl in self.decls {
+impl DeclsExt for Vec<(Vec<u8>, DeclId)> {
+    fn get_decl_name(&self, decl_id: usize) -> Option<&str> {
+        for decl in self {
             if decl_id == decl.1.get() {
                 return Some(std::str::from_utf8(&decl.0).expect("Failed to parse DeclId's name"));
             }
@@ -41,8 +36,6 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     let engine_state = get_engine_state();
     let decls_sorted: Vec<(Vec<u8>, nu_protocol::Id<nu_protocol::marker::Decl>)> =
         engine_state.get_decls_sorted(false);
-
-    let decl_ids = NewDeclId::new(&decls_sorted);
 
     let mut working_set = StateWorkingSet::new(&engine_state);
 
@@ -109,7 +102,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             }
             FlatShape::InternalCall(declid) => {
                 let declid = declid.get();
-                let decl_name = decl_ids.get_decl_name(declid);
+                let decl_name = decls_sorted.get_decl_name(declid);
 
                 trace!("Called Internal call with {declid}");
 
