@@ -7,17 +7,22 @@ use nu_parser::{flatten_block, parse, FlatShape};
 use nu_protocol::{
     ast::Block,
     engine::{EngineState, StateWorkingSet},
-    Span,
+    DeclId, Span,
 };
 
-struct DeclId;
+trait DeclsExt {
+    fn get_decl_name(&self, decl_id: usize) -> Option<&str>;
+}
 
-#[allow(non_upper_case_globals)]
-impl DeclId {
-    const If: usize = 22;
-    const Let: usize = 30;
-    const Def: usize = 5;
-    const ExportDefEnv: usize = 6;
+impl DeclsExt for Vec<(Vec<u8>, DeclId)> {
+    fn get_decl_name(&self, decl_id: usize) -> Option<&str> {
+        for decl in self {
+            if decl_id == decl.1.get() {
+                return Some(std::str::from_utf8(&decl.0).expect("Failed to parse DeclId's name"));
+            }
+        }
+        None
+    }
 }
 
 fn get_engine_state() -> EngineState {
@@ -29,6 +34,9 @@ fn get_engine_state() -> EngineState {
 /// Reading the file gives you a list of bytes
 pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     let engine_state = get_engine_state();
+    let decls_sorted: Vec<(Vec<u8>, nu_protocol::Id<nu_protocol::marker::Decl>)> =
+        engine_state.get_decls_sorted(false);
+
     let mut working_set = StateWorkingSet::new(&engine_state);
 
     let parsed_block = parse(&mut working_set, None, contents, false);
@@ -94,10 +102,14 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
             }
             FlatShape::InternalCall(declid) => {
                 let declid = declid.get();
+                let decl_name = decls_sorted.get_decl_name(declid);
 
                 trace!("Called Internal call with {declid}");
-                out = resolve_call(bytes, declid, out);
-                after_a_def = declid == DeclId::Def;
+
+                if let Some(decl_name) = decl_name {
+                    out = resolve_call(bytes, decl_name, out);
+                    after_a_def = decl_name == "def";
+                }
             }
             FlatShape::External => out = resolve_external(bytes, out),
             FlatShape::ExternalArg | FlatShape::Signature | FlatShape::Keyword => {
@@ -180,12 +192,11 @@ fn write_only_if_have_hastag_or_equal(
 }
 
 #[allow(clippy::wildcard_in_or_patterns)]
-fn resolve_call(c_bytes: &[u8], declid: usize, mut out: Vec<u8>) -> Vec<u8> {
-    out = match declid {
-        DeclId::If => insert_newline(out),
-        DeclId::Let => insert_newline(out),
-        DeclId::Def => insert_newline(out),
-        DeclId::ExportDefEnv | _ => out,
+fn resolve_call(c_bytes: &[u8], decl_name: &str, mut out: Vec<u8>) -> Vec<u8> {
+    out = match decl_name {
+        "if" => insert_newline(out),
+        "def" => insert_newline(out),
+        "export def" | _ => out,
     };
     out.extend(c_bytes);
     out.extend(b" ");
