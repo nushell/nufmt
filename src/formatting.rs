@@ -20,15 +20,6 @@ impl<'a> NewDeclId<'a> {
         NewDeclId { decls }
     }
 
-    pub fn get_decl_id(&self, decl_name: &str) -> Option<usize> {
-        let decl_name_utf8 = decl_name.as_bytes().to_vec();
-        for decl in self.decls {
-            if decl_name_utf8 == decl.0 {
-                return Some(decl.1.get());
-            }
-        }
-        None
-    }
     pub fn get_decl_name(&'a self, decl_id: usize) -> Option<&'a str> {
         for decl in self.decls {
             if decl_id == decl.1.get() {
@@ -50,7 +41,6 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
     let engine_state = get_engine_state();
     let decls_sorted: Vec<(Vec<u8>, nu_protocol::Id<nu_protocol::marker::Decl>)> =
         engine_state.get_decls_sorted(false);
-    //dbg!(&decls_sorted);
 
     let decl_ids = NewDeclId::new(&decls_sorted);
 
