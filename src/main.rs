@@ -318,10 +318,13 @@ fn is_nu_file(entry: &DirEntry) -> bool {
 }
 
 fn make_relative(path: &Path) -> String {
-    let current = std::env::current_dir().expect("Failed to get current directory");
+    let current = std::env::current_dir().unwrap_or(PathBuf::from("."));
     path.strip_prefix(&current)
         .unwrap_or(path)
         .display()
+        .to_string()
+        .replace("\\", "/")
+        .trim_start_matches("./")
         .to_string()
 }
 
