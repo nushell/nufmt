@@ -60,6 +60,7 @@ nufmt my-file1.nu my-file2.nu my-file3.nu
 
 ### Options
 
+- `--check` if you just want to check files without formatting them. It cannot be combined with stdin.
 - `-s` or `--stdin` formats from `stdin`, returns to `stdout` as a String. It cannot be used combined with `files`.
 - `-c` or `--config` pass the config file path.
   Sample:
@@ -73,7 +74,6 @@ nufmt my-file1.nu my-file2.nu my-file3.nu
   ```text
   nufmt --stdin <string> --config my-stdin-config.json
   ```
-
 - `-h` or `--help` show help and exit
 - `-v` or `--version` prints the version and exit
 
