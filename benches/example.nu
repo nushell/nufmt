@@ -1,13 +1,13 @@
-alias ll=ls -l
-[[status]; [UP] [UP]]| all {|el| $el.status == UP }
+alias ll=ls-l[[status]; [UP] [UP]]| all {|el| $el.status == UP }
 [foobar2baz]| all {|| ($in | describe ) == 'string' }[0246]| enumerate | all {|i| $i.item == $i.index * 2 }
 let cond = {|el| ($el mod2
-==0[2468]
+==0[2468][2468]
 [2468]
 | all $cond
 ansi
 green
-ansi reset
+ansi
+reset
 $'(ansi red_bold
 )Hello(ansi reset
 ) (ansi green_dimmed
@@ -23,12 +23,11 @@ $'(ansi red_bold
 )'$"(ansi -e
 '3;93;41m'
 )Hello(ansi reset
-)"##italic
-brightyellow
+)"##italiccbrightyellow
 onred
-backgroundlet bold_blue_on_red = {  # `fg`, `bg`, `attr` are the acceptable keys, all other keys are considered invalid and will throw errors.fg:'#0000ff'bg:'#ff0000'attr:b}$"(ansi -e$bold_blue_on_red
-Hello
-NuWorld(ansi reset
+backgroundlet
+bold_blue_on_red
+={  # `fg`, `bg`, `attr` are the acceptable keys, all other keys are considered invalid and will throw errors.fg:'#0000ff'bg:'#ff0000'attr:b}$"(ansi -e$bold_blue_on_redHello NuWorld(ansi reset
 )"'Hello, Nushell! This is a gradient.'| ansi gradient
 --fgstart
 '0x40c9ff'
@@ -242,26 +241,21 @@ dir_a
 dir_b
 cp *.txt
 dir_a
-"2021-10-22
-20:00:12+01:00"| date format
+"2021-10-2220:00:12+01:00"| date format
 date now
 | date format
-"%Y-%m-%d
-%H:%M:%S"
+"%Y-%m-%d %H:%M:%S"
 date now
 | date format
 "%Y-%m-%d%H:%M:%S"
-"2021-10-22
-20:00:12+01:00"| date format
+"2021-10-22 20:00:12+01:00"| date format
 "%Y-%m-%d"
-"2021-10-22
-20:00:12+01:00"| date humanize
+"2021-10-22 20:00:12+01:00"| date humanize
 date list-timezone
 | where timezone =~ Shanghai
 date now
 | date format
-"%Y-%m-%d
-%H:%M:%S"
+"%Y-%m-%d %H:%M:%S"
 (date now
 )-2019-05-01(date now
 )-2019-05-01T04:12:05.20+08:00date now
@@ -282,8 +276,7 @@ local
 date now
 | date to-timezone
 US/Hawaii
-"2020-10-1010:00:00
-+02:00"| date to-timezone
+"2020-10-1010:00:00 +02:00"| date to-timezone
 "+0500"
 'hello'| debug ['hello']| debug [[version patch]; ['0.1.0' false] ['0.1.1' true] ['0.2.0' false]]| debug cat myfile.q
 | decode utf-8
@@ -398,8 +391,7 @@ new_a
 ["2021-12-30""2021-12-31"]| dfr into-df
 | dfr as-datetime
 "%Y-%m-%d"
-["2021-12-3000:00:00""2021-12-31
-00:00:00"]| dfr into-df
+["2021-12-3000:00:00""2021-12-31 00:00:00"]| dfr into-df
 | dfr as-datetime
 "%Y-%m-%d%H:%M:%S"
 [[a b]; [6 2] [4 2] [2 2]]| dfr into-df
@@ -945,12 +937,10 @@ a
 )*3| dfr as
 "d"
 )]| dfr collect
-do {hello}let text = "I
-amenclosed"let hello = {||$text }do $hello do -i{thisisnotarealcommand }do -s{thisisnotarealcommand }do -p{nu -c
+do {hello}let text = "I amenclosed"let hello = {||$text }do $hello do -i{thisisnotarealcommand }do -s{thisisnotarealcommand }do -p{nu -c
 'exit 1'
 }"I'll still run"do -c{nu -c
-'exit
-1'
+'exit 1'
 }| myscarycommand do {|x| 100+$x }7777| do {|x| 100+$in }[0,1,2,3]| drop [0,1,2,3]| drop 0
 [0,1,2,3]| drop 2
 [[a, b]; [1, 2] [3, 4]]| drop 1
@@ -1002,8 +992,7 @@ $in "負けると知って戦うのが、遥かに美しいのだ"| encode shift
 shift-jis
 0x[09 F9 11 02 9D 74 E3 5B D8 41 56 C5 63 56 88 C0]| encode base64
 'SomeData'| encode base64
-'Some
-Data'| encode base64
+'Some Data'| encode base64
 --character-set
 binhex
 0x[09 F9 11 02 9D 74 E3 5B D8 41 56 C5 63 56 88 C0]| encode hex
@@ -1134,8 +1123,7 @@ open data.txt
 open data.txt
 | from csv
 --separator
-'
-{size}'
+' {size '
 [[col1, col2]; [v1, v2] [v3, v4]]| format '{col2}'
 ls | format filesize
 KB
@@ -1154,20 +1142,23 @@ open data.txt
 | from csv
 --separator
 '
-'
-open data.txt
+#'open
+data.txt
+data.txt
 | from csv
---comment
-'#'open data.txt
-| from csv
---trimall open data.txt
-| from csv
---trimheaders open data.txt
-| from csv
---trimfields 'From: test@email.com
+--trimallopen
+data.txt| from csv
+--trimheadersopen
+data.txt| from csv
+--trimfields'From: test@email.com
 Subject: Welcome
 To: someone@somewhere.com
-Test'| from eml
+Test'
+'From: test@email.com
+Subject: Welcome
+To: someone@somewhere.com
+Test'
+| from eml
 'From: test@email.com
 Subject: Welcome
 To: someone@somewhere.com
@@ -1185,9 +1176,7 @@ open --raw
 test.ods | from ods
 open --raw
 test.ods | from ods
--s[Spreadsheet1]open--raw
---raw
-file.parquet | from parquet
+-s[Spreadsheet1]open--raw--rawfile.parquet | from parquet
 open file.parquet
 'FOO   BAR
 1   2'| from ssv
@@ -1222,23 +1211,39 @@ $'a1(char tab
 )c2'| save tsv-data
 | open tsv-data
 | from tsv
---trimall $'a1(char tab
+--trimall$'a1(char tab
 )b1(char tab
 )c1(char nl
 )a2(char tab
 )b2(char tab
-)c2'| save tsv-data
-| open tsv-data
-| from tsv
---trimheaders $'a1(char tab
+)c2'
+$'a1(char tab
 )b1(char tab
 )c1(char nl
 )a2(char tab
 )b2(char tab
-)c2'| save tsv-data
+)c2'
+| save tsv-data
 | open tsv-data
 | from tsv
---trimfields 'bread=baguette&cheese=comt%C3%A9&meat=ham&fat=butter'| from url
+--trimheaders$'a1(char tab
+)b1(char tab
+)c1(char nl
+)a2(char tab
+)b2(char tab
+)c2'
+$'a1(char tab
+)b1(char tab
+)c1(char nl
+)a2(char tab
+)b2(char tab
+)c2'
+| save tsv-data
+| open tsv-data
+| from tsv
+--trimfields'bread=baguette&cheese=comt%C3%A9&meat=ham&fat=butter'
+'bread=baguette&cheese=comt%C3%A9&meat=ham&fat=butter'
+| from url
 'BEGIN:VCARD
 N:Foo
 FN:Bar
@@ -1257,13 +1262,11 @@ test.xlsx | from xlsx
 'a: 1'| from yaml
 '[ a: 1, b: [1, 2] ]'| from yaml
 g mkdir
-foo
-enter foo
+foo enter foo
 enter ../bar
 g 1
 shells g
-2
-mkdir foo
+2mkdir foo
 enter foo
 enter ../bar
 g -
@@ -1275,9 +1278,11 @@ ls | get 2.name
 sys | get cpu
 $env | get paTH
 $env | get -s
-Path glob *.rs
+Path glob
+*.rs
 glob **/*.{rs,toml}
---depth2glob "[Cc]*"
+--depth2glob"[Cc]*"
+"[Cc]*"
 glob "{a?c,x?z}"
 glob "(?i)c*"
 glob "[!cCbMs]*"
@@ -1288,16 +1293,19 @@ glob "[A-Z]*"
 | grid {name:'foo',b:1,c:2}
 | grid [{name:'A',v:1
 }{name:'B',v:2}{name:'C',v:3
+
 }]| grid [[namepatch]; [0.1.0 false] [0.1.1 true] [0.2.0 false]]| grid [1234]| group 2
 ls | group-by type
 ['1''3''1''3''2''1''1']| group-by 'abcdefghijklmnopqrstuvwxyz'
 | hash md5
 'abcdefghijklmnopqrstuvwxyz'| hash md5
---binaryopen ./nu_0_24_1_windows.zip
+--binaryopen./nu_0_24_1_windows.zip
+./nu_0_24_1_windows.zip
 | hash md5
 'abcdefghijklmnopqrstuvwxyz'| hash sha256
 'abcdefghijklmnopqrstuvwxyz'| hash sha256
---binaryopen ./nu_0_24_1_windows.zip
+--binaryopen./nu_0_24_1_windows.zip
+./nu_0_24_1_windows.zip
 | hash sha256
 "a b c|1 2 3"| split row
 "|"| split column
@@ -1307,53 +1315,119 @@ ls | group-by type
 " "| headers help
 match
 help str
-lpad help --find
-char help aliases
+lpad help
+--find
+char help
+aliases
 help aliases
-my-alias help aliases
---findmy-alias help externs
-help externs
-smth help externs
---findsmth help modules
-help modules
-my-module help modules
---findmy-module alias lll=ls -l
+my-alias help
+aliases
+--findmy-aliashelp
+externshelp externs
+smth help
+externs
+--findsmthhelp
+moduleshelp modules
+my-module help
+modules
+--findmy-modulealias
+lll=ls-l
+-l
 hide lll
 def say-hi []
-{'Hi!' 
-hide say-hilet-env
-HZ_ENV_ABC =1hide-env HZ_ENV_ABC 'HZ_ENV_ABC' in (env )namels | histogram type
+{'Hi!' hide say-hilet-envHZ_ENV_ABC =1hide-env
+HZ_ENV_ABC
+'HZ_ENV_ABC'
+in
+(env 
+namels
+| histogram type
 ls | histogram type
 freq [121]| histogram [1231112211]| histogram --percentage-type
-relative history | length history
+relative history
+| length history
 | last 5
 history | wrap cmd
 | where cmd =~ cargo
 history session
 http delete
-https://www.example.com http delete
--u myuser -p mypass https://www.example.com http delete
--H [my-header-keymy-header-value]https://www example com http delete
--d 'body' https://www.example.com http delete
--t application/json -d {field :value }https://www.example.com http get
-https://www.example.com http get
--u myuser -p mypass https://www.example.com http get
--H [my-header-keymy-header-value]https://www example com http head
-https://www.example.com http head
--u myuser -p mypass https://www.example.com http head
--H [my-header-keymy-header-value]https://www example com http patch
-https://www.example.com 'body' http patch
--u myuser -p mypass https://www.example.com 'body' http patch
--H [my-header-keymy-header-value]https://www example com http patch
--t application/json https://www.example.com {field :value }http post
-https://www.example.com 'body' http post
--u myuser -p mypass https://www.example.com 'body' http post
--H [my-header-keymy-header-value]https://www example com http post
--t application/json https://www.example.com {field :value }http put
-https://www.example.com 'body' http put
--u myuser -p mypass https://www.example.com 'body' http put
--H [my-header-keymy-header-value]https://www example com http put
--t application/json https://www.example.com {field :value }
+https://www.example.com http
+delete
+-umyuser
+-pmypass
+https://www.example.comhttp
+delete-H[my-header-keymy-header-value]https://www
+examplecom
+httpdelete
+delete
+-d'body'
+https://www.example.comhttp
+delete-tapplication/json
+-d{field :value }https://www.example.com
+httpget
+get
+https://www.example.com http
+get
+-umyuser
+-pmypass
+https://www.example.comhttp
+get-H[my-header-keymy-header-value]https://www
+examplecom
+httphead
+head
+https://www.example.com http
+head
+-umyuser
+-pmypass
+https://www.example.comhttp
+head-H[my-header-keymy-header-value]https://www
+examplecom
+httppatch
+patch
+https://www.example.com 'body'
+http
+patch
+-umyuser
+-pmypass
+https://www.example.com'body'
+httppatch
+patch
+-H[my-header-keymy-header-value]https://www
+examplecom
+httppatch
+patch
+-tapplication/json
+https://www.example.com{field :value }http
+posthttps://www.example.com 'body'
+http
+post
+-umyuser
+-pmypass
+https://www.example.com'body'
+httppost
+post
+-H[my-header-keymy-header-value]https://www
+examplecom
+httppost
+post
+-tapplication/json
+https://www.example.com{field :value }http
+puthttps://www.example.com 'body'
+http
+put
+-umyuser
+-pmypass
+https://www.example.com'body'
+httpput
+put
+-H[my-header-keymy-header-value]https://www
+examplecom
+httpput
+put
+-tapplication/json
+https://www.example.com{field :value }
+{field :value }
+
 if 2<3{'yes!'}
 if 5<3{'yes!'}else{'no!'}
 if 5<3{'yes!'}else
@@ -1361,89 +1435,162 @@ if 4<5{'no!'}else{'okay!'done
 done
 | ignore let
 user_input
-=(input 
-{'name':'nu','stars':5}
+=(input {'name':'nu','stars':5}
 | insert alias
-'Nushell'[[project, lang]; ['Nushell', 'Rust']]| insert type
-'shell'[[foo]; [7] [8] [9]]| enumerate | insert bar
-{|e| $e itemfoo+$e index}| flatten ls
+'Nushell'[[project, lang]; ['Nushell', 'Rust']]
+| insert type
+'shell'[[foo]; [7] [8] [9]]
+| enumerate | insert bar
+{|e| $e itemfoo+$e index}
+| flatten ls
 | inspect | get name
 | inspect 'This is a string that is exactly 52 characters long.'
 | into binary
-1| into binary
-true| into binary
-ls | where name == LICENSE
+1
+| into binary
+true
+| into binary
+ls
+| where name == LICENSE
 | get size
 | into binary
-ls | where name == LICENSE
+ls
+| where name == LICENSE
 | get name
 | path expand
 | into binary
-1.234| into binary
+1.234
+| into binary
 [[value]; ['false'] ['1'] [0] [1.0] [true]]| into bool
-value true| into bool
-1| into bool
-0.3| into bool
-'0.0'| into bool
-'true'| into bool
-'27.02.2021 1:55 pm +0000'| into datetime
-'2021-02-27T13:55:40.2246+00:00'| into datetime
-'20210227_135540+0000'| into datetime
--f'%Y%m%d_%H%M%S%z'1614434140123456789| into datetime
---offset-51614434140*1_000_000_000 | into datetime
+value
+true
+| into bool
+1
+| into bool
+0.3
+| into bool
+'0.0'
+| into bool
+'true'
+| into bool
+'27.02.2021 1:55 pm +0000'
+| into datetime
+'2021-02-27T13:55:40.2246+00:00'
+| into datetime
+'20210227_135540+0000'
+| into datetime
+-f'%Y%m%d_%H%M%S%z'1614434140123456789
+| into datetime
+--offset-51614434140*1_000_000_000
+| into datetime
 [[num]; ['5.01']]| into decimal
-num '1.345'| into decimal
-'-5.9'| into decimal
-true| into decimal
+num
+'1.345'
+| into decimal
+'-5.9'
+| into decimal
+true
+| into decimal
 [[value]; ['1sec'] ['2min'] ['3hr'] ['4day'] ['5wk']]| into duration
-value '7min'| into duration
-'7min'| into duration
---convertsec 420sec| into duration
-420sec| into duration
---convertms 1000000µs| into duration
---convertsec 1sec| into duration
---convertµs 1sec| into duration
---convertus [[bytes]; ['5'] [3.2] [4] [2kb]]| into filesize
-bytes '2'| into filesize
-8.3| into filesize
-5| into filesize
-4KB| into filesize
+value
+'7min'
+| into duration
+'7min'
+| into duration
+--convertsec
+420sec
+| into duration
+420sec
+| into duration
+--convertms
+1000000µs
+| into duration
+--convertsec
+1sec
+| into duration
+--convertµs
+1sec
+| into duration
+--convertus
+[[bytes]; ['5'] [3.2] [4] [2kb]]| into filesize
+bytes
+'2'
+| into filesize
+8.3
+| into filesize
+5
+| into filesize
+4KB
+| into filesize
 [[num]; ['-5'] [4] [1.5]]| into int
-num '2'| into int
-5.9| into int
-'5.9'| into int
-4KB| into int
+num
+'2'
+| into int
+5.9
+| into int
+'5.9'
+| into int
+4KB
+| into int
 [false,true]| into int
-1983-04-13T12:09:14.123456789-05:00| into int
-'1101'| into int
--r2'FF'| into int
--r16'0o10132'| into int
-'0010132'| into int
-'0010132'| into int
--r8[[value]; [false]]| into record
+1983-04-13T12:09:14.123456789-05:00
+| into int
+'1101'
+| into int
+-r2'FF'
+| into int
+-r16'0o10132'
+| into int
+'0010132'
+| into int
+'0010132'
+| into int
+-r8[[value]; [false]]
+| into record
 [123]| into record
-0..2| into record
--500day| into record
-{a:1,b:2}| into record
-2020-04-12T22:10:57+02:00| into record
-ls | into sqlite
-my_ls.db ls | into sqlite
-my_ls.db -tmy_table [[name]; [-----] [someone] [=====] [somename] ['(((((']]| into sqlite
-filename.db [one25.2sixtrue100mib25sec]| into sqlite
-variety.db 5| into string
--d31.7| into string
--d01.7| into string
--d11.734| into string
--d21.734| into string
--d-24.3| into string
-'1234'| into string
-true| into string
-ls Cargo.toml
+0..2
+| into record
+-500day
+| into record
+{a:1,b:2}
+| into record
+2020-04-12T22:10:57+02:00
+| into record
+ls
+| into sqlite
+my_ls.db
+ls
+| into sqlite
+my_ls.db
+-tmy_table
+[[name]; [-----] [someone] [=====] [somename] ['(((((']]| into sqlite
+filename.db
+[one25.2sixtrue100mib25sec]| into sqlite
+variety.db
+5
+| into string
+-d31.7
+| into string
+-d01.7
+| into string
+-d11.734
+| into string
+-d21.734
+| into string
+-d-24.3
+| into string
+'1234'
+| into string
+true
+| into string
+ls
+Cargo.toml
 | get name
 | into string
-1KiB| into string
-
-if is-admin{"iamroot"}else{"iamnotroot"''
+1KiB
+| into string
+if
+is-admin{"iamroot"}else{"iamnotroot"''
 ''
 | is-empty []| is-empty [[mealsize]; [arepa small] [taco '']]| is-empty meal
 size {new:york,san:francisco}| items {|key, value| echo ($key
@@ -1489,7 +1636,8 @@ ls -s
 ls -a
 ~ | where type == dir
 ls -as
-~ | where type == dir and modified < ((date now) - 7day)
+~ | where type == dir and modified < ((date now
+)-7day)
 ['/path/to/directory''/path/to/file']| each {|| ls -D $in }
 | flatten match
 31..10=>
@@ -1504,7 +1652,10 @@ ls -as
 | match $in {a:{$b
 }
 }=>
-($b +10)[-50-100.025]
+($b
++10
++10
+)[-50-100.025]
 | math abs
 1| math arccos
 -1| math arccos
@@ -1556,38 +1707,41 @@ math pi
 [1.52.3-3.1]| math round
 [1.5552.333-3.111]| math round
 -p2(math pi
-
 /2
 | math sin
 [090180270360]| math sin
--d| math round
---precision41| math sinh
+-d
+| math round
+--precision41
+| math sinh
 [916]| math sqrt
 [12345]| math stddev
 [12345]| math stddev
--s[123]| math sum
-ls | get size
+-s[123]
+| math sum
+ls
+| get size
 | math sum
 (math pi
-
 /4
 | math tan
 [-45045]| math tan
 -d(math pi
-
 *10
 | math tanh
-math tau
+math
+tau
 | math round
---precision2[12345]| math variance
+--precision2[12345]
+| math variance
 [12345]| math variance
--s[abc]| wrap name
+-s[abc]
+| wrap name
 | merge ([123]| wrap index
-
 {a:1,b:2}
 | merge {c: 3}
 [{columnA:A0columnB:B0
-}]| merge [{columnA:'A0*'
+}]| merge [{columnA: 'A0*'
 }]let
 a
 =42metadata $a
@@ -1631,8 +1785,8 @@ script.nu open foo.nu
 | nu-check -d
 script.nu open module.nu
 | lines | nu-check -d
---as-modulemodule.nu $'two(char nl
-)lines'| nu-check nu-check
+--as-modulemodule.nu two(char nl
+)lines| nu-check nu-check
 -a
 script.nu open foo.nu
 | lines | nu-check -ad
@@ -1641,8 +1795,7 @@ ll
 =ls -l
 old-alias customs
 =($nu scopecommands
-scopecommands
-| where is_custom
+scopecommands| where is_custom
 | get command
 )openmyfile.json
 open myfile.json
@@ -1700,13 +1853,11 @@ p p
 | sort 1..3
 | enumerate | par-each {|p| update item ($p
 item*2
-item*2
-)}| sort-by item
+item*2)}| sort-by item
 | get item
 [123]| enumerate | par-each { |e| if $e.item == 2 { found 2 at ($e
 index
-index
-)!} }"hi there"| parse "{foo} {bar}"
+index)!} }"hi there"| parse "{foo} {bar}"
 "hi there"| parse -r
 '(?P<foo>\w+) (?P<bar>\w+)'"foo bar."| parse -r
 '\s*(?<name>\w+)(?=\.)'"foo! bar."| parse -r
@@ -1716,7 +1867,7 @@ index
 [[name];[/home/joe]]| path basename
 -c[name]'/home/joe/test.txt'| path basename
 -r'spam.png''/home/joe/code/test.txt'| path dirname
-ls ('.'| path expand
+ls '.'| path expand
 )| path dirname
 -c[name]'/home/joe/code/test.txt'| path dirname
 -n2'/home/joe/code/test.txt'| path dirname
@@ -1740,7 +1891,7 @@ spam.txt -c[name]['/''home''viking''spam.txt']| path join
 | path relative-to
 ~ -c[name]'eggs/bacon/sausage/spam'| path relative-to
 'eggs/bacon/sausage''/home/viking/spam.txt'| path split
-ls ('.'| path expand
+ls '.'| path expand
 )| path split
 -c[name]'.'| path type
 ls | path type
@@ -1798,18 +1949,20 @@ random integer
 -a
 $it "X"
 }['foo.gz' ,'bar.gz' ,'baz.gz' ]| enumerate | reduce -f
-'' {|str all| ($all 
+'' {|str all| ($all
 (
-if $str index!=0{'; '}
+if $str index!=0{
+(
+if $str index!=0{
+'; '}
 index!=0{'; '}
-($str index+1
--($str item
+($str
+index+1
+-($str
 item
-)
-"hello world"| regex '(?P<first>\w+) (?P<second>\w+)'
+item)"hello world"| regex '(?P<first>\w+) (?P<second>\w+)'
 register ~/.cargo/bin/nu_plugin_query
 let plugin = ((which nu
-
 path0
 | path dirname
 | path join
@@ -1818,7 +1971,8 @@ path0
 nu
 -c
 -c
-$'register ($plugin ); version'lss| reject modified
+register ($plugin
+); versionlss| reject modified
 [[a, b]; [1, 2]]| reject a
 {a:1,b:2}| reject a
 {a:{b:3,c:5}}| reject a.b
@@ -2020,43 +2174,63 @@ title 'Nu shell '| str trim
 -c'='' Nu shell '| str trim
 -r'=== Nu shell ==='| str trim
 -r-c'=''nu'| str upcase
-sys (sys 
-host
+sys (sys host
 | get name
-(sys 
-hostnamels
+(sys hostnamels
 | table -n
-1[[a b]; [1 2] [3 4]]| table [[ab]; [1 2] [2 [44]]]| table --expand
-[[a b]; [1 2] [2 [44]]]| table --collapse
+1[[a b]; [1 2] [3 4]]
+| table [[ab]; [1 2] [2 [44]]]| table --expand
+[[ab]; [1 2] [2 [44]]]| table --collapse
 [123]| take 1
 [123]| take 2
 [[editions]; [2015] [2018] [2021]]| take 2
-0x[01 23 45]| take 2
-1..10| take 3
+0x[01 23 45]
+| take 2
+1..10
+| take 3
 [-1-291]| take until
-{|x| $x >0}let cond = {|x| $x >0
+{|x| $x >0}let
+cond
+={|x| $x >0
+>0
 [-1-291]| take until
-$cond [{a:-1}{a:-2}{a:9}{a:1}]
+$cond
 [{a:-1}{a:-2}{a:9}{a:1}]
-| take until
-{|x| $x a>0}[-1-291]| take while
-{|x| $x <0}let cond = {|x| $x <0
+[{a:-1}{a:-2}{a:9}{a:1}]
+[{a:-1
+}{a:-2}{a:9}{a:1
+}]| take until
+{|x| $x a>0
 [-1-291]| take while
-$cond [{a:-1}{a:-2}{a:9}{a:1}]
+{|x| $x <0
+letcond
+cond
+={|x| $x <0
+<0
+[-1-291]| take while
+$cond
 [{a:-1}{a:-2}{a:9}{a:1}]
-| take while
-{|x| $x a<0}term size
+[{a:-1}{a:-2}{a:9}{a:1}]
+[{a:-1
+}{a:-2}{a:9}{a:1
+}]| take while
+{|x| $x a<0
+termsize
+size
 (term size
-
 columns(term size
-)rowstimeit{ sleep 500ms }
-{ sleep 500ms }
-http get
-https://www.nushell.sh/book/ | timeit { split chars }
-timeit ls
--la[[foo bar]; [1 2]]| to csv
-[[foo bar]; [1 2]]| to csv
--s';'{a:1b:2
+)rowstimeit{ sleep 500ms }{ sleep 500ms }
+http
+get
+https://www.nushell.sh/book/
+| timeit { split chars }
+timeit
+ls
+-la[[foo bar]; [1 2]]
+| to csv
+[[foobar]; [1 2]]| to csv
+-s
+';'{a:1b:2
 }| to csv
 [[foo bar]; [1 2]]| to html
 [[foo bar]; [1 2]]| to html
@@ -2116,9 +2290,9 @@ tutor -f
 [[fruit count]; [apple 9] [apple 2] [pear 3] [orange 7]]| uniq-by fruit
 {'name':'nu','stars':5}| update name
 'Nushell'[[count fruit]; [1 'apple']]| enumerate | update item.count
-{|e| ($e itemfruit
+{|e| ($e
 itemfruit
-| str length
+itemfruit| str length
 )+$e index}| get item
 [[project, authors]; ['nu', ['Andrés','JT','Yehuda']]]| update authors
 {|row| $row authors| str join
@@ -2147,9 +2321,9 @@ if $value ==0{""}else
 'Nushell'[[name lang]; [Nushell ''] [Reedline '']]| upsert lang
 'Rust'{'name':'nu','stars':5}| upsert language
 'Rust'[[count fruit]; [1 'apple']]| enumerate | upsert item.count
-{|e| ($e itemfruit
+{|e| ($e
 itemfruit
-| str length
+itemfruit| str length
 )+$e index}| get item
 [123]| upsert 0
 2[123]| upsert 3
@@ -2196,28 +2370,41 @@ view span
 12watch .
 --glob=**/*.rs{||cargo test
 }watch .
-{ |op, path, new_path| ($op )($path
+{ |op, path, new_path| ($op
+)($path
 )
-($new_path )watch
+($new_path
+)watch
 watch
 /foo/bar
 /foo/bar
-{ |op, path| ($op )-($path 
+{ |op, path| ($op
+)-($path
 (char nl
-)| save --append
+)
+(char nl
+)
+| save --append
 changes_in_bar.log
-
 [{a:1
 }{a:2
+
 }]| where a > 1
-[12]| where {|x| $x > 1}
-ls | where size > 2kb
-ls | where type == file
-ls | where name =~ "Car"
-ls | where modified >= (date now) - 2wk
+[12]
+| where {|x| $x > 1}
+ls
+| where size > 2kb
+ls
+| where type == file
+ls
+| where name =~
+"Car"
+ls | where modified >= (date now
+) - 2wk
 ls | where type == file
 | sort-by name
--n| enumerate | where {|e| $e.item.name !~ $'^($e.index + 1)' }
+-n| enumerate | where {|e| $e.item.name !~ ^($e
+index+1) }
 | each {|| get item }
 which myapp
 mut x = 0while $x <10{$x =$x +1}[1234]

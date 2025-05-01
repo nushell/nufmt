@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 use clap::Parser;
+use colored::*;
 use ignore::{DirEntry, WalkBuilder};
 use log::{error, info, trace, warn};
 use nu_formatter::config::Config;
@@ -92,19 +93,15 @@ fn main() {
         }
     };
 
-    let exit_code = match cli.files[..] {
-        [] if cli.stdin => {
-            let stdin_input = io::stdin().lines().map(|x| x.unwrap()).collect();
-            format_string(stdin_input, &config)
-        }
-        [] if cli.check => {
-            let results = check_files(cli.files, &config);
-            exit_from_check(&results)
-        }
-        _ => {
-            let results = format_files(cli.files, &config);
-            exit_from_format(&results)
-        }
+    let exit_code = if cli.stdin {
+        let stdin_input = io::stdin().lines().map(|x| x.unwrap()).collect();
+        format_string(stdin_input, &config)
+    } else if cli.check {
+        let results = check_files(cli.files, &config);
+        exit_from_check(&results)
+    } else {
+        let results = format_files(cli.files, &config);
+        exit_from_format(&results)
     };
 
     std::io::stdout().flush().unwrap();
@@ -156,8 +153,9 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
             CheckOutcome::NeedsFormatting => need_formatting.push(file),
             CheckOutcome::Failure(reason) => {
                 error!(
-                    "\x1b[1mFailed to check {}:\x1b[0m{}",
-                    make_relative(file),
+                    "{} {}: {}",
+                    "Failed to check".bold(),
+                    make_relative(file).bold(),
                     &reason
                 );
                 at_least_one_failure = true;
@@ -167,7 +165,7 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
 
     for file in &need_formatting {
         let file_rel = make_relative(file);
-        println!("Would reformat: \x1b[1m{}\x1b[0m", file_rel);
+        println!("Would reformat: {}", file_rel.bold());
     }
 
     let need_formatting_count = need_formatting.len();
@@ -212,8 +210,9 @@ fn exit_from_format(results: &[(PathBuf, FormatOutcome)]) -> ExitCode {
             FormatOutcome::Reformatted => reformatted += 1,
             FormatOutcome::Failure(reason) => {
                 error!(
-                    "\x1b[1mFailed to format {}:\x1b[0m{}",
-                    make_relative(file),
+                    "{} {}: {}",
+                    "Failed to format".bold(),
+                    make_relative(file).bold(),
                     &reason
                 );
                 at_least_one_failure = true;
