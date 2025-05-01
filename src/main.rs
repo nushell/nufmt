@@ -3,7 +3,7 @@
 use clap::Parser;
 use colored::*;
 use ignore::{DirEntry, WalkBuilder};
-use log::{info, trace, warn};
+use log::{info, trace};
 use nu_formatter::config::Config;
 use nu_formatter::{CheckOutcome, FormatOutcome};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -167,13 +167,14 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
     let mut need_formatting: usize = 0;
     let mut failures: usize = 0;
     let mut at_least_one_failure = false;
+    let mut warning_messages: Vec<String> = vec![];
 
     for (file, result) in results {
         match result {
             CheckOutcome::AlreadyFormatted => already_formatted += 1,
             CheckOutcome::NeedsFormatting => {
                 need_formatting += 1;
-                println!("Would reformat: {}", make_relative(file).bold());
+                warning_messages.push(format!("Would reformat: {}", make_relative(file).bold()));
             }
             CheckOutcome::Failure(reason) => {
                 failures += 1;
@@ -187,6 +188,10 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
                 at_least_one_failure = true;
             }
         }
+    }
+
+    for msg in warning_messages {
+        println!("{}", msg);
     }
 
     if already_formatted + need_formatting + failures == 0 {
@@ -246,7 +251,10 @@ fn exit_from_format(results: &[(PathBuf, FormatOutcome)]) -> ExitCode {
     }
 
     if left_unchanged + reformatted + failures == 0 {
-        warn!("No Nushell files found under the given path(s)");
+        print!(
+            "{}: no Nushell files found under the given path(s)",
+            "warning".bright_yellow(),
+        );
         return ExitCode::Success;
     }
 
