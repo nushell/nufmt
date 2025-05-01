@@ -125,44 +125,61 @@ fn format_string(string: String, options: &Config) -> ExitCode {
 
 /// check a list of files, possibly one
 fn check_files(files: Vec<PathBuf>, options: &Config) -> Vec<(PathBuf, CheckOutcome)> {
-    let target_files = discover_files(&files);
-    target_files
+    let (target_files, invalid_paths) = discover_files(files);
+    let mut results = target_files
         .into_par_iter()
         .map(|file| {
-            info!("formatting file: {:?}", &file);
+            info!("checking file: {:?}", &file);
             nu_formatter::check_single_file(file, options)
         })
-        .collect()
+        .collect::<Vec<(PathBuf, CheckOutcome)>>();
+    for path in invalid_paths {
+        results.push((
+            path,
+            CheckOutcome::Failure("cannot find the file specified".to_string()),
+        ));
+    }
+    results
 }
 
 /// format a list of files, possibly one, and modify them in place
 fn format_files(files: Vec<PathBuf>, options: &Config) -> Vec<(PathBuf, FormatOutcome)> {
-    let target_files = discover_files(&files);
-    target_files
+    let (target_files, invalid_paths) = discover_files(files);
+    let mut results = target_files
         .into_par_iter()
         .map(|file| {
             info!("formatting file: {:?}", &file);
             nu_formatter::format_single_file(file, options)
         })
-        .collect()
+        .collect::<Vec<(PathBuf, FormatOutcome)>>();
+    for path in invalid_paths {
+        results.push((
+            path,
+            FormatOutcome::Failure("cannot find the file specified".to_string()),
+        ));
+    }
+    results
 }
 
 /// Display results and return the appropriate exit code after formatting in check mode
 fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
-    dbg!(results);
-
     let mut already_formatted: usize = 0;
-    let mut need_formatting: Vec<&PathBuf> = vec![];
+    let mut need_formatting: usize = 0;
+    let mut failures: usize = 0;
     let mut at_least_one_failure = false;
 
     for (file, result) in results {
         match result {
             CheckOutcome::AlreadyFormatted => already_formatted += 1,
-            CheckOutcome::NeedsFormatting => need_formatting.push(file),
+            CheckOutcome::NeedsFormatting => {
+                need_formatting += 1;
+                println!("Would reformat: {}", make_relative(file).bold());
+            }
             CheckOutcome::Failure(reason) => {
+                failures += 1;
                 println!(
                     "{}: {} {}: {}",
-                    "Error".bright_red(),
+                    "error".bright_red(),
                     "Failed to check".bold(),
                     make_relative(file).bold(),
                     &reason
@@ -172,26 +189,19 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
         }
     }
 
-    for file in &need_formatting {
-        let file_rel = make_relative(file);
-        println!("Would reformat: {}", file_rel.bold());
-    }
-
-    let need_formatting_count = need_formatting.len();
-
-    if already_formatted + need_formatting_count == 0 {
+    if already_formatted + need_formatting + failures == 0 {
         print!(
             "{}: no Nushell files found under the given path(s)",
-            "Warning".bright_yellow(),
+            "warning".bright_yellow(),
         );
         return ExitCode::Success;
     }
 
-    if need_formatting_count > 0 {
+    if need_formatting > 0 {
         println!(
             "{} file{} would be reformatted",
-            need_formatting_count,
-            if need_formatting_count == 1 { "" } else { "s" }
+            need_formatting,
+            if need_formatting == 1 { "" } else { "s" }
         );
     }
     if already_formatted > 0 {
@@ -203,7 +213,7 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
     };
     if at_least_one_failure {
         ExitCode::Failure
-    } else if need_formatting_count > 0 {
+    } else if need_formatting > 0 {
         ExitCode::CheckFailed
     } else {
         ExitCode::Success
@@ -214,6 +224,7 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
 fn exit_from_format(results: &[(PathBuf, FormatOutcome)]) -> ExitCode {
     let mut left_unchanged: usize = 0;
     let mut reformatted: usize = 0;
+    let mut failures: usize = 0;
     let mut at_least_one_failure = false;
 
     for (file, result) in results {
@@ -221,9 +232,10 @@ fn exit_from_format(results: &[(PathBuf, FormatOutcome)]) -> ExitCode {
             FormatOutcome::AlreadyFormatted => left_unchanged += 1,
             FormatOutcome::Reformatted => reformatted += 1,
             FormatOutcome::Failure(reason) => {
+                failures += 1;
                 println!(
                     "{}: {} {}: {}",
-                    "Error".bright_red(),
+                    "error".bright_red(),
                     "Failed to format".bold(),
                     make_relative(file).bold(),
                     &reason
@@ -233,7 +245,7 @@ fn exit_from_format(results: &[(PathBuf, FormatOutcome)]) -> ExitCode {
         }
     }
 
-    if left_unchanged + reformatted == 0 {
+    if left_unchanged + reformatted + failures == 0 {
         warn!("No Nushell files found under the given path(s)");
         return ExitCode::Success;
     }
@@ -262,8 +274,20 @@ fn exit_from_format(results: &[(PathBuf, FormatOutcome)]) -> ExitCode {
 }
 
 /// Return the different files to analyze, taking only files with .nu extension and discarding files in .nufmtignore
-fn discover_files(paths: &[PathBuf]) -> Vec<PathBuf> {
-    paths
+/// and the invalid paths provided
+fn discover_files(paths: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let mut valid_paths: Vec<PathBuf> = vec![];
+    let mut invalid_paths: Vec<PathBuf> = vec![];
+
+    for path in paths {
+        if path.exists() {
+            valid_paths.push(path);
+        } else {
+            invalid_paths.push(path);
+        }
+    }
+
+    let nu_files = valid_paths
         .iter()
         .flat_map(|path| {
             WalkBuilder::new(path)
@@ -274,7 +298,9 @@ fn discover_files(paths: &[PathBuf]) -> Vec<PathBuf> {
                 .map(|path| path.into_path())
                 .collect::<Vec<PathBuf>>()
         })
-        .collect()
+        .collect();
+
+    (nu_files, invalid_paths)
 }
 
 /// Return whether a DirEntry is a .nu file or not
