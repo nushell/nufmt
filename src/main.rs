@@ -111,10 +111,16 @@ fn main() {
 
 /// format a string passed via stdin and output it directly to stdout
 fn format_string(string: String, options: &Config) -> ExitCode {
-    let output = nu_formatter::format_string(&string, options);
-    println!("{output}");
-
-    ExitCode::Success
+    match nu_formatter::format_string(&string, options) {
+        Ok(output) => {
+            println!("{output}");
+            ExitCode::Success
+        }
+        Err(err) => {
+            println!("{}: {}", "Could not format stdin".red(), err);
+            ExitCode::Failure
+        }
+    }
 }
 
 /// check a list of files, possibly one
@@ -143,6 +149,8 @@ fn format_files(files: Vec<PathBuf>, options: &Config) -> Vec<(PathBuf, FormatOu
 
 /// Display results and return the appropriate exit code after formatting in check mode
 fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
+    dbg!(results);
+
     let mut already_formatted: usize = 0;
     let mut need_formatting: Vec<&PathBuf> = vec![];
     let mut at_least_one_failure = false;

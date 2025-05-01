@@ -2,6 +2,7 @@
 //!
 //! It does not do anything more than that, which makes it so fast.
 use config::Config;
+use format_error::FormatError;
 use formatting::{add_newline_at_end_of_file, format_inner};
 use log::debug;
 use std::fs::File;
@@ -9,6 +10,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 pub mod config;
+pub mod format_error;
 mod formatting;
 
 /// The possible outcome of checking a file
@@ -42,7 +44,12 @@ pub fn check_single_file(file: PathBuf, config: &Config) -> (PathBuf, CheckOutco
         }
     };
 
-    let formatted_bytes = add_newline_at_end_of_file(format_inner(&contents, config));
+    let formatted_bytes = add_newline_at_end_of_file(match format_inner(&contents, config) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return (file, CheckOutcome::Failure(err.to_string()));
+        }
+    });
 
     if formatted_bytes == contents {
         (file, CheckOutcome::AlreadyFormatted)
@@ -60,7 +67,12 @@ pub fn format_single_file(file: PathBuf, config: &Config) -> (PathBuf, FormatOut
         }
     };
 
-    let formatted_bytes = add_newline_at_end_of_file(format_inner(&contents, config));
+    let formatted_bytes = add_newline_at_end_of_file(match format_inner(&contents, config) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return (file, FormatOutcome::Failure(err.to_string()));
+        }
+    });
 
     if formatted_bytes == contents {
         debug!("File is already formatted correctly.");
@@ -77,10 +89,11 @@ pub fn format_single_file(file: PathBuf, config: &Config) -> (PathBuf, FormatOut
 }
 
 /// format a string of Nushell code
-pub fn format_string(input_string: &String, config: &Config) -> String {
+pub fn format_string(input_string: &String, config: &Config) -> Result<String, FormatError> {
     let contents = input_string.as_bytes();
-    let formatted_bytes = format_inner(contents, config);
-    String::from_utf8(formatted_bytes).unwrap()
+    let formatted_bytes = format_inner(contents, config)?;
+    Ok(String::from_utf8(formatted_bytes)
+        .expect("Formatted string could not be converted to a UTF-8 string"))
 }
 
 #[cfg(test)]
