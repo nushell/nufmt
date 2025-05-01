@@ -179,7 +179,7 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
     let need_formatting_count = need_formatting.len();
 
     if already_formatted + need_formatting_count == 0 {
-        warn!("No Nushell files found under the given path(s)");
+        print!("{}: {}", "Warning".bright_yellow(), "no Nushell files found under the given path(s)");
         return ExitCode::Success;
     }
 
