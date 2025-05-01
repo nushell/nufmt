@@ -3,7 +3,7 @@
 //! It does not do anything more than that, which makes it so fast.
 use config::Config;
 use formatting::{add_newline_at_end_of_file, format_inner};
-use log::{debug, trace};
+use log::debug;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -11,23 +11,69 @@ use std::path::PathBuf;
 pub mod config;
 mod formatting;
 
-/// format a Nushell file inplace
-pub fn format_single_file(file: &PathBuf, config: &Config) {
-    let contents = std::fs::read(file)
-        .unwrap_or_else(|_| panic!("something went wrong reading the file {}", file.display()));
+/// The possible outcome of checking a file
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckOutcome {
+    /// File is already correctly formatted
+    AlreadyFormatted,
+    /// File would be reformatted if check mode was off
+    NeedsFormatting,
+    /// An error occurred while trying to access or write to the file
+    Failure(String),
+}
+
+/// The possible outcome of checking or formatting a file
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FormatOutcome {
+    /// File was left unchanged, as it is already correctly formatted
+    AlreadyFormatted,
+    /// File was formatted successfully
+    Reformatted,
+    /// An error occurred while trying to access or write to the file
+    Failure(String),
+}
+
+/// check a Nushell file
+pub fn check_single_file(file: PathBuf, config: &Config) -> (PathBuf, CheckOutcome) {
+    let contents = match std::fs::read(&file) {
+        Ok(content) => content,
+        Err(err) => {
+            return (file, CheckOutcome::Failure(err.to_string()));
+        }
+    };
+
+    let formatted_bytes = add_newline_at_end_of_file(format_inner(&contents, config));
+
+    if formatted_bytes == contents {
+        (file, CheckOutcome::AlreadyFormatted)
+    } else {
+        (file, CheckOutcome::NeedsFormatting)
+    }
+}
+
+/// format a Nushell file in place
+pub fn format_single_file(file: PathBuf, config: &Config) -> (PathBuf, FormatOutcome) {
+    let contents = match std::fs::read(&file) {
+        Ok(content) => content,
+        Err(err) => {
+            return (file, FormatOutcome::Failure(err.to_string()));
+        }
+    };
 
     let formatted_bytes = add_newline_at_end_of_file(format_inner(&contents, config));
 
     if formatted_bytes == contents {
         debug!("File is already formatted correctly.");
+        return (file, FormatOutcome::AlreadyFormatted);
     }
 
-    let mut writer = File::create(file).unwrap();
+    let mut writer = File::create(&file).unwrap();
     let file_bytes = formatted_bytes.as_slice();
     writer
         .write_all(file_bytes)
         .expect("something went wrong writing");
-    trace!("written");
+    debug!("File formatted.");
+    (file, FormatOutcome::Reformatted)
 }
 
 /// format a string of Nushell code

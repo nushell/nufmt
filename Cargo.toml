@@ -21,6 +21,8 @@ log = "0.4.17"
 nu-cmd-lang = "0.99.0"
 nu-parser = "0.99.0"
 nu-protocol = "0.99.0"
+ignore = "0.4"
+rayon = "1.10"
 
 [dev-dependencies]
 criterion = "0.5.1"

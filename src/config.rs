@@ -1,6 +1,6 @@
 //! Keeps all the options, tweaks and dials of the configuration.
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub tab_spaces: usize,
     pub max_width: usize,
