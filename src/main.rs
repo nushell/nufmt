@@ -3,7 +3,7 @@
 use clap::Parser;
 use colored::*;
 use ignore::{DirEntry, WalkBuilder};
-use log::{error, info, trace, warn};
+use log::{info, trace, warn};
 use nu_formatter::config::Config;
 use nu_formatter::{CheckOutcome, FormatOutcome};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -160,8 +160,9 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
             CheckOutcome::AlreadyFormatted => already_formatted += 1,
             CheckOutcome::NeedsFormatting => need_formatting.push(file),
             CheckOutcome::Failure(reason) => {
-                error!(
-                    "{} {}: {}",
+                println!(
+                    "{}: {} {}: {}",
+                    "Error".bright_red(),
                     "Failed to check".bold(),
                     make_relative(file).bold(),
                     &reason
@@ -179,7 +180,10 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
     let need_formatting_count = need_formatting.len();
 
     if already_formatted + need_formatting_count == 0 {
-        print!("{}: {}", "Warning".bright_yellow(), "no Nushell files found under the given path(s)");
+        print!(
+            "{}: no Nushell files found under the given path(s)",
+            "Warning".bright_yellow(),
+        );
         return ExitCode::Success;
     }
 
@@ -217,8 +221,9 @@ fn exit_from_format(results: &[(PathBuf, FormatOutcome)]) -> ExitCode {
             FormatOutcome::AlreadyFormatted => left_unchanged += 1,
             FormatOutcome::Reformatted => reformatted += 1,
             FormatOutcome::Failure(reason) => {
-                error!(
-                    "{} {}: {}",
+                println!(
+                    "{}: {} {}: {}",
+                    "Error".bright_red(),
                     "Failed to format".bold(),
                     make_relative(file).bold(),
                     &reason

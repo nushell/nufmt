@@ -104,10 +104,13 @@ mod test {
     /// 1. formatting the input gives the expected result
     /// 2. formatting the output of `nufmt` a second time does not change the content
     fn run_test(input: &str, expected: &str) {
-        let formatted = format_string(&input.to_string(), &Config::default());
+        let formatted = format_string(&input.to_string(), &Config::default()).unwrap();
 
         assert_eq!(expected.to_string(), formatted);
-        assert_eq!(formatted, format_string(&formatted, &Config::default()));
+        assert_eq!(
+            formatted,
+            format_string(&formatted, &Config::default()).unwrap()
+        );
     }
 
     #[test]
