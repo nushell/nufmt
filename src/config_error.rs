@@ -4,13 +4,13 @@ use thiserror::Error;
 pub enum ConfigError {
     #[error("Failed read the configuration file: {0}")]
     IOError(String),
-    #[error("The configuration is not valid nuon record")]
+    #[error("The configuration is not a valid nuon record")]
     InvalidFormat,
-    #[error("Unknown configuration option: {0}")]
+    #[error("Found unknown configuration option: {0}")]
     UnknownOption(String),
-    #[error("Invalid type for '{0}': got {1}, expected {2}")]
+    #[error("Found invalid type for option '{0}': got {1}, expected {2}")]
     InvalidOptionType(String, String, &'static str),
-    #[error("Invalid value for '{0}': got {1}, expected {2}")]
+    #[error("Found invalid value for option '{0}': got {1}, expected {2}")]
     InvalidOptionValue(String, String, &'static str),
 }
 

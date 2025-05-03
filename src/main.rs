@@ -90,11 +90,13 @@ fn main() {
         Some(cli_config) => match read_config(&cli_config) {
             Ok(config) => config,
             Err(err) => {
-                eprintln!("{}", err);
+                eprintln!("{}: {}", "error".bright_red(), &err);
                 return exit_with_code(ExitCode::Failure);
             }
         },
     };
+
+    dbg!(&config.line_length);
 
     let exit_code = if cli.stdin {
         let stdin_input = io::stdin().lines().map(|x| x.unwrap()).collect();
@@ -126,7 +128,7 @@ fn format_string(string: String, options: &Config) -> ExitCode {
             ExitCode::Success
         }
         Err(err) => {
-            println!("{}: {}", "Could not format stdin".red(), err);
+            eprintln!("{}: {}", "Could not format stdin".red(), err);
             ExitCode::Failure
         }
     }
@@ -187,7 +189,7 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
             }
             CheckOutcome::Failure(reason) => {
                 failures += 1;
-                println!(
+                eprintln!(
                     "{}: {} {}: {}",
                     "error".bright_red(),
                     "Failed to check".bold(),
@@ -247,7 +249,7 @@ fn exit_from_format(results: &[(PathBuf, FormatOutcome)]) -> ExitCode {
             FormatOutcome::Reformatted => reformatted += 1,
             FormatOutcome::Failure(reason) => {
                 failures += 1;
-                println!(
+                eprintln!(
                     "{}: {} {}: {}",
                     "error".bright_red(),
                     "Failed to format".bold(),

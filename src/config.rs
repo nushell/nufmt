@@ -52,7 +52,7 @@ impl TryFrom<Value> for Config {
                                     if *val <= 0 {
                                         return Err(ConfigError::InvalidOptionValue(
                                             key.to_string(),
-                                            value.get_type().to_string(),
+                                            format!("{}", val),
                                             "a positive number",
                                         ));
                                     }
@@ -74,7 +74,7 @@ impl TryFrom<Value> for Config {
                                     if *val <= 0 {
                                         return Err(ConfigError::InvalidOptionValue(
                                             key.to_string(),
-                                            value.get_type().to_string(),
+                                            format!("{}", val),
                                             "a positive number",
                                         ));
                                     }
@@ -96,7 +96,7 @@ impl TryFrom<Value> for Config {
                                     if *val <= 0 {
                                         return Err(ConfigError::InvalidOptionValue(
                                             key.to_string(),
-                                            value.get_type().to_string(),
+                                            format!("{}", val),
                                             "a positive number",
                                         ));
                                     }
