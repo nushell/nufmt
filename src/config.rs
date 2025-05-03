@@ -82,12 +82,10 @@ fn parse_value_to_usize(key: &str, value: &Value) -> Result<usize, ConfigError> 
             }
             Ok(*val as usize)
         }
-        other => {
-            return Err(ConfigError::InvalidOptionType(
-                key.to_string(),
-                other.get_type().to_string(),
-                "number",
-            ));
-        }
+        other => Err(ConfigError::InvalidOptionType(
+            key.to_string(),
+            other.get_type().to_string(),
+            "number",
+        )),
     }
 }

@@ -14,6 +14,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+const DEFAULT_CONFIG_FILE: &str = "nufmt.nuon";
+
 /// The possible exit codes
 enum ExitCode {
     /// nufmt terminates successfully, regardless of whether files or stdin were formatted.
@@ -85,7 +87,8 @@ fn main() {
     trace!("recieved cli.stdin: {:?}", cli.stdin);
     trace!("recieved cli.config: {:?}", cli.config);
 
-    let config = match cli.config {
+    let config_file = cli.config.or(find_in_parent_dirs(DEFAULT_CONFIG_FILE));
+    let config = match config_file {
         None => Config::default(),
         Some(cli_config) => match read_config(&cli_config) {
             Ok(config) => config,
@@ -136,7 +139,7 @@ fn format_string(string: String, options: &Config) -> ExitCode {
 
 /// check a list of files, possibly one
 fn check_files(files: Vec<PathBuf>, options: &Config) -> Vec<(PathBuf, CheckOutcome)> {
-    let (target_files, invalid_paths) = discover_files(files);
+    let (target_files, invalid_paths) = discover_nu_files(files);
     let mut results = target_files
         .into_par_iter()
         .map(|file| {
@@ -155,7 +158,7 @@ fn check_files(files: Vec<PathBuf>, options: &Config) -> Vec<(PathBuf, CheckOutc
 
 /// format a list of files, possibly one, and modify them in place
 fn format_files(files: Vec<PathBuf>, options: &Config) -> Vec<(PathBuf, FormatOutcome)> {
-    let (target_files, invalid_paths) = discover_files(files);
+    let (target_files, invalid_paths) = discover_nu_files(files);
     let mut results = target_files
         .into_par_iter()
         .map(|file| {
@@ -294,7 +297,7 @@ fn exit_from_format(results: &[(PathBuf, FormatOutcome)]) -> ExitCode {
 
 /// Return the different files to analyze, taking only files with .nu extension and discarding files in .nufmtignore
 /// and the invalid paths provided
-fn discover_files(paths: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
+fn discover_nu_files(paths: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
     let mut valid_paths: Vec<PathBuf> = vec![];
     let mut invalid_paths: Vec<PathBuf> = vec![];
 
@@ -310,7 +313,6 @@ fn discover_files(paths: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
         .iter()
         .flat_map(|path| {
             WalkBuilder::new(path)
-                .add_custom_ignore_filename(".nufmtignore")
                 .build()
                 .filter_map(Result::ok)
                 .filter(is_nu_file)
@@ -337,6 +339,22 @@ fn make_relative(path: &Path) -> String {
         .replace("\\", "/")
         .trim_start_matches("./")
         .to_string()
+}
+
+/// Search for `filename` in current or any parent directories.
+/// If `start_dir` is not provided, the current directory is used
+fn find_in_parent_dirs(filename: &str) -> Option<PathBuf> {
+    let start_dir = std::env::current_dir().unwrap_or(PathBuf::from("."));
+
+    let mut dir = Some(start_dir.as_path());
+    while let Some(current) = dir {
+        let candidate = current.join(filename);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        dir = current.parent();
+    }
+    None
 }
 
 #[cfg(test)]
