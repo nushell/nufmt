@@ -16,7 +16,7 @@ use std::{
 enum ExitCode {
     /// nufmt terminates successfully, regardless of whether files or stdin were formatted.
     Success,
-    /// only used in check mode: nufmt terminates successfully and at least one file or stdin would be formatted if check mode was off.
+    /// only used in check mode: nufmt terminates successfully and at least one file would be formatted if check mode was off.
     CheckFailed,
     /// nufmt terminates abnormally due to invalid configuration, invalid CLI options, or an internal error.
     Failure,

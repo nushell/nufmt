@@ -77,6 +77,14 @@ nufmt my-file1.nu my-file2.nu my-file3.nu
 - `-h` or `--help` show help and exit
 - `-v` or `--version` prints the version and exit
 
+### Exit codes
+
+``nufmt`` exits with the following status codes:
+- **0**: if ``nufmt`` terminates successfully, regardless of whether files or stdin were formatted.
+- **1** (only used in check mode): ``nufmt`` terminates successfully and at least one file would be formatted if check mode was off.
+- **2**: ``nufmt`` terminates abnormally due to invalid configuration, invalid CLI options, or an internal error.
+
+
 ## Contributing
 
 We have a [contribution guide](docs/CONTRIBUTING.md). If you still have doubts, you can mention @`AucaCoyan` who is active on this repo.
