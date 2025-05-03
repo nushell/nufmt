@@ -47,69 +47,15 @@ impl TryFrom<Value> for Config {
                 for (key, value) in record.iter() {
                     match key.as_str() {
                         "indent" => {
-                            let indent: usize = match value {
-                                Value::Int { val, .. } => {
-                                    if *val <= 0 {
-                                        return Err(ConfigError::InvalidOptionValue(
-                                            key.to_string(),
-                                            format!("{}", val),
-                                            "a positive number",
-                                        ));
-                                    }
-                                    *val as usize
-                                }
-                                other => {
-                                    return Err(ConfigError::InvalidOptionType(
-                                        key.to_string(),
-                                        other.get_type().to_string(),
-                                        "number",
-                                    ));
-                                }
-                            };
+                            let indent = parse_value_to_usize(key, value)?;
                             config.indent = indent;
                         }
                         "line_length" => {
-                            let line_length: usize = match value {
-                                Value::Int { val, .. } => {
-                                    if *val <= 0 {
-                                        return Err(ConfigError::InvalidOptionValue(
-                                            key.to_string(),
-                                            format!("{}", val),
-                                            "a positive number",
-                                        ));
-                                    }
-                                    *val as usize
-                                }
-                                other => {
-                                    return Err(ConfigError::InvalidOptionType(
-                                        key.to_string(),
-                                        other.get_type().to_string(),
-                                        "number",
-                                    ));
-                                }
-                            };
+                            let line_length = parse_value_to_usize(key, value)?;
                             config.line_length = line_length;
                         }
                         "margin" => {
-                            let margin: usize = match value {
-                                Value::Int { val, .. } => {
-                                    if *val <= 0 {
-                                        return Err(ConfigError::InvalidOptionValue(
-                                            key.to_string(),
-                                            format!("{}", val),
-                                            "a positive number",
-                                        ));
-                                    }
-                                    *val as usize
-                                }
-                                other => {
-                                    return Err(ConfigError::InvalidOptionType(
-                                        key.to_string(),
-                                        other.get_type().to_string(),
-                                        "number",
-                                    ));
-                                }
-                            };
+                            let margin = parse_value_to_usize(key, value)?;
                             config.margin = margin;
                         }
                         unknown => return Err(ConfigError::UnknownOption(unknown.to_string())),
@@ -121,5 +67,27 @@ impl TryFrom<Value> for Config {
             }
         }
         Ok(config)
+    }
+}
+
+fn parse_value_to_usize(key: &str, value: &Value) -> Result<usize, ConfigError> {
+    match value {
+        Value::Int { val, .. } => {
+            if *val <= 0 {
+                return Err(ConfigError::InvalidOptionValue(
+                    key.to_string(),
+                    format!("{}", val),
+                    "a positive number",
+                ));
+            }
+            Ok(*val as usize)
+        }
+        other => {
+            return Err(ConfigError::InvalidOptionType(
+                key.to_string(),
+                other.get_type().to_string(),
+                "number",
+            ));
+        }
     }
 }
