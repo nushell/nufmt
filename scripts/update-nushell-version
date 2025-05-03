@@ -10,10 +10,14 @@ def main [
     | str replace 'https://img.shields.io/badge/nushell-v\d+\.\d+\.\d+-green' $"https://img.shields.io/badge/nushell-v($version)-green"
     | save --force README.md
 
+    log info "updating the `nu-cmd-lang` dependency"
+    cargo add $"nu-cmd-lang@($version)"
     log info "updating the `nu-parser` dependency"
     cargo add $"nu-parser@($version)"
     log info "updating the `nu-protocol` dependency"
     cargo add $"nu-protocol@($version)"
+    log info "updating the `nuon` dependency"
+    cargo add $"nuon@($version)"
 
     log warning "do not forget to commit and push this :wink:"
 }

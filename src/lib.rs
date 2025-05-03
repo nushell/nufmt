@@ -10,6 +10,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 pub mod config;
+pub mod config_error;
 pub mod format_error;
 mod formatting;
 

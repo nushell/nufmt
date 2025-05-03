@@ -5,8 +5,10 @@ use colored::*;
 use ignore::{DirEntry, WalkBuilder};
 use log::{info, trace};
 use nu_formatter::config::Config;
+use nu_formatter::config_error::ConfigError;
 use nu_formatter::{CheckOutcome, FormatOutcome};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use std::convert::TryFrom;
 use std::{
     io::{self, Write},
     path::{Path, PathBuf},
@@ -85,12 +87,13 @@ fn main() {
 
     let config = match cli.config {
         None => Config::default(),
-        Some(input_cli) => {
-            todo!(
-                "cannot read from {:?} Reading a config from file not implemented!",
-                input_cli
-            )
-        }
+        Some(cli_config) => match read_config(&cli_config) {
+            Ok(config) => config,
+            Err(err) => {
+                eprintln!("{}", err);
+                return exit_with_code(ExitCode::Failure);
+            }
+        },
     };
 
     let exit_code = if cli.stdin {
@@ -107,6 +110,12 @@ fn main() {
     std::io::stdout().flush().unwrap();
 
     exit_with_code(exit_code);
+}
+
+fn read_config(path: &PathBuf) -> Result<Config, ConfigError> {
+    let content = std::fs::read_to_string(path)?;
+    let content_nuon = nuon::from_nuon(&content, None)?;
+    Config::try_from(content_nuon)
 }
 
 /// format a string passed via stdin and output it directly to stdout

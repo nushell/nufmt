@@ -13,7 +13,7 @@
 [discord-url]: https://discord.gg/NtAbbGn
 [ci-badge]: https://github.com/nushell/nufmt/actions/workflows/main.yml/badge.svg
 [ci-url]: https://github.com/nushell/nufmt/actions/workflows/main.yml
-[nushell-badge]: https://img.shields.io/badge/nushell-v0.103.0-green
+[nushell-badge]: https://img.shields.io/badge/nushell-v0.104.0-green
 [nushell-url]: https://crates.io/crates/nu
 
 </div>
