@@ -1,4 +1,12 @@
 #![doc = include_str!("../README.md")]
+#![deny(warnings, rustdoc::broken_intra_doc_links)]
+#![warn(
+    clippy::explicit_iter_loop,
+    clippy::explicit_into_iter_loop,
+    clippy::semicolon_if_nothing_returned,
+    clippy::doc_markdown,
+    clippy::manual_let_else
+)]
 
 use clap::Parser;
 use colored::*;
@@ -295,7 +303,7 @@ fn discover_nu_files(
     Ok((nu_files, invalid_paths))
 }
 
-/// Return whether a DirEntry is a .nu file or not
+/// Return whether a `DirEntry` is a .nu file or not
 fn is_nu_file(entry: &DirEntry) -> bool {
     entry.file_type().map(|ft| ft.is_file()).unwrap_or(false)
         && entry.path().extension().is_some_and(|ext| ext == "nu")
@@ -359,8 +367,8 @@ mod tests {
         fs::write(&config_file, config_content).unwrap();
 
         let config = read_config(&config_file).expect("Config should be valid");
-        assert_eq!(config.line_length, 120 as usize);
-        assert_eq!(config.excludes.len(), 2 as usize);
+        assert_eq!(config.line_length, 120_usize);
+        assert_eq!(config.excludes.len(), 2_usize);
     }
 
     #[rstest]
