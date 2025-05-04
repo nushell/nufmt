@@ -9,9 +9,9 @@
 )]
 
 use clap::Parser;
-use colored::*;
 use ignore::{overrides::OverrideBuilder, DirEntry, WalkBuilder};
 use log::{info, trace};
+use nu_ansi_term::{Color, Style};
 use nu_formatter::config::Config;
 use nu_formatter::config_error::ConfigError;
 use nu_formatter::FileDiagnostic;
@@ -102,7 +102,7 @@ fn main() {
         Some(cli_config) => match read_config(&cli_config) {
             Ok(config) => config,
             Err(err) => {
-                eprintln!("{}: {}", "error".bright_red(), &err);
+                eprintln!("{}: {}", Color::LightRed.paint("error"), &err);
                 return exit_with_code(ExitCode::Failure);
             }
         },
@@ -115,7 +115,7 @@ fn main() {
         let (target_files, invalid_files) = match discover_nu_files(cli.files, &config.excludes) {
             Ok(files) => files,
             Err(err) => {
-                eprintln!("{}: {}", "error".bright_red(), err);
+                eprintln!("{}: {}", Color::LightRed.paint("error"), err);
                 return exit_with_code(ExitCode::Failure);
             }
         };
@@ -145,7 +145,11 @@ fn format_string(string: String, options: &Config) -> ExitCode {
             ExitCode::Success
         }
         Err(err) => {
-            eprintln!("{}: {}", "Could not format stdin".red(), err);
+            eprintln!(
+                "{}: {}",
+                Color::LightRed.paint("Could not format stdin"),
+                err
+            );
             ExitCode::Failure
         }
     }
@@ -198,20 +202,22 @@ fn display_diagnostic_and_compute_exit_code(
     for (file, result) in results {
         match result {
             FileDiagnostic::AlreadyFormatted => already_formatted += 1,
-            FileDiagnostic::ReformattedOrWouldFormat => {
+            FileDiagnostic::Reformatted => {
                 reformatted_or_would_reformat += 1;
                 if check {
-                    warning_messages
-                        .push(format!("Would reformat: {}", make_relative(file).bold()));
+                    warning_messages.push(format!(
+                        "Would reformat: {}",
+                        Style::new().bold().paint(make_relative(file))
+                    ));
                 };
             }
             FileDiagnostic::Failure(reason) => {
                 failures += 1;
                 eprintln!(
                     "{}: {} {}: {}",
-                    "error".bright_red(),
-                    file_failed_msg.bold(),
-                    make_relative(file).bold(),
+                    Color::LightRed.paint("error"),
+                    Style::new().bold().paint(file_failed_msg),
+                    Style::new().bold().paint(make_relative(file)),
                     &reason
                 );
                 at_least_one_failure = true;
@@ -226,7 +232,7 @@ fn display_diagnostic_and_compute_exit_code(
     if already_formatted + reformatted_or_would_reformat + failures == 0 {
         print!(
             "{}: no Nushell files found under the given path(s)",
-            "warning".bright_yellow(),
+            Color::LightYellow.paint("warning"),
         );
         return ExitCode::Success;
     }
@@ -396,17 +402,17 @@ mod tests {
         (PathBuf::from("b.nu"), FileDiagnostic::AlreadyFormatted),], true, ExitCode::Success)]
     #[case(vec![
         (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
-        (PathBuf::from("b.nu"), FileDiagnostic::ReformattedOrWouldFormat),], false, ExitCode::Success)]
+        (PathBuf::from("b.nu"), FileDiagnostic::Reformatted),], false, ExitCode::Success)]
     #[case(vec![
         (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
-        (PathBuf::from("b.nu"), FileDiagnostic::ReformattedOrWouldFormat),], true, ExitCode::CheckFailed)]
+        (PathBuf::from("b.nu"), FileDiagnostic::Reformatted),], true, ExitCode::CheckFailed)]
     #[case(vec![
         (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
-        (PathBuf::from("b.nu"), FileDiagnostic::ReformattedOrWouldFormat),
+        (PathBuf::from("b.nu"), FileDiagnostic::Reformatted),
         (PathBuf::from("c.nu"), FileDiagnostic::Failure("some error".to_string())),], false, ExitCode::Failure)]
     #[case(vec![
         (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
-        (PathBuf::from("b.nu"), FileDiagnostic::ReformattedOrWouldFormat),
+        (PathBuf::from("b.nu"), FileDiagnostic::Reformatted),
         (PathBuf::from("c.nu"), FileDiagnostic::Failure("some error".to_string())),], true, ExitCode::Failure)]
     fn exit_code(
         #[case] results: Vec<(PathBuf, FileDiagnostic)>,

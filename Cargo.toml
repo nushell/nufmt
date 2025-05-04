@@ -15,10 +15,10 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.3.0", optional = true, features = ["unicode", "derive"] }
-colored = "2"
 env_logger = "0.10.0"
 ignore = "0.4"
 log = "0.4.17"
+nu-ansi-term = "0.50.1"
 nu-cmd-lang = "0.104.0"
 nu-parser = "0.104.0"
 nu-protocol = "0.104.0"
