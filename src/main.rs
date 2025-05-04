@@ -17,6 +17,7 @@ use std::{
 const DEFAULT_CONFIG_FILE: &str = "nufmt.nuon";
 
 /// The possible exit codes
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ExitCode {
     /// nufmt terminates successfully, regardless of whether files or stdin were formatted.
     Success,
@@ -376,5 +377,35 @@ mod tests {
 
         let config = read_config(&config_file);
         assert!(config.is_err());
+    }
+
+    #[rstest]
+    #[case(vec![
+        (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
+        (PathBuf::from("b.nu"), FileDiagnostic::AlreadyFormatted),], false, ExitCode::Success)]
+    #[case(vec![
+        (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
+        (PathBuf::from("b.nu"), FileDiagnostic::AlreadyFormatted),], true, ExitCode::Success)]
+    #[case(vec![
+        (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
+        (PathBuf::from("b.nu"), FileDiagnostic::ReformattedOrWouldFormat),], false, ExitCode::Success)]
+    #[case(vec![
+        (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
+        (PathBuf::from("b.nu"), FileDiagnostic::ReformattedOrWouldFormat),], true, ExitCode::CheckFailed)]
+    #[case(vec![
+        (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
+        (PathBuf::from("b.nu"), FileDiagnostic::ReformattedOrWouldFormat),
+        (PathBuf::from("c.nu"), FileDiagnostic::Failure("some error".to_string())),], false, ExitCode::Failure)]
+    #[case(vec![
+        (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
+        (PathBuf::from("b.nu"), FileDiagnostic::ReformattedOrWouldFormat),
+        (PathBuf::from("c.nu"), FileDiagnostic::Failure("some error".to_string())),], true, ExitCode::Failure)]
+    fn exit_code(
+        #[case] results: Vec<(PathBuf, FileDiagnostic)>,
+        #[case] check: bool,
+        #[case] expected: ExitCode,
+    ) {
+        let exit_code = display_diagnostic_and_compute_exit_code(&results, check);
+        assert_eq!(exit_code, expected);
     }
 }
