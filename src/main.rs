@@ -171,13 +171,13 @@ fn handle_invalid_file(files: Vec<PathBuf>) -> Vec<(PathBuf, FileDiagnostic)> {
 fn format_files(
     files: Vec<PathBuf>,
     options: &Config,
-    check: bool,
+    check_mode: bool,
 ) -> Vec<(PathBuf, FileDiagnostic)> {
     files
         .into_par_iter()
         .map(|file| {
             info!("formatting file: {:?}", &file);
-            nu_formatter::format_single_file(file, options, check)
+            nu_formatter::format_single_file(file, options, check_mode)
         })
         .collect()
 }
@@ -185,7 +185,7 @@ fn format_files(
 /// Display results and return the appropriate exit code after formatting in check mode
 fn display_diagnostic_and_compute_exit_code(
     results: &[(PathBuf, FileDiagnostic)],
-    check: bool,
+    check_mode: bool,
 ) -> ExitCode {
     let mut already_formatted: usize = 0;
     let mut reformatted_or_would_reformat: usize = 0;
@@ -193,7 +193,7 @@ fn display_diagnostic_and_compute_exit_code(
     let mut at_least_one_failure = false;
     let mut warning_messages: Vec<String> = vec![];
 
-    let file_failed_msg = if check {
+    let file_failed_msg = if check_mode {
         "Failed to check"
     } else {
         "Failed to format"
@@ -204,7 +204,7 @@ fn display_diagnostic_and_compute_exit_code(
             FileDiagnostic::AlreadyFormatted => already_formatted += 1,
             FileDiagnostic::Reformatted => {
                 reformatted_or_would_reformat += 1;
-                if check {
+                if check_mode {
                     warning_messages.push(format!(
                         "Would reformat: {}",
                         Style::new().bold().paint(make_relative(file))
@@ -238,7 +238,7 @@ fn display_diagnostic_and_compute_exit_code(
     }
 
     if reformatted_or_would_reformat > 0 {
-        let msg = if check {
+        let msg = if check_mode {
             "would be reformatted"
         } else {
             "were formatted"
@@ -263,7 +263,7 @@ fn display_diagnostic_and_compute_exit_code(
     };
     if at_least_one_failure {
         ExitCode::Failure
-    } else if check && reformatted_or_would_reformat > 0 {
+    } else if check_mode && reformatted_or_would_reformat > 0 {
         ExitCode::CheckFailed
     } else {
         ExitCode::Success
@@ -416,10 +416,10 @@ mod tests {
         (PathBuf::from("c.nu"), FileDiagnostic::Failure("some error".to_string())),], true, ExitCode::Failure)]
     fn exit_code(
         #[case] results: Vec<(PathBuf, FileDiagnostic)>,
-        #[case] check: bool,
+        #[case] check_mode: bool,
         #[case] expected: ExitCode,
     ) {
-        let exit_code = display_diagnostic_and_compute_exit_code(&results, check);
+        let exit_code = display_diagnostic_and_compute_exit_code(&results, check_mode);
         assert_eq!(exit_code, expected);
     }
 }

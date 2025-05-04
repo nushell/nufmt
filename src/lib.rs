@@ -21,7 +21,7 @@ pub enum FileDiagnostic {
     AlreadyFormatted,
     /// File was formatted successfully
     /// In check mode, file would be reformatted if check mode was off
-    ReformattedOrWouldFormat,
+    Reformatted,
     /// An error occurred while trying to access or write to the file
     Failure(String),
 }
@@ -31,7 +31,7 @@ pub enum FileDiagnostic {
 pub fn format_single_file(
     file: PathBuf,
     config: &Config,
-    check: bool,
+    check_mode: bool,
 ) -> (PathBuf, FileDiagnostic) {
     let contents = match std::fs::read(&file) {
         Ok(content) => content,
@@ -52,7 +52,7 @@ pub fn format_single_file(
         return (file, FileDiagnostic::AlreadyFormatted);
     }
 
-    if !check {
+    if !check_mode {
         let mut writer = match File::create(&file) {
             Ok(file) => file,
             Err(err) => {
@@ -65,7 +65,7 @@ pub fn format_single_file(
         }
         debug!("File formatted.");
     }
-    (file, FileDiagnostic::ReformattedOrWouldFormat)
+    (file, FileDiagnostic::Reformatted)
 }
 
 /// format a string of Nushell code
