@@ -10,6 +10,7 @@ pub struct Config {
     pub indent: usize,
     pub line_length: usize,
     pub margin: usize,
+    pub excludes: Vec<String>,
 }
 
 impl Default for Config {
@@ -18,6 +19,7 @@ impl Default for Config {
             indent: 4,
             line_length: 80,
             margin: 1,
+            excludes: vec![],
         }
     }
 }
@@ -28,6 +30,7 @@ impl Config {
             indent: tab_spaces,
             line_length: max_width,
             margin,
+            excludes: vec![],
         }
     }
 }
@@ -58,6 +61,10 @@ impl TryFrom<Value> for Config {
                             let margin = parse_value_to_usize(key, value)?;
                             config.margin = margin;
                         }
+                        "exclude" => {
+                            let excludes = parse_excludes(value)?;
+                            config.excludes = excludes;
+                        }
                         unknown => return Err(ConfigError::UnknownOption(unknown.to_string())),
                     }
                 }
@@ -86,6 +93,34 @@ fn parse_value_to_usize(key: &str, value: &Value) -> Result<usize, ConfigError> 
             key.to_string(),
             other.get_type().to_string(),
             "number",
+        )),
+    }
+}
+
+fn parse_excludes(value: &Value) -> Result<Vec<String>, ConfigError> {
+    match value {
+        Value::List { vals, .. } => {
+            let mut excludes = vec![];
+            for val in vals {
+                match val {
+                    Value::String { val, .. } => {
+                        excludes.push(val.clone());
+                    }
+                    other => {
+                        return Err(ConfigError::InvalidOptionType(
+                            "excludes".to_string(),
+                            other.get_type().to_string(),
+                            "list<string>",
+                        ));
+                    }
+                }
+            }
+            Ok(excludes)
+        }
+        other => Err(ConfigError::InvalidOptionType(
+            "excludes".to_string(),
+            other.get_type().to_string(),
+            "list<string>",
         )),
     }
 }

@@ -14,79 +14,58 @@ pub mod config_error;
 pub mod format_error;
 mod formatting;
 
-/// The possible outcome of checking a file
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CheckOutcome {
-    /// File is already correctly formatted
-    AlreadyFormatted,
-    /// File would be reformatted if check mode was off
-    NeedsFormatting,
-    /// An error occurred while trying to access or write to the file
-    Failure(String),
-}
-
 /// The possible outcome of checking or formatting a file
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FormatOutcome {
+pub enum FileDiagnostic {
     /// File was left unchanged, as it is already correctly formatted
     AlreadyFormatted,
     /// File was formatted successfully
-    Reformatted,
+    /// In check mode, file would be reformatted if check mode was off
+    ReformattedOrWouldFormat,
     /// An error occurred while trying to access or write to the file
     Failure(String),
 }
 
-/// check a Nushell file
-pub fn check_single_file(file: PathBuf, config: &Config) -> (PathBuf, CheckOutcome) {
+/// format or check a Nushell file in place
+/// only check the file (do not write) in check mode
+pub fn format_single_file(
+    file: PathBuf,
+    config: &Config,
+    check: bool,
+) -> (PathBuf, FileDiagnostic) {
     let contents = match std::fs::read(&file) {
         Ok(content) => content,
         Err(err) => {
-            return (file, CheckOutcome::Failure(err.to_string()));
+            return (file, FileDiagnostic::Failure(err.to_string()));
         }
     };
 
     let formatted_bytes = add_newline_at_end_of_file(match format_inner(&contents, config) {
         Ok(bytes) => bytes,
         Err(err) => {
-            return (file, CheckOutcome::Failure(err.to_string()));
-        }
-    });
-
-    if formatted_bytes == contents {
-        (file, CheckOutcome::AlreadyFormatted)
-    } else {
-        (file, CheckOutcome::NeedsFormatting)
-    }
-}
-
-/// format a Nushell file in place
-pub fn format_single_file(file: PathBuf, config: &Config) -> (PathBuf, FormatOutcome) {
-    let contents = match std::fs::read(&file) {
-        Ok(content) => content,
-        Err(err) => {
-            return (file, FormatOutcome::Failure(err.to_string()));
-        }
-    };
-
-    let formatted_bytes = add_newline_at_end_of_file(match format_inner(&contents, config) {
-        Ok(bytes) => bytes,
-        Err(err) => {
-            return (file, FormatOutcome::Failure(err.to_string()));
+            return (file, FileDiagnostic::Failure(err.to_string()));
         }
     });
 
     if formatted_bytes == contents {
         debug!("File is already formatted correctly.");
-        return (file, FormatOutcome::AlreadyFormatted);
+        return (file, FileDiagnostic::AlreadyFormatted);
     }
 
-    let mut writer = File::create(&file).unwrap();
-    let file_bytes = formatted_bytes.as_slice();
-    writer
-        .write_all(file_bytes)
-        .expect("something went wrong writing");
-    debug!("File formatted.");
-    (file, FormatOutcome::Reformatted)
+    if !check {
+        let mut writer = match File::create(&file) {
+            Ok(file) => file,
+            Err(err) => {
+                return (file, FileDiagnostic::Failure(err.to_string()));
+            }
+        };
+        let file_bytes = formatted_bytes.as_slice();
+        if let Err(err) = writer.write_all(file_bytes) {
+            return (file, FileDiagnostic::Failure(err.to_string()));
+        }
+        debug!("File formatted.");
+    }
+    (file, FileDiagnostic::ReformattedOrWouldFormat)
 }
 
 /// format a string of Nushell code

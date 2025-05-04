@@ -2,11 +2,11 @@
 
 use clap::Parser;
 use colored::*;
-use ignore::{DirEntry, WalkBuilder};
+use ignore::{overrides::OverrideBuilder, DirEntry, WalkBuilder};
 use log::{info, trace};
 use nu_formatter::config::Config;
 use nu_formatter::config_error::ConfigError;
-use nu_formatter::{CheckOutcome, FormatOutcome};
+use nu_formatter::FileDiagnostic;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::convert::TryFrom;
 use std::{
@@ -104,15 +104,22 @@ fn main() {
     let exit_code = if cli.stdin {
         let stdin_input = io::stdin().lines().map(|x| x.unwrap()).collect();
         format_string(stdin_input, &config)
-    } else if cli.check {
-        let results = check_files(cli.files, &config);
-        exit_from_check(&results)
     } else {
-        let results = format_files(cli.files, &config);
-        exit_from_format(&results)
+        let (target_files, invalid_files) = match discover_nu_files(cli.files, &config.excludes) {
+            Ok(files) => files,
+            Err(err) => {
+                eprintln!("{}: {}", "error".bright_red(), err);
+                return exit_with_code(ExitCode::Failure);
+            }
+        };
+        let mut results = handle_invalid_file(invalid_files);
+        results.extend(format_files(target_files, &config, cli.check));
+        display_diagnostic_and_compute_exit_code(&results, cli.check)
     };
 
-    std::io::stdout().flush().unwrap();
+    std::io::stdout()
+        .flush()
+        .expect("Unexpected error occurred when flushing stdout");
 
     exit_with_code(exit_code);
 }
@@ -137,65 +144,66 @@ fn format_string(string: String, options: &Config) -> ExitCode {
     }
 }
 
-/// check a list of files, possibly one
-fn check_files(files: Vec<PathBuf>, options: &Config) -> Vec<(PathBuf, CheckOutcome)> {
-    let (target_files, invalid_paths) = discover_nu_files(files);
-    let mut results = target_files
-        .into_par_iter()
-        .map(|file| {
-            info!("checking file: {:?}", &file);
-            nu_formatter::check_single_file(file, options)
-        })
-        .collect::<Vec<(PathBuf, CheckOutcome)>>();
-    for path in invalid_paths {
+fn handle_invalid_file(files: Vec<PathBuf>) -> Vec<(PathBuf, FileDiagnostic)> {
+    let mut results: Vec<(PathBuf, FileDiagnostic)> = vec![];
+    for file in files {
         results.push((
-            path,
-            CheckOutcome::Failure("cannot find the file specified".to_string()),
+            file,
+            FileDiagnostic::Failure("cannot find the file specified".to_string()),
         ));
     }
     results
 }
 
 /// format a list of files, possibly one, and modify them in place
-fn format_files(files: Vec<PathBuf>, options: &Config) -> Vec<(PathBuf, FormatOutcome)> {
-    let (target_files, invalid_paths) = discover_nu_files(files);
-    let mut results = target_files
+/// if check mode is on, only check the files but do not modify them in place
+fn format_files(
+    files: Vec<PathBuf>,
+    options: &Config,
+    check: bool,
+) -> Vec<(PathBuf, FileDiagnostic)> {
+    files
         .into_par_iter()
         .map(|file| {
             info!("formatting file: {:?}", &file);
-            nu_formatter::format_single_file(file, options)
+            nu_formatter::format_single_file(file, options, check)
         })
-        .collect::<Vec<(PathBuf, FormatOutcome)>>();
-    for path in invalid_paths {
-        results.push((
-            path,
-            FormatOutcome::Failure("cannot find the file specified".to_string()),
-        ));
-    }
-    results
+        .collect()
 }
 
 /// Display results and return the appropriate exit code after formatting in check mode
-fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
+fn display_diagnostic_and_compute_exit_code(
+    results: &[(PathBuf, FileDiagnostic)],
+    check: bool,
+) -> ExitCode {
     let mut already_formatted: usize = 0;
-    let mut need_formatting: usize = 0;
+    let mut reformatted_or_would_reformat: usize = 0;
     let mut failures: usize = 0;
     let mut at_least_one_failure = false;
     let mut warning_messages: Vec<String> = vec![];
 
+    let file_failed_msg = if check {
+        "Failed to check"
+    } else {
+        "Failed to format"
+    };
+
     for (file, result) in results {
         match result {
-            CheckOutcome::AlreadyFormatted => already_formatted += 1,
-            CheckOutcome::NeedsFormatting => {
-                need_formatting += 1;
-                warning_messages.push(format!("Would reformat: {}", make_relative(file).bold()));
+            FileDiagnostic::AlreadyFormatted => already_formatted += 1,
+            FileDiagnostic::ReformattedOrWouldFormat => {
+                reformatted_or_would_reformat += 1;
+                if check {
+                    warning_messages
+                        .push(format!("Would reformat: {}", make_relative(file).bold()));
+                };
             }
-            CheckOutcome::Failure(reason) => {
+            FileDiagnostic::Failure(reason) => {
                 failures += 1;
                 eprintln!(
                     "{}: {} {}: {}",
                     "error".bright_red(),
-                    "Failed to check".bold(),
+                    file_failed_msg.bold(),
                     make_relative(file).bold(),
                     &reason
                 );
@@ -208,7 +216,7 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
         println!("{}", msg);
     }
 
-    if already_formatted + need_formatting + failures == 0 {
+    if already_formatted + reformatted_or_would_reformat + failures == 0 {
         print!(
             "{}: no Nushell files found under the given path(s)",
             "warning".bright_yellow(),
@@ -216,11 +224,21 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
         return ExitCode::Success;
     }
 
-    if need_formatting > 0 {
+    if reformatted_or_would_reformat > 0 {
+        let msg = if check {
+            "would be reformatted"
+        } else {
+            "were formatted"
+        };
         println!(
-            "{} file{} would be reformatted",
-            need_formatting,
-            if need_formatting == 1 { "" } else { "s" }
+            "{} file{} {}",
+            reformatted_or_would_reformat,
+            if reformatted_or_would_reformat == 1 {
+                ""
+            } else {
+                "s"
+            },
+            msg,
         );
     }
     if already_formatted > 0 {
@@ -232,72 +250,19 @@ fn exit_from_check(results: &[(PathBuf, CheckOutcome)]) -> ExitCode {
     };
     if at_least_one_failure {
         ExitCode::Failure
-    } else if need_formatting > 0 {
+    } else if reformatted_or_would_reformat > 0 {
         ExitCode::CheckFailed
     } else {
         ExitCode::Success
     }
 }
 
-/// Display results and return the appropriate exit code after formatting in format mode
-fn exit_from_format(results: &[(PathBuf, FormatOutcome)]) -> ExitCode {
-    let mut left_unchanged: usize = 0;
-    let mut reformatted: usize = 0;
-    let mut failures: usize = 0;
-    let mut at_least_one_failure = false;
-
-    for (file, result) in results {
-        match result {
-            FormatOutcome::AlreadyFormatted => left_unchanged += 1,
-            FormatOutcome::Reformatted => reformatted += 1,
-            FormatOutcome::Failure(reason) => {
-                failures += 1;
-                eprintln!(
-                    "{}: {} {}: {}",
-                    "error".bright_red(),
-                    "Failed to format".bold(),
-                    make_relative(file).bold(),
-                    &reason
-                );
-                at_least_one_failure = true;
-            }
-        }
-    }
-
-    if left_unchanged + reformatted + failures == 0 {
-        print!(
-            "{}: no Nushell files found under the given path(s)",
-            "warning".bright_yellow(),
-        );
-        return ExitCode::Success;
-    }
-
-    if reformatted > 0 {
-        println!(
-            "{} file{} were reformatted",
-            reformatted,
-            if reformatted == 1 { "" } else { "s" }
-        );
-    }
-
-    if left_unchanged > 0 {
-        println!(
-            "{} file{} already formatted",
-            left_unchanged,
-            if left_unchanged == 1 { "" } else { "s" }
-        );
-    };
-
-    if at_least_one_failure {
-        ExitCode::Failure
-    } else {
-        ExitCode::Success
-    }
-}
-
-/// Return the different files to analyze, taking only files with .nu extension and discarding files in .nufmtignore
+/// Return the different files to analyze, taking only files with .nu extension and discarding files excluded in the config
 /// and the invalid paths provided
-fn discover_nu_files(paths: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
+fn discover_nu_files(
+    paths: Vec<PathBuf>,
+    excludes: &Vec<String>,
+) -> Result<(Vec<PathBuf>, Vec<PathBuf>), ConfigError> {
     let mut valid_paths: Vec<PathBuf> = vec![];
     let mut invalid_paths: Vec<PathBuf> = vec![];
 
@@ -309,10 +274,17 @@ fn discover_nu_files(paths: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
         }
     }
 
+    let mut overrides = OverrideBuilder::new(".");
+    for pattern in excludes {
+        overrides.add(&format!("!{}", pattern))?;
+    }
+    let overrides = overrides.build()?;
+
     let nu_files = valid_paths
         .iter()
         .flat_map(|path| {
             WalkBuilder::new(path)
+                .overrides(overrides.clone())
                 .build()
                 .filter_map(Result::ok)
                 .filter(is_nu_file)
@@ -321,7 +293,7 @@ fn discover_nu_files(paths: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
         })
         .collect();
 
-    (nu_files, invalid_paths)
+    Ok((nu_files, invalid_paths))
 }
 
 /// Return whether a DirEntry is a .nu file or not
