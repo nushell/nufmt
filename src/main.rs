@@ -248,7 +248,7 @@ fn display_diagnostic_and_compute_exit_code(
     };
     if at_least_one_failure {
         ExitCode::Failure
-    } else if reformatted_or_would_reformat > 0 {
+    } else if check && reformatted_or_would_reformat > 0 {
         ExitCode::CheckFailed
     } else {
         ExitCode::Success

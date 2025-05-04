@@ -87,3 +87,52 @@ fn warning_is_displayed_when_no_files_are_detected_with_excluded_files() {
     assert!(stdout.contains("warning"));
     assert_eq!(output.status.code(), Some(0));
 }
+
+#[test]
+fn files_are_reformatted() {
+    let dir = tempdir().unwrap();
+    let config_file = dir.path().join("nufmt.nuon");
+    let file_a = dir.path().join("a.nu");
+    let file_b = dir.path().join("b.nu");
+    fs::write(&config_file, r#"{exclude: ["a*"]}"#).unwrap();
+    fs::write(&file_a, INVALID).unwrap();
+    fs::write(&file_b, INVALID).unwrap();
+
+    let output = Command::new("target/debug/nufmt")
+        .arg("--config")
+        .arg(config_file.to_str().unwrap())
+        .arg(dir.path().to_str().unwrap())
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+    let file_a_content = fs::read_to_string(file_a).unwrap();
+    let file_b_content = fs::read_to_string(file_b).unwrap();
+    assert_eq!(file_a_content.as_str(), INVALID);
+    assert_eq!(file_b_content.as_str(), VALID);
+}
+
+#[test]
+fn files_are_checked() {
+    let dir = tempdir().unwrap();
+    let config_file = dir.path().join("nufmt.nuon");
+    let file_a = dir.path().join("a.nu");
+    let file_b = dir.path().join("b.nu");
+    fs::write(&config_file, r#"{exclude: ["a*"]}"#).unwrap();
+    fs::write(&file_a, INVALID).unwrap();
+    fs::write(&file_b, INVALID).unwrap();
+
+    let output = Command::new("target/debug/nufmt")
+        .arg("--config")
+        .arg(config_file.to_str().unwrap())
+        .arg("--check")
+        .arg(dir.path().to_str().unwrap())
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    let file_a_content = fs::read_to_string(file_a).unwrap();
+    let file_b_content = fs::read_to_string(file_b).unwrap();
+    assert_eq!(file_a_content.as_str(), INVALID);
+    assert_eq!(file_b_content.as_str(), INVALID);
+}
