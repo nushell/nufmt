@@ -99,8 +99,6 @@ fn main() {
         },
     };
 
-    dbg!(&config.line_length);
-
     let exit_code = if cli.stdin {
         let stdin_input = io::stdin().lines().map(|x| x.unwrap()).collect();
         format_string(stdin_input, &config)
@@ -332,10 +330,51 @@ fn find_in_parent_dirs(filename: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn clap_cli_construction() {
         use clap::CommandFactory;
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn read_valid_config_empty() {
+        let dir = tempdir().unwrap();
+        let config_file = dir.path().join("nufmt.nuon");
+        fs::write(&config_file, "").unwrap();
+
+        let config = read_config(&config_file).expect("Config should be valid");
+        assert_eq!(config, Config::default());
+    }
+
+    #[rstest]
+    #[case(r#"{line_length: 120, exclude: ["a*nu", "b*.nu"]}"#)]
+    fn read_valid_config(#[case] config_content: &str) {
+        let dir = tempdir().unwrap();
+        let config_file = dir.path().join("nufmt.nuon");
+        fs::write(&config_file, config_content).unwrap();
+
+        let config = read_config(&config_file).expect("Config should be valid");
+        assert_eq!(config.line_length, 120 as usize);
+        assert_eq!(config.excludes.len(), 2 as usize);
+    }
+
+    #[rstest]
+    #[case(r#"some string"#)]
+    #[case(r#"{unknown: 1}"#)]
+    #[case(r#"{line_length: -1}"#)]
+    #[case(r#"{line_length: "120"}"#)]
+    #[case(r#"{exclude: "a*nu"}"#)]
+    #[case(r#"{exclude: ["a*nu", 1]}"#)]
+    fn read_invalid_config(#[case] config_content: &str) {
+        let dir = tempdir().unwrap();
+        let config_file = dir.path().join("nufmt.nuon");
+        fs::write(&config_file, config_content).unwrap();
+
+        let config = read_config(&config_file);
+        assert!(config.is_err());
     }
 }

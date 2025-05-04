@@ -41,11 +41,7 @@ impl TryFrom<Value> for Config {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         let mut config = Config::default();
         match value {
-            Value::String { val, .. } => {
-                if !val.is_empty() {
-                    return Err(ConfigError::InvalidFormat);
-                };
-            }
+            Value::Nothing { .. } => (),
             Value::Record { val: record, .. } => {
                 for (key, value) in record.iter() {
                     match key.as_str() {
@@ -72,7 +68,7 @@ impl TryFrom<Value> for Config {
             _ => {
                 return Err(ConfigError::InvalidFormat);
             }
-        }
+        };
         Ok(config)
     }
 }
