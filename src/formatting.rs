@@ -2,7 +2,8 @@
 //!
 //! It has functions to format slice of bytes and some help functions to separate concerns while doing the job.
 use crate::config::Config;
-use log::{error, info, trace};
+use crate::format_error::FormatError;
+use log::{debug, trace};
 use nu_parser::{flatten_block, parse, FlatShape};
 use nu_protocol::{
     ast::Block,
@@ -32,7 +33,7 @@ fn get_engine_state() -> EngineState {
 /// format an array of bytes
 ///
 /// Reading the file gives you a list of bytes
-pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
+pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Result<Vec<u8>, FormatError> {
     let engine_state = get_engine_state();
     let decls_sorted: Vec<(Vec<u8>, nu_protocol::Id<nu_protocol::marker::Decl>)> =
         engine_state.get_decls_sorted(false);
@@ -44,8 +45,8 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
 
     if !block_has_pipelines(&parsed_block) {
         trace!("block has no pipelines!");
-        info!("File has no code to format.");
-        return contents.to_vec();
+        debug!("File has no code to format.");
+        return Ok(contents.to_vec());
     }
 
     let flat = flatten_block(&working_set, &parsed_block);
@@ -122,9 +123,8 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
                 out.extend(b" ");
             }
             FlatShape::Garbage => {
-                error!("found garbage 😢 {content}");
-                out.extend(bytes);
-                out = insert_newline(out);
+                debug!("found garbage 😢 {content}");
+                return Err(FormatError::GarbageFound);
             }
 
             _ => out.extend(bytes),
@@ -147,7 +147,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Vec<u8> {
         start = span.end + 1;
     }
 
-    out
+    Ok(out)
 }
 
 /// insert a newline at the end of a buffer

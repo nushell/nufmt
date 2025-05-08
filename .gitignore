@@ -10,3 +10,6 @@ result
 # editors
 .idea/
 .vscode/
+
+# Everyone their own
+tmp/

@@ -13,7 +13,7 @@
 [discord-url]: https://discord.gg/NtAbbGn
 [ci-badge]: https://github.com/nushell/nufmt/actions/workflows/main.yml/badge.svg
 [ci-url]: https://github.com/nushell/nufmt/actions/workflows/main.yml
-[nushell-badge]: https://img.shields.io/badge/nushell-v0.103.0-green
+[nushell-badge]: https://img.shields.io/badge/nushell-v0.104.0-green
 [nushell-url]: https://crates.io/crates/nu
 
 </div>
@@ -60,6 +60,7 @@ nufmt my-file1.nu my-file2.nu my-file3.nu
 
 ### Options
 
+- `--dry-run` if you just want to check files without formatting them. It cannot be combined with stdin.
 - `-s` or `--stdin` formats from `stdin`, returns to `stdout` as a String. It cannot be used combined with `files`.
 - `-c` or `--config` pass the config file path.
   Sample:
@@ -73,9 +74,16 @@ nufmt my-file1.nu my-file2.nu my-file3.nu
   ```text
   nufmt --stdin <string> --config my-stdin-config.json
   ```
-
 - `-h` or `--help` show help and exit
 - `-v` or `--version` prints the version and exit
+
+### Exit codes
+
+``nufmt`` exits with the following status codes:
+- **0**: if ``nufmt`` terminates successfully, regardless of whether files or stdin were formatted.
+- **1** (only used in check mode): ``nufmt`` terminates successfully and at least one file would be formatted if check mode was off.
+- **2**: ``nufmt`` terminates abnormally due to invalid configuration, invalid CLI options, or an internal error.
+
 
 ## Contributing
 
