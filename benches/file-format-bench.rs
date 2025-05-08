@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use nu_formatter::{Mode, config::Config, format_single_file};
+use nu_formatter::{config::Config, format_single_file, Mode};
 use std::path::PathBuf;
 
 fn criterion_benchmark(c: &mut Criterion) {
