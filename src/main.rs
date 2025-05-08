@@ -15,6 +15,7 @@ use nu_ansi_term::{Color, Style};
 use nu_formatter::config::Config;
 use nu_formatter::config_error::ConfigError;
 use nu_formatter::FileDiagnostic;
+use nu_formatter::Mode;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::convert::TryFrom;
 use std::{
@@ -65,11 +66,11 @@ struct Cli {
         conflicts_with = "stdin",
         help = "Avoid writing any formatted files back; instead, exit with a non-zero status code if any files would have been modified, and zero otherwise"
     )]
-    check: bool,
+    dry_run: bool,
 
     #[arg(
         long,
-        conflicts_with = "check",
+        conflicts_with = "dry_run",
         conflicts_with = "files",
         help = "A string of Nushell directly given to the formatter"
     )]
@@ -119,9 +120,14 @@ fn main() {
                 return exit_with_code(ExitCode::Failure);
             }
         };
+        let mode = if cli.dry_run {
+            Mode::DryRun
+        } else {
+            Mode::default()
+        };
         let mut results = handle_invalid_file(invalid_files);
-        results.extend(format_files(target_files, &config, cli.check));
-        display_diagnostic_and_compute_exit_code(&results, cli.check)
+        results.extend(format_files(target_files, &config, &mode));
+        display_diagnostic_and_compute_exit_code(&results, cli.dry_run)
     };
 
     std::io::stdout()
@@ -171,13 +177,13 @@ fn handle_invalid_file(files: Vec<PathBuf>) -> Vec<(PathBuf, FileDiagnostic)> {
 fn format_files(
     files: Vec<PathBuf>,
     options: &Config,
-    check_mode: bool,
+    mode: &Mode,
 ) -> Vec<(PathBuf, FileDiagnostic)> {
     files
         .into_par_iter()
         .map(|file| {
             info!("formatting file: {:?}", &file);
-            nu_formatter::format_single_file(file, options, check_mode)
+            nu_formatter::format_single_file(file, options, mode)
         })
         .collect()
 }

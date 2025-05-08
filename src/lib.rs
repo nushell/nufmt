@@ -14,24 +14,30 @@ pub mod config_error;
 pub mod format_error;
 mod formatting;
 
-/// The possible outcome of checking or formatting a file
+/// Possible modes the formatter can run on
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Mode {
+    #[default]
+    Normal,
+    DryRun,
+}
+
+/// The possible outcome of formatting a file
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileDiagnostic {
     /// File was left unchanged, as it is already correctly formatted
     AlreadyFormatted,
     /// File was formatted successfully
-    /// In check mode, file would be reformatted if check mode was off
     Reformatted,
     /// An error occurred while trying to access or write to the file
     Failure(String),
 }
 
-/// format or check a Nushell file in place
-/// only check the file (do not write) in check mode
+/// format a Nushell file in place. Do not write in dry-run mode.
 pub fn format_single_file(
     file: PathBuf,
     config: &Config,
-    check_mode: bool,
+    mode: &Mode,
 ) -> (PathBuf, FileDiagnostic) {
     let contents = match std::fs::read(&file) {
         Ok(content) => content,
@@ -52,19 +58,24 @@ pub fn format_single_file(
         return (file, FileDiagnostic::AlreadyFormatted);
     }
 
-    if !check_mode {
-        let mut writer = match File::create(&file) {
-            Ok(file) => file,
-            Err(err) => {
+    match mode {
+        Mode::DryRun => {
+            debug!("File not formatted because running in dry run, but would be reformatted in normal mode.");
+        }
+        Mode::Normal => {
+            let mut writer = match File::create(&file) {
+                Ok(file) => file,
+                Err(err) => {
+                    return (file, FileDiagnostic::Failure(err.to_string()));
+                }
+            };
+            let file_bytes = formatted_bytes.as_slice();
+            if let Err(err) = writer.write_all(file_bytes) {
                 return (file, FileDiagnostic::Failure(err.to_string()));
             }
-        };
-        let file_bytes = formatted_bytes.as_slice();
-        if let Err(err) = writer.write_all(file_bytes) {
-            return (file, FileDiagnostic::Failure(err.to_string()));
+            debug!("File formatted.");
         }
-        debug!("File formatted.");
-    }
+    };
     (file, FileDiagnostic::Reformatted)
 }
 

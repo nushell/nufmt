@@ -57,7 +57,7 @@ fn warning_when_no_files_are_detected() {
     let dir = tempdir().unwrap();
 
     let output = Command::new("target/debug/nufmt")
-        .arg("--check")
+        .arg("--dry-run")
         .arg(dir.path().to_str().unwrap())
         .output()
         .unwrap();
@@ -78,7 +78,7 @@ fn warning_is_displayed_when_no_files_are_detected_with_excluded_files() {
     let output = Command::new("target/debug/nufmt")
         .arg("--config")
         .arg(config_file.to_str().unwrap())
-        .arg("--check")
+        .arg("--dry-run")
         .arg(dir.path().to_str().unwrap())
         .output()
         .unwrap();
@@ -125,7 +125,7 @@ fn files_are_checked() {
     let output = Command::new("target/debug/nufmt")
         .arg("--config")
         .arg(config_file.to_str().unwrap())
-        .arg("--check")
+        .arg("--dry-run")
         .arg(dir.path().to_str().unwrap())
         .output()
         .unwrap();
