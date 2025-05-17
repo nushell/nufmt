@@ -9,36 +9,43 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, rust-overlay, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    { self, ... }@inputs:
+    inputs.flake-utils.lib.eachDefaultSystem (
+      system:
       let
-        overlays = [ (import rust-overlay) ];
-        pkgs = import nixpkgs {
+        overlays = [ (import inputs.rust-overlay) ];
+        pkgs = import inputs.nixpkgs {
           inherit system overlays;
         };
       in
       {
         devShells.default = pkgs.mkShell {
-          nativeBuildInputs = with pkgs; [
-            rust-bin.stable.latest.default
-            rust-analyzer
-
+          inputsFrom = [ self.packages.${system}.default ];
+          packages = with pkgs; [
             nushell
-          ];
 
-          buildInputs = with pkgs; [ ];
+            # Not included in the package dependencies, but used for development
+            rust-analyzer
+          ];
         };
 
-        packages.default = pkgs.rustPlatform.buildRustPackage rec {
+        packages.default = self.packages.${system}.nufmt;
+        packages.nufmt = pkgs.rustPlatform.buildRustPackage {
           name = "nufmt";
-
           src = ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+        };
 
-          cargoLock = {
-            lockFile = ./Cargo.lock;
-          };
+        formatter = inputs.treefmt-nix.lib.mkWrapper pkgs {
+          programs.nixfmt.enable = true;
         };
       }
     );
