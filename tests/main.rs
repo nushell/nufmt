@@ -8,6 +8,7 @@ let one = 1
 const VALID: &str = "# beginning of script comment
 let one = 1
 ";
+const TEST_BINARY: &'static str = "target/debug/nufmt";
 
 #[test]
 fn failure_with_invalid_config() {
@@ -15,7 +16,7 @@ fn failure_with_invalid_config() {
     let config_file = dir.path().join("nufmt.nuon");
     fs::write(&config_file, r#"{unknown: 1}"#).unwrap();
 
-    let output = Command::new("target/debug/nufmt")
+    let output = Command::new(TEST_BINARY)
         .arg("--config")
         .arg(config_file.to_str().unwrap())
         .arg(dir.path().to_str().unwrap())
@@ -29,7 +30,7 @@ fn failure_with_invalid_config() {
 
 #[test]
 fn failure_with_invalid_config_file() {
-    let output = Command::new("target/debug/nufmt")
+    let output = Command::new(TEST_BINARY)
         .arg("--config")
         .arg("path/that/does/not/exist/nufmt.nuon")
         .output()
@@ -42,7 +43,7 @@ fn failure_with_invalid_config_file() {
 
 #[test]
 fn failure_with_invalid_file_to_format() {
-    let output = Command::new("target/debug/nufmt")
+    let output = Command::new(TEST_BINARY)
         .arg("path/that/does/not/exist/a.nu")
         .output()
         .unwrap();
@@ -56,7 +57,7 @@ fn failure_with_invalid_file_to_format() {
 fn warning_when_no_files_are_detected() {
     let dir = tempdir().unwrap();
 
-    let output = Command::new("target/debug/nufmt")
+    let output = Command::new(TEST_BINARY)
         .arg("--dry-run")
         .arg(dir.path().to_str().unwrap())
         .output()
@@ -75,7 +76,7 @@ fn warning_is_displayed_when_no_files_are_detected_with_excluded_files() {
     fs::write(&config_file, r#"{exclude: ["a*"]}"#).unwrap();
     fs::write(&file_a, INVALID).unwrap();
 
-    let output = Command::new("target/debug/nufmt")
+    let output = Command::new(TEST_BINARY)
         .arg("--config")
         .arg(config_file.to_str().unwrap())
         .arg("--dry-run")
@@ -98,7 +99,7 @@ fn files_are_reformatted() {
     fs::write(&file_a, INVALID).unwrap();
     fs::write(&file_b, INVALID).unwrap();
 
-    let output = Command::new("target/debug/nufmt")
+    let output = Command::new(TEST_BINARY)
         .arg("--config")
         .arg(config_file.to_str().unwrap())
         .arg(dir.path().to_str().unwrap())
@@ -122,7 +123,7 @@ fn files_are_checked() {
     fs::write(&file_a, INVALID).unwrap();
     fs::write(&file_b, INVALID).unwrap();
 
-    let output = Command::new("target/debug/nufmt")
+    let output = Command::new(TEST_BINARY)
         .arg("--config")
         .arg(config_file.to_str().unwrap())
         .arg("--dry-run")
