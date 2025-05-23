@@ -15,7 +15,7 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self {
+        Config {
             indent: 4,
             line_length: 80,
             margin: 1,
@@ -25,9 +25,8 @@ impl Default for Config {
 }
 
 impl Config {
-    #[must_use]
-    pub const fn new(tab_spaces: usize, max_width: usize, margin: usize) -> Self {
-        Self {
+    pub fn new(tab_spaces: usize, max_width: usize, margin: usize) -> Self {
+        Config {
             indent: tab_spaces,
             line_length: max_width,
             margin,
@@ -40,7 +39,7 @@ impl TryFrom<Value> for Config {
     type Error = ConfigError;
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
-        let mut config = Self::default();
+        let mut config = Config::default();
         match value {
             Value::Nothing { .. } => (),
             Value::Record { val: record, .. } => {
@@ -69,7 +68,7 @@ impl TryFrom<Value> for Config {
             _ => {
                 return Err(ConfigError::InvalidFormat);
             }
-        }
+        };
         Ok(config)
     }
 }
@@ -80,20 +79,11 @@ fn parse_value_to_usize(key: &str, value: &Value) -> Result<usize, ConfigError> 
             if *val <= 0 {
                 return Err(ConfigError::InvalidOptionValue(
                     key.to_string(),
-                    format!("{val}"),
+                    format!("{}", val),
                     "a positive number",
                 ));
             }
-            usize::try_from(*val).map_or_else(
-                |_| {
-                    Err(ConfigError::InvalidOptionValue(
-                        key.to_string(),
-                        format!("{val}"),
-                        "Not castable as usize",
-                    ))
-                },
-                Ok,
-            )
+            Ok(*val as usize)
         }
         other => Err(ConfigError::InvalidOptionType(
             key.to_string(),

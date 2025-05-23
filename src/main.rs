@@ -40,11 +40,11 @@ impl ExitCode {
     /// Return the exit code to use.
     /// If check mode is off: return 2 if at least one file could not be formatted, 0 otherwise (regardless of whether any files were formatted).
     /// If check mode is on: return 1 if some files would be formatted if check mode was off, 0 otherwise.
-    const fn code(&self) -> i32 {
+    fn code(&self) -> i32 {
         match self {
-            Self::Success => 0,
-            Self::CheckFailed => 1,
-            Self::Failure => 2,
+            ExitCode::Success => 0,
+            ExitCode::CheckFailed => 1,
+            ExitCode::Failure => 2,
         }
     }
 }
@@ -80,7 +80,7 @@ struct Cli {
     config: Option<PathBuf>,
 }
 
-fn exit_with_code(exit_code: &ExitCode) {
+fn exit_with_code(exit_code: ExitCode) {
     let code = exit_code.code();
     trace!("exit code: {code}");
 
@@ -97,36 +97,27 @@ fn main() {
     trace!("recieved cli.stdin: {:?}", cli.stdin);
     trace!("recieved cli.config: {:?}", cli.config);
 
-    let config_file = cli
-        .config
-        .or_else(|| find_in_parent_dirs(DEFAULT_CONFIG_FILE));
+    let config_file = cli.config.or(find_in_parent_dirs(DEFAULT_CONFIG_FILE));
     let config = match config_file {
         None => Config::default(),
         Some(cli_config) => match read_config(&cli_config) {
             Ok(config) => config,
             Err(err) => {
                 eprintln!("{}: {}", Color::LightRed.paint("error"), &err);
-                return exit_with_code(&ExitCode::Failure);
+                return exit_with_code(ExitCode::Failure);
             }
         },
     };
 
     let exit_code = if cli.stdin {
-        let mut input = String::new();
-        for line in io::stdin().lines() {
-            let l = match line {
-                Ok(l) => l,
-                Err(e) => panic!("Encountered error reading from stdin: {:?}", e),
-            };
-            input = format!("{input}\n{l}");
-        }
-        format_string(&input, &config)
+        let stdin_input = io::stdin().lines().map(|x| x.unwrap()).collect();
+        format_string(stdin_input, &config)
     } else {
         let (target_files, invalid_files) = match discover_nu_files(cli.files, &config.excludes) {
             Ok(files) => files,
             Err(err) => {
                 eprintln!("{}: {}", Color::LightRed.paint("error"), err);
-                return exit_with_code(&ExitCode::Failure);
+                return exit_with_code(ExitCode::Failure);
             }
         };
         let mode = if cli.dry_run {
@@ -139,11 +130,11 @@ fn main() {
         display_diagnostic_and_compute_exit_code(&results, cli.dry_run)
     };
 
-    let Ok(()) = std::io::stdout().flush() else {
-        panic!("Unexpected error occurred when flushing stdout");
-    };
+    std::io::stdout()
+        .flush()
+        .expect("Unexpected error occurred when flushing stdout");
 
-    exit_with_code(&exit_code);
+    exit_with_code(exit_code);
 }
 
 fn read_config(path: &PathBuf) -> Result<Config, ConfigError> {
@@ -153,8 +144,8 @@ fn read_config(path: &PathBuf) -> Result<Config, ConfigError> {
 }
 
 /// format a string passed via stdin and output it directly to stdout
-fn format_string(string: &str, options: &Config) -> ExitCode {
-    match nu_formatter::format_string(string, options) {
+fn format_string(string: String, options: &Config) -> ExitCode {
+    match nu_formatter::format_string(&string, options) {
         Ok(output) => {
             println!("{output}");
             ExitCode::Success
@@ -224,7 +215,7 @@ fn display_diagnostic_and_compute_exit_code(
                         "Would reformat: {}",
                         Style::new().bold().paint(make_relative(file))
                     ));
-                }
+                };
             }
             FileDiagnostic::Failure(reason) => {
                 failures += 1;
@@ -241,7 +232,7 @@ fn display_diagnostic_and_compute_exit_code(
     }
 
     for msg in warning_messages {
-        println!("{msg}");
+        println!("{}", msg);
     }
 
     if already_formatted + reformatted_or_would_reformat + failures == 0 {
@@ -275,7 +266,7 @@ fn display_diagnostic_and_compute_exit_code(
             already_formatted,
             if already_formatted == 1 { "" } else { "s" }
         );
-    }
+    };
     if at_least_one_failure {
         ExitCode::Failure
     } else if check_mode && reformatted_or_would_reformat > 0 {
@@ -304,7 +295,7 @@ fn discover_nu_files(
 
     let mut overrides = OverrideBuilder::new(".");
     for pattern in excludes {
-        overrides.add(&format!("!{pattern}"))?;
+        overrides.add(&format!("!{}", pattern))?;
     }
     let overrides = overrides.build()?;
 
@@ -316,7 +307,7 @@ fn discover_nu_files(
                 .build()
                 .filter_map(Result::ok)
                 .filter(is_nu_file)
-                .map(ignore::DirEntry::into_path)
+                .map(|path| path.into_path())
                 .collect::<Vec<PathBuf>>()
         })
         .collect();
@@ -326,12 +317,12 @@ fn discover_nu_files(
 
 /// Return whether a `DirEntry` is a .nu file or not
 fn is_nu_file(entry: &DirEntry) -> bool {
-    entry.file_type().is_some_and(|ft| ft.is_file())
+    entry.file_type().map(|ft| ft.is_file()).unwrap_or(false)
         && entry.path().extension().is_some_and(|ext| ext == "nu")
 }
 
 fn make_relative(path: &Path) -> String {
-    let current = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let current = std::env::current_dir().unwrap_or(PathBuf::from("."));
     path.strip_prefix(&current)
         .unwrap_or(path)
         .display()
@@ -344,7 +335,7 @@ fn make_relative(path: &Path) -> String {
 /// Search for `filename` in current or any parent directories.
 /// If `start_dir` is not provided, the current directory is used
 fn find_in_parent_dirs(filename: &str) -> Option<PathBuf> {
-    let start_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let start_dir = std::env::current_dir().unwrap_or(PathBuf::from("."));
 
     let mut dir = Some(start_dir.as_path());
     while let Some(current) = dir {

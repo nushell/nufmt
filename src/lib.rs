@@ -34,7 +34,6 @@ pub enum FileDiagnostic {
 }
 
 /// format a Nushell file in place. Do not write in dry-run mode.
-#[must_use]
 pub fn format_single_file(
     file: PathBuf,
     config: &Config,
@@ -76,12 +75,12 @@ pub fn format_single_file(
             }
             debug!("File formatted.");
         }
-    }
+    };
     (file, FileDiagnostic::Reformatted)
 }
 
 /// format a string of Nushell code
-pub fn format_string(input_string: &str, config: &Config) -> Result<String, FormatError> {
+pub fn format_string(input_string: &String, config: &Config) -> Result<String, FormatError> {
     let contents = input_string.as_bytes();
     let formatted_bytes = format_inner(contents, config)?;
     Ok(String::from_utf8(formatted_bytes)
@@ -96,7 +95,7 @@ mod test {
     /// 1. formatting the input gives the expected result
     /// 2. formatting the output of `nufmt` a second time does not change the content
     fn run_test(input: &str, expected: &str) {
-        let formatted = format_string(input, &Config::default()).unwrap();
+        let formatted = format_string(&input.to_string(), &Config::default()).unwrap();
 
         assert_eq!(expected.to_string(), formatted);
         assert_eq!(
