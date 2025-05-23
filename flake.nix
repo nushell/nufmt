@@ -53,6 +53,9 @@
             nushell
 
             # Not included in the package dependencies, but used for development
+            cargo-watch
+            clippy
+            rustfmt
             rust-analyzer
           ];
         };

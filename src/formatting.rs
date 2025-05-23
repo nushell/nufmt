@@ -1,6 +1,8 @@
 //! In this module occurs most of the magic in `nufmt`.
 //!
 //! It has functions to format slice of bytes and some help functions to separate concerns while doing the job.
+use std::str::Utf8Error;
+
 use crate::config::Config;
 use crate::format_error::FormatError;
 use log::{debug, trace};
@@ -12,17 +14,17 @@ use nu_protocol::{
 };
 
 trait DeclsExt {
-    fn get_decl_name(&self, decl_id: usize) -> Option<&str>;
+    fn get_decl_name(&self, decl_id: usize) -> Result<Option<&str>, Utf8Error>;
 }
 
 impl DeclsExt for Vec<(Vec<u8>, DeclId)> {
-    fn get_decl_name(&self, decl_id: usize) -> Option<&str> {
+    fn get_decl_name(&self, decl_id: usize) -> Result<Option<&str>, Utf8Error> {
         for decl in self {
             if decl_id == decl.1.get() {
-                return Some(std::str::from_utf8(&decl.0).expect("Failed to parse DeclId's name"));
+                return Some(std::str::from_utf8(&decl.0)).transpose();
             }
         }
-        None
+        Ok(None)
     }
 }
 
@@ -68,7 +70,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Result<Vec<u8>,
 
             let skipped_contents = &contents[start..span.start];
             let printable = String::from_utf8_lossy(skipped_contents).to_string();
-            trace!("contents: {:?}", printable);
+            trace!("contents: {printable:?}");
 
             out = write_only_if_have_hastag_or_equal(skipped_contents, out, true);
         }
@@ -107,7 +109,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Result<Vec<u8>,
 
                 trace!("Called Internal call with {declid}");
 
-                if let Some(decl_name) = decl_name {
+                if let Ok(Some(decl_name)) = decl_name {
                     out = resolve_call(bytes, decl_name, out);
                     after_a_def = decl_name == "def";
                 }
@@ -139,7 +141,7 @@ pub(crate) fn format_inner(contents: &[u8], _config: &Config) -> Result<Vec<u8>,
 
             let remaining_contents = &contents[span.end..end_of_file];
             let printable = String::from_utf8_lossy(remaining_contents).to_string();
-            trace!("contents: {:?}", printable);
+            trace!("contents: {printable:?}");
 
             out = write_only_if_have_hastag_or_equal(remaining_contents, out, false);
         }
@@ -194,8 +196,7 @@ fn write_only_if_have_hastag_or_equal(
 #[allow(clippy::wildcard_in_or_patterns)]
 fn resolve_call(c_bytes: &[u8], decl_name: &str, mut out: Vec<u8>) -> Vec<u8> {
     out = match decl_name {
-        "if" => insert_newline(out),
-        "def" => insert_newline(out),
+        "if" | "def" => insert_newline(out),
         "export def" | _ => out,
     };
     out.extend(c_bytes);
@@ -231,10 +232,12 @@ fn trim_ascii_whitespace(x: &[u8]) -> &[u8] {
     let Some(from) = x.iter().position(|x| !x.is_ascii_whitespace()) else {
         return &x[0..0];
     };
-    let to = x.iter().rposition(|x| !x.is_ascii_whitespace()).unwrap();
+    let Some(to) = x.iter().rposition(|x| !x.is_ascii_whitespace()) else {
+        panic!("Unhandled Option::None")
+    };
     let result = &x[from..=to];
     let printable = String::from_utf8_lossy(result).to_string();
-    trace!("stripped the whitespace, result: {:?}", printable);
+    trace!("stripped the whitespace, result: {printable:?}");
     result
 }
 
@@ -253,5 +256,8 @@ fn block_has_pipelines(block: &Block) -> bool {
 
 /// return true if the given span is the last one
 fn is_last_span(span: Span, flat: &[(Span, FlatShape)]) -> bool {
-    span == flat.last().unwrap().0
+    let Some(last_element) = flat.last() else {
+        return false;
+    };
+    span == last_element.0
 }
