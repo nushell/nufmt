@@ -38,8 +38,8 @@
                const VALID: &str = "# beginning of script comment
                let one = 1
                ";
-              -const TEST_BINARY: &'static str = "target/debug/nufmt";
-              +const TEST_BINARY: &'static str = "target/@target_triple@/release/nufmt";
+              -const TEST_BINARY: &str = "target/debug/nufmt";
+              +const TEST_BINARY: &str = "target/@target_triple@/release/nufmt";
 
                #[test]
                fn failure_with_invalid_config() {
