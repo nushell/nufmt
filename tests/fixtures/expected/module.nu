@@ -1,4 +1,3 @@
-module mymod{export def foo []{1}}
 module mymod {
     export def foo [] { 1 }
 }
