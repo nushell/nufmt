@@ -351,6 +351,14 @@ impl<'a> Formatter<'a> {
                                         // Format the block contents inline
                                         self.format_block(block);
                                     }
+                                    Expr::Subexpression(block_id) => {
+                                        // For const statements, the value is wrapped in a Subexpression
+                                        // We should unwrap it and format the inner block without parens
+                                        self.write("= ");
+                                        let block = self.working_set.get_block(*block_id);
+                                        // Format the block contents inline
+                                        self.format_block(block);
+                                    }
                                     _ => {
                                         self.write("= ");
                                         self.format_expression(positional);
@@ -478,7 +486,17 @@ impl<'a> Formatter<'a> {
                 self.space();
                 self.format_expression(op);
                 self.space();
-                self.format_expression(rhs);
+                // For assignment operators, unwrap Subexpression on RHS to avoid double parens
+                if let Expr::Operator(nu_protocol::ast::Operator::Assignment(_)) = &op.expr {
+                    if let Expr::Subexpression(block_id) = &rhs.expr {
+                        let block = self.working_set.get_block(*block_id);
+                        self.format_block(block);
+                    } else {
+                        self.format_expression(rhs);
+                    }
+                } else {
+                    self.format_expression(rhs);
+                }
             }
 
             Expr::UnaryNot(inner) => {
@@ -527,12 +545,13 @@ impl<'a> Formatter<'a> {
                 if let Some(from) = &range.from {
                     self.format_expression(from);
                 }
-                if let Some(next) = &range.next {
-                    self.write(",");
-                    self.format_expression(next);
-                }
                 let op_content = self.get_span_content(range.operator.span);
                 self.write_bytes(&op_content);
+                if let Some(next) = &range.next {
+                    self.format_expression(next);
+                    // For step ranges (start..step..end), write the operator again before end
+                    self.write_bytes(&op_content);
+                }
                 if let Some(to) = &range.to {
                     self.format_expression(to);
                 }
@@ -1114,11 +1133,10 @@ pub(crate) fn format_inner(contents: &[u8], config: &Config) -> Result<Vec<u8>, 
     let parsed_block = parse(&mut working_set, None, contents, false);
     trace!("parsed block:\n{:?}", &parsed_block);
 
-    // Check for parse errors (garbage)
-    if has_garbage(&parsed_block, &working_set) {
-        debug!("Found parsing errors, returning original content");
-        return Err(FormatError::GarbageFound);
-    }
+    // Note: We don't reject files with "garbage" nodes because the parser
+    // produces garbage for commands it doesn't know about (e.g., `where`, `each`)
+    // when using only nu-cmd-lang context. Instead, we output original span
+    // content for expressions we can't format.
 
     if parsed_block.pipelines.is_empty() {
         trace!("block has no pipelines!");
@@ -1158,55 +1176,6 @@ pub(crate) fn format_inner(contents: &[u8], config: &Config) -> Result<Vec<u8>, 
     }
 
     Ok(formatter.finish())
-}
-
-/// Check if a block contains garbage (parse errors)
-fn has_garbage(block: &Block, working_set: &StateWorkingSet) -> bool {
-    for pipeline in &block.pipelines {
-        for element in &pipeline.elements {
-            if expr_has_garbage(&element.expr, working_set) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Check if an expression contains garbage
-fn expr_has_garbage(expr: &Expression, working_set: &StateWorkingSet) -> bool {
-    match &expr.expr {
-        Expr::Garbage => true,
-        Expr::BinaryOp(l, o, r) => {
-            expr_has_garbage(l, working_set)
-                || expr_has_garbage(o, working_set)
-                || expr_has_garbage(r, working_set)
-        }
-        Expr::UnaryNot(e) => expr_has_garbage(e, working_set),
-        Expr::Block(block_id) | Expr::Closure(block_id) | Expr::Subexpression(block_id) => {
-            let block = working_set.get_block(*block_id);
-            has_garbage(block, working_set)
-        }
-        Expr::Call(call) => call.arguments.iter().any(|arg| match arg {
-            Argument::Positional(e) | Argument::Unknown(e) | Argument::Spread(e) => {
-                expr_has_garbage(e, working_set)
-            }
-            Argument::Named(n) => {
-                n.2.as_ref()
-                    .is_some_and(|e| expr_has_garbage(e, working_set))
-            }
-        }),
-        Expr::List(items) => items.iter().any(|item| match item {
-            ListItem::Item(e) => expr_has_garbage(e, working_set),
-            ListItem::Spread(_, e) => expr_has_garbage(e, working_set),
-        }),
-        Expr::Record(items) => items.iter().any(|item| match item {
-            RecordItem::Pair(k, v) => {
-                expr_has_garbage(k, working_set) || expr_has_garbage(v, working_set)
-            }
-            RecordItem::Spread(_, e) => expr_has_garbage(e, working_set),
-        }),
-        _ => false,
-    }
 }
 
 /// Make sure there is a newline at the end of a buffer

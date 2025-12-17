@@ -1,0 +1,10 @@
+*.nu
+**/*.rs
+src/**/*.nu
+test?.nu
+[abc].txt
+file[0-9].nu
+path/to/*.txt
+**/*
+*.{nu,rs}
+!excluded.nu
