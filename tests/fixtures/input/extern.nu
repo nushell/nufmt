@@ -1,5 +1,4 @@
 extern "git" []
-extern "git" []
 extern "git status" [--short (-s)]
 extern "cargo build" [--release --target: string]
 extern "npm" [

@@ -10,5 +10,5 @@ def complex [
     --flag (-f)
     --value (-v): int = 5
 ] {
-    print $"($a) ($b)"
+    print $"($a) ($b) $flag $value"
 }

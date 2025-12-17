@@ -7,7 +7,7 @@
 2hr
 1day
 7wk
-1024byte
+1024b
 500ns
 100us
 10kb
