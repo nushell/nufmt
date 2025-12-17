@@ -110,7 +110,11 @@ fn main() {
     };
 
     let exit_code = if cli.stdin {
-        let stdin_input = io::stdin().lines().map(|x| x.unwrap()).collect();
+        let stdin_input: String = io::stdin()
+            .lines()
+            .map(|x| x.unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
         format_string(stdin_input, &config)
     } else {
         let (target_files, invalid_files) = match discover_nu_files(cli.files, &config.excludes) {
