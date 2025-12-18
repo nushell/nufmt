@@ -1,41 +1,56 @@
 # Nested structures ground truth
-
 # Nested records
-{a: {b: {c: 1}}}
-{a:{b:{c:1}}}
-{
-    outer: {
-        middle: {
-            inner: "value"
-        }
+  {
+    a: {
+        b: {c: 1}
     }
 }
-
+   {
+    a: {
+        b: {c: 1}
+    }
+}
+  {
+    outer: {
+        middle: {inner: "value"}
+    }
+}
 # Nested lists
-[[1, 2], [3, 4], [5, 6]]
-[[1,2],[3,4],[5,6]]
-[
+  [
+    [1, 2]
+    [3, 4]
+    [5, 6]
+]
+   [
+    [1, 2]
+    [3, 4]
+    [5, 6]
+]
+  [
     [1, 2, 3]
     [4, 5, 6]
     [7, 8, 9]
 ]
-
 # Records containing lists
-{names: ["Alice", "Bob"], ages: [30, 25]}
-{
+  {
+    names: ["Alice", "Bob"]
+    ages: [30, 25]
+}
+   {
     data: [1, 2, 3]
     labels: ["a", "b", "c"]
 }
-
 # Lists containing records
-[{name: "Alice"}, {name: "Bob"}]
-[
+  [
+    {name: "Alice"}
+    {name: "Bob"}
+]
+   [
     {id: 1, value: "first"}
     {id: 2, value: "second"}
 ]
-
 # Deeply nested mixed structures
-{
+  {
     users: [
         {
             name: "Alice"
@@ -53,24 +68,20 @@
         settings: {debug: true, verbose: false}
     }
 }
-
 # Nested closures in data
-let transform = {|data| $data | each {|item| {|x| $x * $item } } }
-
+  let transform = {|data|
+    $data | each {|item| {|x| $x * $item } }
+}
 # Nested control flow
-if $outer {
+  if $outer {
     if $inner {
         if $deep { "very deep" } else { "deep" }
     }
 }
-
 # Nested function definitions
-def outer [] {
+  def outer [] {
     def inner [] { "inner result" }
     inner
 }
-
 # Complex pipeline with nested structures
-$data
-    | each {|row| {name: $row.name, values: ($row.items | each {|i| $i * 2 })} }
-    | where {|r| ($r.values | length) > 0 }
+  $data | each {|row| {name: $row.name, values: ($row.items | each {|i| $i * 2 })} } | where {|r| ($r.values | length) > 0 }

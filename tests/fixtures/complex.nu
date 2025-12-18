@@ -7,11 +7,7 @@ module math {
 # Using modules
 use math
 # Custom commands with type annotations
-def process-data [
-    data: list<record<name: string, value: int>>
-    --verbose (-v)
-    --output (-o): string = "result.txt"
-] {
+def process-data [data: list<record<name: string, value: int>>, --verbose(-v), --output(-o): string = result.txt] {
     if $verbose { print "Processing data..." }
     $data
 }
@@ -67,19 +63,10 @@ let message = $"User ($complex_data.users.0.name) has scores: ($complex_data.use
 let numbers = 1..100 | filter {|n| $n mod 2 == 0 } | take 10
 # Record spread
 let base_config = {host: "localhost", port: 8080}
-let full_config = {
-    ...$base_config
-    debug: true
-    timeout: 30
-}
+let full_config = {...$base_config, debug: true, timeout: 30}
 # List spread
 let list1 = [1, 2, 3]
-let list2 = [
-    0
-    ...$list1
-    4
-    5
-]
+let list2 = [0, ...$list1, 4, 5]
 # Multiline string (if supported)
 let long_text = "This is a
 multiline
@@ -89,7 +76,7 @@ let result = (1 + 2) * (3 + 4) / 2
 # Comparison chains
 let in_range = $result > 0 and $result < 100
 # Null coalescing (if supported)
-let value = $env.?MY_VAR | default "fallback"
+let value = $env.? | default "fallback"
 # Return from function
 def early_return [x: int] {
     if $x < 0 { return "negative" }

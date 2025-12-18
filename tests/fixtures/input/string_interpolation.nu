@@ -1,5 +1,5 @@
-$"hello"
+  $"hello"
 $"Hello ($name)"
-$"Result: ($x + $y)"
+   $"Result: ($x + $y)"
 $"Multi ($a) values ($b) here ($c)"
-$"   spaces   ($x)   preserved   "
+  $"   spaces   ($x)   preserved   "

@@ -1,21 +1,21 @@
-extern "git" []
-extern "git status" [--short(-s)]
-extern "cargo build" [--release --target: string]
-extern "npm" [
+extern   "git"   []
+extern   "git status"   [--short(-s)]
+extern   "cargo build"   [--release --target: string]
+extern   "npm"   [
     command: string
     --global(-g)
     --save-dev(-D)
 ]
-extern "docker run" [
+extern   "docker run"   [
     image: string
     --detach(-d)
     --name: string
     --port(-p): string
     ...args: string
 ]
-extern ls []
-extern cat [file: path]
-extern grep [
+extern   ls   []
+extern   cat   [file: path]
+extern   grep   [
     pattern: string
     ...files: path
     -i

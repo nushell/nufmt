@@ -11,7 +11,7 @@ def greet [name: string] { print $"Hello, ($name)!" }
 # Function with multiple parameters
 def add [a: int, b: int] { $a + $b }
 # Function with default value
-def greet_default [name: string = "stranger"] { print $"Hello, ($name)!" }
+def greet_default [name: string = stranger] { print $"Hello, ($name)!" }
 # Lists
 let numbers = [1, 2, 3, 4, 5]
 let mixed = [1, "two", 3.0]

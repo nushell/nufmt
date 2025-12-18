@@ -1,260 +1,262 @@
 (
-    alias ll = ls -l
-    [[status]; [UP], [UP]] | all {|el| $el.status == UP }
-    [foo, bar, 2, baz] | all {|| ($in | describe) == 'string' }
-    [0, 2, 4, 6] | enumerate | all {|i| $i.item == $i.index * 2 }
-    let cond = {|el| ($el mod 2) == 0 }
-    [2, 4, 6, 8] | all $cond
-    ansi green
-    ansi reset
-    $'(ansi red_bold)Hello(ansi reset) (ansi green_dimmed)Nu(ansi reset) (ansi purple_italic)World(ansi reset)'
-    $'(ansi rb)Hello(ansi reset) (ansi gd)Nu(ansi reset) (ansi pi)World(ansi reset)'
-    $"(ansi -e '3;93;41m')Hello(ansi reset)" # italic bright yellow on red background
-    let bold_blue_on_red = {fg: '#0000ff', bg: '#ff0000', attr: b}
-    $"(ansi -e $bold_blue_on_red)Hello Nu World(ansi reset)"
-    'Hello, Nushell! This is a gradient.' | ansi gradient --fgstart '0x40c9ff' --fgend '0xe81cff'
-    'Hello, Nushell! This is a gradient.' | ansi gradient --fgstart '0x40c9ff' --fgend '0xe81cff' --bgstart '0xe81cff' --bgend '0x40c9ff'
-    'Hello, Nushell! This is a gradient.' | ansi gradient --fgstart '0x40c9ff'
-    'Hello, Nushell! This is a gradient.' | ansi gradient --fgend '0xe81cff'
-    'file:///file.txt' | ansi link --text 'Open Me!'
-    'https://www.nushell.sh/' | ansi link
-    [[url, text]; [https://example.com, Text]] | ansi link url
-    $'(ansi green)(ansi cursor_on)hello' | ansi strip
-    [[status]; [UP], [DOWN], [UP]] | any {|el| $el.status == DOWN }
-    [1, 2, 3, 4] | any {|| ($in | describe) == 'string' }
-    [9, 8, 7, 6] | enumerate | any {|i| $i.item == $i.index * 2 }
-    let cond = {|e| $e mod 2 == 1 }
-    [2, 4, 1, 6, 8] | any $cond
-    [0, 1, 2, 3] | append 4
-    [0, 1] | append [2, 3, 4]
-    [0, 1] | append [2, nu, 4, shell]
-    ast 'hello'
-    ast 'ls | where name =~ README'
-    ast 'for x in 1..10 { echo $x '
-    2 | bits and 2
-    [4, 3, 2] | bits and 2
-    [4, 3, 2] | bits not
-    [4, 3, 2] | bits not -n '2'
-    [4, 3, 2] | bits not -s
-    2 | bits or 6
-    [8, 3, 2] | bits or 2
-    17 | bits rol 2
-    [5, 3, 2] | bits rol 2
-    17 | bits ror 60
-    [15, 33, 92] | bits ror 2 -n '1'
-    2 | bits shl 7
-    2 | bits shl 7 -n '1'
-    0x7F | bits shl 1 -s
-    [5, 3, 2] | bits shl 2
-    8 | bits shr 2
-    [15, 35, 2] | bits shr 2
-    2 | bits xor 2
-    [8, 3, 2] | bits xor 2
-    loop { break }
-    0x[1F FF AA AA] | bytes add 0x[AA]
-    0x[1F FF AA AA] | bytes add 0x[AA BB] -i 1
-    0x[FF AA AA] | bytes add 0x[11] -e
-    0x[FF AA BB] | bytes add 0x[11 22 33] -e -i 1
-    0x[33 44 55 10 01 13] | bytes at 3..<4
-    0x[33 44 55 10 01 13] | bytes at 3..6
-    0x[33 44 55 10 01 13] | bytes at 3..
-    0x[33 44 55 10 01 13] | bytes at ..<4
-    [[ColA, ColB, ColC]; [0x[11 12 13], 0x[14 15 16], 0x[17 18 19]]] | bytes at 1.. ColB ColC
-    bytes build 0x[01 02] 0x[03] 0x[04]
-    [
-        0x[11]
-        0x[13 15]
-    ] | bytes collect
-    [
-        0x[11]
-        0x[33]
-        0x[44]
-    ] | bytes collect 0x[01]
-    0x[1F FF AA AA] | bytes ends-with 0x[AA]
-    0x[1F FF AA AA] | bytes ends-with 0x[FF AA AA]
-    0x[1F FF AA AA] | bytes ends-with 0x[11]
-    0x[33 44 55 10 01 13 44 55] | bytes index-of 0x[44 55]
-    0x[33 44 55 10 01 13 44 55] | bytes index-of -e 0x[44 55]
-    0x[33 44 55 10 01 33 44 33 44] | bytes index-of -a 0x[33 44]
-    0x[33 44 55 10 01 33 44 33 44] | bytes index-of -a -e 0x[33 44]
-    [[ColA, ColB, ColC]; [0x[11 12 13], 0x[14 15 16], 0x[17 18 19]]] | bytes index-of 0x[11] ColA ColC
-    0x[1F FF AA AB] | bytes length
-    [
-        0x[1F FF AA AB]
-        0x[1F]
-    ] | bytes length
-    0x[10 AA FF AA FF] | bytes remove 0x[10 AA]
-    0x[10 AA 10 BB 10] | bytes remove -a 0x[10]
-    0x[10 AA 10 BB CC AA 10] | bytes remove -e 0x[10]
-    [[ColA, ColB, ColC]; [0x[11 12 13], 0x[14 15 16], 0x[17 18 19]]] | bytes remove 0x[11] ColA ColC
-    0x[10 AA FF AA FF] | bytes replace 0x[10 AA] 0x[FF]
-    0x[10 AA 10 BB 10] | bytes replace -a 0x[10] 0x[A0]
-    [[ColA, ColB, ColC]; [0x[11 12 13], 0x[14 15 16], 0x[17 18 19]]] | bytes replace -a 0x[11] 0x[13] ColA ColC
-    0x[1F FF AA AA] | bytes reverse
-    0x[FF AA AA] | bytes reverse
-    0x[1F FF AA AA] | bytes starts-with 0x[1F FF AA]
-    0x[1F FF AA AA] | bytes starts-with 0x[1F]
-    0x[1F FF AA AA] | bytes starts-with 0x[11]
-    cal
-    cal --full-year 2012
-    cal --week-start monday
-    cd ~
-    cd d/s/9
-    cd -
-    char newline
-    char --list
-    (char prompt) + (char newline) + (char hamburger)
-    char -u 1f378
-    char -i (0x60 + 1) (0x60 + 2)
-    char -u 1F468 200D 1F466 200D 1F466
-    clear
-    [1, 2, 3] | collect {||x| $x.1 }
-    {acronym: PWD, meaning: 'Print Working Directory'} | columns
-    [[name, age, grade]; [bill, 20, a]] | columns
-    [[name, age, grade]; [bill, 20, a]] | columns | first
-    [[name, age, grade]; [bill, 20, a]] | columns | select 1
-    [["Hello", "World"]; [null, 3]] | compact Hello
-    [["Hello", "World"]; [null, 3]] | compact World
-    [1, null, 2] | compact
-    external arg1 | complete
-    do { external arg1 } | complete
-    config env
-    config nu
-    config reset
-    const x = (10)
-    const x = ({a: 10, b: 20})
-    for i in 1..10 {
-        if $i == 5 { continue }
-        print $i
-    }
-    cp myfile dir_b
-    cp -r dir_a dir_b
-    cp -r -v dir_a dir_b
-    cp *.txt dir_a
-    "2021-10-22 20:00:12 +01:00" | date format
-    date now | date format "%Y-%m-%d %H:%M:%S"
-    date now | date format "%Y-%m-%d %H:%M:%S"
-    "2021-10-22 20:00:12 +01:00" | date format "%Y-%m-%d"
-    "2021-10-22 20:00:12 +01:00" | date humanize
-    date list-timezone | where timezone =~ Shanghai
-    date now | date format "%Y-%m-%d %H:%M:%S"
-    (date now) - 2019-05-01
-    (date now) - 2019-05-01T04:12:05.20+08:00
-    date now | debug
-    date to-record
-    date now | date to-record
-    '2020-04-12T22:10:57.123+02:00' | date to-record
-    date to-table
-    date now | date to-table
-    2020-04-12T22:10:57.000000789+02:00 | date to-table
-    date now | date to-timezone '+0500'
-    date now | date to-timezone local
-    date now | date to-timezone US/Hawaii
-    "2020-10-10 10:00:00 +02:00" | date to-timezone "+0500"
-    'hello' | debug
-    ['hello'] | debug
-    [[version, patch]; ['0.1.0', false], ['0.1.1', true], ['0.2.0', false]] | debug
-    cat myfile.q | decode utf-8
-    0x[00 53 00 6F 00 6D 00 65 00 20 00 44 00 61 00 74 00 61] | decode utf-16be
-    'U29tZSBEYXRh' | decode base64
-    'U29tZSBEYXRh' | decode base64 --binary
-    '0102030A0a0B' | decode hex
-    '01 02  03 0A 0a 0B' | decode hex
-    def say-hi [] { echo 'hi' }
-    say-hi
-    def say-sth [sth: string] { echo $sth }
-    say-sth hi
-    def-env foo [] { let-env BAR = "BAZ" }
-    foo
-    $env.BAR
-    ls -la | default 'nothing' target
-    $env | get -i MY_ENV | default 'abc'
-    [1, 2, null, 4] | default 3
-    'hello' | describe
-    'a b c' | detect columns -n
-    $'c1 c2 c3(char nl)a b c' | detect columns
-    [[a, b]; [1, 2], [1, 4], [2, 6], [2, 4]] | dfr into-df | dfr group-by a | dfr agg [
-        (dfr col b | dfr min | dfr as "b_min")
-        (dfr col b | dfr max | dfr as "b_max")
-        (dfr col b | dfr sum | dfr as "b_sum")
-    ]
-    [[a, b]; [1, 2], [1, 4], [2, 6], [2, 4]] | dfr into-lazy | dfr group-by a | dfr agg [
-        (dfr col b | dfr min | dfr as "b_min")
-        (dfr col b | dfr max | dfr as "b_max")
-        (dfr col b | dfr sum | dfr as "b_sum")
-    ] | dfr collect
-    [false, false, false] | dfr into-df | dfr all-false
-    let s = ([5, 6, 2, 10] | dfr into-df)
-    let res = ($s > 9)
-    $res | dfr all-false
-    [true, true, true] | dfr into-df | dfr all-true
-    let s = ([5, 6, 2, 8] | dfr into-df)
-    let res = ($s > 9)
-    $res | dfr all-true
-    let a = ([[a, b]; [1, 2], [3, 4]] | dfr into-df)
-    $a | dfr append $a
-    let a = ([[a, b]; [1, 2], [3, 4]] | dfr into-df)
-    $a | dfr append $a --col
-    [1, 3, 2] | dfr into-df | dfr arg-max
-    [1, 3, 2] | dfr into-df | dfr arg-min
-    [1, 2, 2, 3, 3] | dfr into-df | dfr arg-sort
-    [1, 2, 2, 3, 3] | dfr into-df | dfr arg-sort -r
-    [false, true, false] | dfr into-df | dfr arg-true
-    [1, 2, 2, 3, 3] | dfr into-df | dfr arg-unique
-    let df = ([[a, b]; [one, 1], [two, 2], [three, 3]] | dfr into-df)
-    $df | dfr select (dfr arg-where ((dfr col b) >= 2) | dfr as b_arg)
-    dfr col a | dfr as new_a | dfr into-nu
-    ["2021-12-30", "2021-12-31"] | dfr into-df | dfr as-datetime "%Y-%m-%d"
-    ["2021-12-30 00:00:00", "2021-12-31 00:00:00"] | dfr into-df | dfr as-datetime "%Y-%m-%d %H:%M:%S"
-    [[a, b]; [6, 2], [4, 2], [2, 2]] | dfr into-df | dfr reverse | dfr cache
-    dfr col a | dfr into-nu
-    [[a, b]; [1, 2], [3, 4]] | dfr into-lazy | dfr collect
-    [[a, b]; [1, 2], [3, 4]] | dfr into-df | dfr columns
-    let df = ([[a, b, c]; [one, two, 1], [three, four, 2]] | dfr into-df)
-    $df | dfr with-column ((dfr concat-str "-" [
-        (dfr col a)
-        (dfr col b)
-        ((dfr col c) * 2)
-    ]) | dfr as concat)
-    let other = ([za, xs, cd] | dfr into-df)
-    [abc, abc, abc] | dfr into-df | dfr concatenate $other
-    [abc, acb, acb] | dfr into-df | dfr contains ab
-    let s = ([
-        1
-        1
-        0
-        0
-        3
-        3
-        4
-    ] | dfr into-df)
-    ($s / $s) | dfr count-null
-    [1, 2, 3, 4, 5] | dfr into-df | dfr cumulative sum
-    [[a, b]; [1, 2], [3, 4]] | dfr into-df | dfr drop a
-    [[a, b]; [1, 2], [3, 4], [1, 2]] | dfr into-df | dfr drop-duplicates
-    let df = ([[a, b]; [1, 2], [3, 0], [1, 2]] | dfr into-df)
-    let res = ($df.b / $df.b)
-    let a = ($df | dfr with-column $res --name res)
-    $a | dfr drop-nulls
-    let s = ([
-        1
-        2
-        0
-        0
-        3
-        4
-    ] | dfr into-df)
-    ($s / $s) | dfr drop-nulls
-    [[a, b]; [1, 2], [3, 4]] | dfr into-df | dfr dtypes
-    [[a, b]; [1, 2], [3, 4]] | dfr into-df | dfr dummies
-    [1, 2, 2, 3, 3] | dfr into-df | dfr dummies
-    (dfr col a) > 2) | dfr expr-not
-    [[a, b]; [6, 2], [4, 2], [2, 2]] | dfr into-df | dfr fetch 2
-    [1, 2, NaN, 3, NaN] | dfr into-df | dfr fill-nan 0
-    [[a, b]; [0.2, 1], [0.1, NaN]] | dfr into-df | dfr fill-nan 0
-    [1, 2, 2, 3, 3] | dfr into-df | dfr shift 2 | dfr fill-null 0
-    [[a, b]; [6, 2], [4, 2], [2, 2]] | dfr into-df | dfr filter ((dfr col a) >= 4)
-    let mask = ([true, false] | dfr into-df)
+    (
+        ls -l [
+            [status]
+        ] | all {|el| $el.status == UP } [foo, bar, 2, baz] | all {|| ($in | describe) == 'string' } [0, 2, 4, 6] | enumerate | all {|i| $i.item == $i.index * 2 } let cond = {|el| ($el mod 2) == 0 }
+        [2, 4, 6, 8] | all $cond
+        ansi green
+        ansi reset
+        $'(ansi red_bold)Hello(ansi reset) (ansi green_dimmed)Nu(ansi reset) (ansi purple_italic)World(ansi reset)'
+        $'(ansi rb)Hello(ansi reset) (ansi gd)Nu(ansi reset) (ansi pi)World(ansi reset)'
+        $"(ansi -e '3;93;41m')Hello(ansi reset)" # italic bright yellow on red background
+        let bold_blue_on_red = {fg: '#0000ff', bg: '#ff0000', attr: b}
+        $"(ansi -e $bold_blue_on_red)Hello Nu World(ansi reset)"
+        'Hello, Nushell! This is a gradient.' | ansi gradient --fgstart '0x40c9ff' --fgend '0xe81cff'
+        'Hello, Nushell! This is a gradient.' | ansi gradient --fgstart '0x40c9ff' --fgend '0xe81cff' --bgstart '0xe81cff' --bgend '0x40c9ff'
+        'Hello, Nushell! This is a gradient.' | ansi gradient --fgstart '0x40c9ff'
+        'Hello, Nushell! This is a gradient.' | ansi gradient --fgend '0xe81cff'
+        'file:///file.txt' | ansi link --text 'Open Me!'
+        'https://www.nushell.sh/' | ansi link
+        [[url, text]; [https://example.com, Text]] | ansi link url
+        $'(ansi green)(ansi cursor_on)hello' | ansi strip
+        [[status]; [UP], [DOWN], [UP]] | any {|el| $el.status == DOWN }
+        [1, 2, 3, 4] | any {|| ($in | describe) == 'string' }
+        [9, 8, 7, 6] | enumerate | any {|i| $i.item == $i.index * 2 }
+        let cond = {|e| $e mod 2 == 1 }
+        [2, 4, 1, 6, 8] | any $cond
+        [0, 1, 2, 3] | append 4
+        [0, 1] | append [2, 3, 4]
+        [0, 1] | append [2, nu, 4, shell]
+        ast 'hello'
+        ast 'ls | where name =~ README'
+        ast 'for x in 1..10 { echo $x '
+        2 | bits and 2
+        [4, 3, 2] | bits and 2
+        [4, 3, 2] | bits not
+        [4, 3, 2] | bits not -n '2'
+        [4, 3, 2] | bits not -s
+        2 | bits or 6
+        [8, 3, 2] | bits or 2
+        17 | bits rol 2
+        [5, 3, 2] | bits rol 2
+        17 | bits ror 60
+        [15, 33, 92] | bits ror 2 -n '1'
+        2 | bits shl 7
+        2 | bits shl 7 -n '1'
+        0x7F | bits shl 1 -s
+        [5, 3, 2] | bits shl 2
+        8 | bits shr 2
+        [15, 35, 2] | bits shr 2
+        2 | bits xor 2
+        [8, 3, 2] | bits xor 2
+        loop { break }
+        0x[1F FF AA AA] | bytes add 0x[AA]
+        0x[1F FF AA AA] | bytes add 0x[AA BB] -i 1
+        0x[FF AA AA] | bytes add 0x[11] -e
+        0x[FF AA BB] | bytes add 0x[11 22 33] -e -i 1
+        0x[33 44 55 10 01 13] | bytes at 3..<4
+        0x[33 44 55 10 01 13] | bytes at 3..6
+        0x[33 44 55 10 01 13] | bytes at 3..
+        0x[33 44 55 10 01 13] | bytes at ..<4
+        [[ColA, ColB, ColC]; [0x[11 12 13], 0x[14 15 16], 0x[17 18 19]]] | bytes at 1.. ColB ColC
+        bytes build 0x[01 02] 0x[03] 0x[04]
+        [
+            0x[11]
+            0x[13 15]
+        ] | bytes collect
+        [
+            0x[11]
+            0x[33]
+            0x[44]
+        ] | bytes collect 0x[01]
+        0x[1F FF AA AA] | bytes ends-with 0x[AA]
+        0x[1F FF AA AA] | bytes ends-with 0x[FF AA AA]
+        0x[1F FF AA AA] | bytes ends-with 0x[11]
+        0x[33 44 55 10 01 13 44 55] | bytes index-of 0x[44 55]
+        0x[33 44 55 10 01 13 44 55] | bytes index-of -e 0x[44 55]
+        0x[33 44 55 10 01 33 44 33 44] | bytes index-of -a 0x[33 44]
+        0x[33 44 55 10 01 33 44 33 44] | bytes index-of -a -e 0x[33 44]
+        [[ColA, ColB, ColC]; [0x[11 12 13], 0x[14 15 16], 0x[17 18 19]]] | bytes index-of 0x[11] ColA ColC
+        0x[1F FF AA AB] | bytes length
+        [
+            0x[1F FF AA AB]
+            0x[1F]
+        ] | bytes length
+        0x[10 AA FF AA FF] | bytes remove 0x[10 AA]
+        0x[10 AA 10 BB 10] | bytes remove -a 0x[10]
+        0x[10 AA 10 BB CC AA 10] | bytes remove -e 0x[10]
+        [[ColA, ColB, ColC]; [0x[11 12 13], 0x[14 15 16], 0x[17 18 19]]] | bytes remove 0x[11] ColA ColC
+        0x[10 AA FF AA FF] | bytes replace 0x[10 AA] 0x[FF]
+        0x[10 AA 10 BB 10] | bytes replace -a 0x[10] 0x[A0]
+        [[ColA, ColB, ColC]; [0x[11 12 13], 0x[14 15 16], 0x[17 18 19]]] | bytes replace -a 0x[11] 0x[13] ColA ColC
+        0x[1F FF AA AA] | bytes reverse
+        0x[FF AA AA] | bytes reverse
+        0x[1F FF AA AA] | bytes starts-with 0x[1F FF AA]
+        0x[1F FF AA AA] | bytes starts-with 0x[1F]
+        0x[1F FF AA AA] | bytes starts-with 0x[11]
+        cal
+        cal --full-year 2012
+        cal --week-start monday
+        cd ~
+        cd d/s/9
+        cd -
+        char newline
+        char --list
+        (char prompt) + (char newline) + (char hamburger)
+        char -u 1f378
+        char -i (0x60 + 1) (0x60 + 2)
+        char -u 1F468 200D 1F466 200D 1F466
+        clear
+        [1, 2, 3] | collect {|| 
+            x | $x.1
+        }
+        {acronym: PWD, meaning: 'Print Working Directory'} | columns
+        [[name, age, grade]; [bill, 20, a]] | columns
+        [[name, age, grade]; [bill, 20, a]] | columns | first
+        [[name, age, grade]; [bill, 20, a]] | columns | select 1
+        [["Hello", "World"]; [null, 3]] | compact Hello
+        [["Hello", "World"]; [null, 3]] | compact World
+        [1, null, 2] | compact
+        external arg1 | complete
+        do { external arg1 } | complete
+        config env
+        config nu
+        config reset
+        const x = (10)
+        const x = ({a: 10, b: 20})
+        for i in 1..10 {
+            if $i == 5 { continue }
+            print $i
+        }
+        cp myfile dir_b
+        cp -r dir_a dir_b
+        cp -r -v dir_a dir_b
+        cp *.txt dir_a
+        "2021-10-22 20:00:12 +01:00" | date format
+        date now | date format "%Y-%m-%d %H:%M:%S"
+        date now | date format "%Y-%m-%d %H:%M:%S"
+        "2021-10-22 20:00:12 +01:00" | date format "%Y-%m-%d"
+        "2021-10-22 20:00:12 +01:00" | date humanize
+        date list-timezone | where timezone =~ Shanghai
+        date now | date format "%Y-%m-%d %H:%M:%S"
+        (date now) - 2019-05-01
+        (date now) - 2019-05-01T04:12:05.20+08:00
+        date now | debug
+        date to-record
+        date now | date to-record
+        '2020-04-12T22:10:57.123+02:00' | date to-record
+        date to-table
+        date now | date to-table
+        2020-04-12T22:10:57.000000789+02:00 | date to-table
+        date now | date to-timezone '+0500'
+        date now | date to-timezone local
+        date now | date to-timezone US/Hawaii
+        "2020-10-10 10:00:00 +02:00" | date to-timezone "+0500"
+        'hello' | debug
+        ['hello'] | debug
+        [[version, patch]; ['0.1.0', false], ['0.1.1', true], ['0.2.0', false]] | debug
+        cat myfile.q | decode utf-8
+        0x[00 53 00 6F 00 6D 00 65 00 20 00 44 00 61 00 74 00 61] | decode utf-16be
+        'U29tZSBEYXRh' | decode base64
+        'U29tZSBEYXRh' | decode base64 --binary
+        '0102030A0a0B' | decode hex
+        '01 02  03 0A 0a 0B' | decode hex
+        def say-hi [] { echo 'hi' }
+        say-hi
+        def say-sth [sth: string] { echo $sth }
+        say-sth hi
+        def-env foo [] { let-env BAR = "BAZ" }
+        foo
+        $env.BAR
+        ls -la | default 'nothing' target
+        $env | get -i MY_ENV | default 'abc'
+        [1, 2, null, 4] | default 3
+        'hello' | describe
+        'a b c' | detect columns -n
+        $'c1 c2 c3(char nl)a b c' | detect columns
+        [[a, b]; [1, 2], [1, 4], [2, 6], [2, 4]] | dfr into-df | dfr group-by a | dfr agg [
+            (dfr col b | dfr min | dfr as "b_min")
+            (dfr col b | dfr max | dfr as "b_max")
+            (dfr col b | dfr sum | dfr as "b_sum")
+        ]
+        [[a, b]; [1, 2], [1, 4], [2, 6], [2, 4]] | dfr into-lazy | dfr group-by a | dfr agg [
+            (dfr col b | dfr min | dfr as "b_min")
+            (dfr col b | dfr max | dfr as "b_max")
+            (dfr col b | dfr sum | dfr as "b_sum")
+        ] | dfr collect
+        [false, false, false] | dfr into-df | dfr all-false
+        let s = ([5, 6, 2, 10] | dfr into-df)
+        let res = ($s > 9)
+        $res | dfr all-false
+        [true, true, true] | dfr into-df | dfr all-true
+        let s = ([5, 6, 2, 8] | dfr into-df)
+        let res = ($s > 9)
+        $res | dfr all-true
+        let a = ([[a, b]; [1, 2], [3, 4]] | dfr into-df)
+        $a | dfr append $a
+        let a = ([[a, b]; [1, 2], [3, 4]] | dfr into-df)
+        $a | dfr append $a --col
+        [1, 3, 2] | dfr into-df | dfr arg-max
+        [1, 3, 2] | dfr into-df | dfr arg-min
+        [1, 2, 2, 3, 3] | dfr into-df | dfr arg-sort
+        [1, 2, 2, 3, 3] | dfr into-df | dfr arg-sort -r
+        [false, true, false] | dfr into-df | dfr arg-true
+        [1, 2, 2, 3, 3] | dfr into-df | dfr arg-unique
+        let df = ([[a, b]; [one, 1], [two, 2], [three, 3]] | dfr into-df)
+        $df | dfr select (dfr arg-where ((dfr col b) >= 2) | dfr as b_arg)
+        dfr col a | dfr as new_a | dfr into-nu
+        ["2021-12-30", "2021-12-31"] | dfr into-df | dfr as-datetime "%Y-%m-%d"
+        ["2021-12-30 00:00:00", "2021-12-31 00:00:00"] | dfr into-df | dfr as-datetime "%Y-%m-%d %H:%M:%S"
+        [[a, b]; [6, 2], [4, 2], [2, 2]] | dfr into-df | dfr reverse | dfr cache
+        dfr col a | dfr into-nu
+        [[a, b]; [1, 2], [3, 4]] | dfr into-lazy | dfr collect
+        [[a, b]; [1, 2], [3, 4]] | dfr into-df | dfr columns
+        let df = ([[a, b, c]; [one, two, 1], [three, four, 2]] | dfr into-df)
+        $df | dfr with-column ((dfr concat-str "-" [
+            (dfr col a)
+            (dfr col b)
+            ((dfr col c) * 2)
+        ]) | dfr as concat)
+        let other = ([za, xs, cd] | dfr into-df)
+        [abc, abc, abc] | dfr into-df | dfr concatenate $other
+        [abc, acb, acb] | dfr into-df | dfr contains ab
+        let s = ([
+            1
+            1
+            0
+            0
+            3
+            3
+            4
+        ] | dfr into-df)
+        ($s / $s) | dfr count-null
+        [1, 2, 3, 4, 5] | dfr into-df | dfr cumulative sum
+        [[a, b]; [1, 2], [3, 4]] | dfr into-df | dfr drop a
+        [[a, b]; [1, 2], [3, 4], [1, 2]] | dfr into-df | dfr drop-duplicates
+        let df = ([[a, b]; [1, 2], [3, 0], [1, 2]] | dfr into-df)
+        let res = ($df.b / $df.b)
+        let a = ($df | dfr with-column $res --name res)
+        $a | dfr drop-nulls
+        let s = ([
+            1
+            2
+            0
+            0
+            3
+            4
+        ] | dfr into-df)
+        ($s / $s) | dfr drop-nulls
+        [[a, b]; [1, 2], [3, 4]] | dfr into-df | dfr dtypes
+        [[a, b]; [1, 2], [3, 4]] | dfr into-df | dfr dummies
+        [1, 2, 2, 3, 3] | dfr into-df | dfr dummies
+        (dfr col a) > 2
+    ) | dfr expr-not [
+        [a, b]
+    ] | dfr into-df | dfr fetch 2 [1, 2, NaN, 3, NaN] | dfr into-df | dfr fill-nan 0 [
+        [a, b]
+    ] | dfr into-df | dfr fill-nan 0 [1, 2, 2, 3, 3] | dfr into-df | dfr shift 2 | dfr fill-null 0 [
+        [a, b]
+    ] | dfr into-df | dfr filter ((dfr col a) >= 4) let mask = ([true, false] | dfr into-df)
     [[a, b]; [1, 2], [3, 4]] | dfr into-df | dfr filter-with $mask
     [[a, b]; [1, 2], [3, 4]] | dfr into-df | dfr filter-with ((dfr col a) > 1)
     dfr col a | dfr first
@@ -262,64 +264,34 @@
     [[a, b]; [1, 2], [3, 4]] | dfr into-df | dfr first 2
     [[a, b]; [1, 2], [3, 4]] | dfr into-df | dfr get a
     let dt = ('2020-08-04T16:39:18+00:00' | into datetime -z 'UTC')
-    let df = ([
-        $dt
-        $dt
-    ] | dfr into-df)
+    let df = ([$dt, $dt] | dfr into-df)
     $df | dfr get-day
     let dt = ('2020-08-04T16:39:18+00:00' | into datetime -z 'UTC')
-    let df = ([
-        $dt
-        $dt
-    ] | dfr into-df)
+    let df = ([$dt, $dt] | dfr into-df)
     $df | dfr get-hour
     let dt = ('2020-08-04T16:39:18+00:00' | into datetime -z 'UTC')
-    let df = ([
-        $dt
-        $dt
-    ] | dfr into-df)
+    let df = ([$dt, $dt] | dfr into-df)
     $df | dfr get-minute
     let dt = ('2020-08-04T16:39:18+00:00' | into datetime -z 'UTC')
-    let df = ([
-        $dt
-        $dt
-    ] | dfr into-df)
+    let df = ([$dt, $dt] | dfr into-df)
     $df | dfr get-month
     let dt = ('2020-08-04T16:39:18+00:00' | into datetime -z 'UTC')
-    let df = ([
-        $dt
-        $dt
-    ] | dfr into-df)
+    let df = ([$dt, $dt] | dfr into-df)
     $df | dfr get-nanosecond
     let dt = ('2020-08-04T16:39:18+00:00' | into datetime -z 'UTC')
-    let df = ([
-        $dt
-        $dt
-    ] | dfr into-df)
+    let df = ([$dt, $dt] | dfr into-df)
     $df | dfr get-ordinal
     let dt = ('2020-08-04T16:39:18+00:00' | into datetime -z 'UTC')
-    let df = ([
-        $dt
-        $dt
-    ] | dfr into-df)
+    let df = ([$dt, $dt] | dfr into-df)
     $df | dfr get-second
     let dt = ('2020-08-04T16:39:18+00:00' | into datetime -z 'UTC')
-    let df = ([
-        $dt
-        $dt
-    ] | dfr into-df)
+    let df = ([$dt, $dt] | dfr into-df)
     $df | dfr get-week
     let dt = ('2020-08-04T16:39:18+00:00' | into datetime -z 'UTC')
-    let df = ([
-        $dt
-        $dt
-    ] | dfr into-df)
+    let df = ([$dt, $dt] | dfr into-df)
     $df | dfr get-weekday
     let dt = ('2020-08-04T16:39:18+00:00' | into datetime -z 'UTC')
-    let df = ([
-        $dt
-        $dt
-    ] | dfr into-df)
+    let df = ([$dt, $dt] | dfr into-df)
     $df | dfr get-year
     [[a, b]; [1, 2], [1, 4], [2, 6], [2, 4]] | dfr into-df | dfr group-by a | dfr agg [
         (dfr col b | dfr min | dfr as "b_min")
@@ -458,10 +430,7 @@
     [a, ab, abc] | dfr into-df | dfr str-lengths
     [abcded, abc321, abc123] | dfr into-df | dfr str-slice 1 -l 2
     let dt = ('2020-08-04T16:39:18+00:00' | into datetime -z 'UTC')
-    let df = ([
-        $dt
-        $dt
-    ] | dfr into-df)
+    let df = ([$dt, $dt] | dfr into-df)
     $df | dfr strftime "%Y/%m/%d"
     [[a, b]; [one, 2], [one, 4], [two, 1]] | dfr into-df | dfr group-by a | dfr agg (dfr col b | dfr sum)
     [[a, b]; [6, 2], [1, 4], [4, 1]] | dfr into-df | dfr sum
@@ -511,12 +480,12 @@
     let hello = {|| echo $text }
     do $hello
     do -i { thisisnotarealcommand }
-    do -s-s { thisisnotarealcommand }
-    do -p-p { nu -c 'exit 1' }
+    do -s-s-s-s-s-s-s-s { thisisnotarealcommand }
+    do -p-p-p-p-p-p-p-p { nu -c 'exit 1' }
     echo "I'll still run"
     do -c { nu -c 'exit 1' } | myscarycommand
     do {|x| 100 + $x } 77
-    77 | do {|x| (100 + $in) }
+    77 | do {|x| (((100 + $in))) }
     [0, 1, 2, 3] | drop
     [0, 1, 2, 3] | drop 0
     [0, 1, 2, 3] | drop 2
@@ -1837,4 +1806,5 @@ END:VCARD' | from vcf
     [1, 2] | zip [3, 4]
     1..3 | zip 4..6
     glob *.ogg | zip ['bang.ogg', 'fanfare.ogg', 'laser.ogg'] | each {|| mv $in.0 $in.1 }
+)
 )
