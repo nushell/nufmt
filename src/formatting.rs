@@ -886,7 +886,24 @@ impl<'a> Formatter<'a> {
             RecordItem::Spread(_, expr) => self.is_simple_expr(expr),
         });
 
-        if all_simple && items.len() <= 3 {
+        // Check if any value contains nested structures (records, lists, closures) or variables
+        let has_nested_complex = items.iter().any(|item| match item {
+            RecordItem::Pair(_, v) => matches!(
+                &v.expr,
+                Expr::Record(_)
+                    | Expr::List(_)
+                    | Expr::Closure(_)
+                    | Expr::Block(_)
+                    | Expr::Var(_)
+                    | Expr::FullCellPath(_)
+            ),
+            RecordItem::Spread(_, _) => false,
+        });
+
+        // When nested with complex values or variables, records with 2+ items should be multiline
+        let nested_multiline = self.indent_level > 0 && items.len() >= 2 && has_nested_complex;
+
+        if all_simple && items.len() <= 3 && !nested_multiline {
             // Inline format
             self.write("{");
             for (i, item) in items.iter().enumerate() {
@@ -1033,20 +1050,28 @@ impl<'a> Formatter<'a> {
 
     /// Check if an expression is simple (primitive type)
     fn is_simple_expr(&self, expr: &Expression) -> bool {
-        matches!(
-            &expr.expr,
+        match &expr.expr {
             Expr::Int(_)
-                | Expr::Float(_)
-                | Expr::Bool(_)
-                | Expr::String(_)
-                | Expr::RawString(_)
-                | Expr::Nothing
-                | Expr::Var(_)
-                | Expr::Filepath(_, _)
-                | Expr::Directory(_, _)
-                | Expr::GlobPattern(_, _)
-                | Expr::DateTime(_)
-        )
+            | Expr::Float(_)
+            | Expr::Bool(_)
+            | Expr::String(_)
+            | Expr::RawString(_)
+            | Expr::Nothing
+            | Expr::Var(_)
+            | Expr::Filepath(_, _)
+            | Expr::Directory(_, _)
+            | Expr::GlobPattern(_, _)
+            | Expr::DateTime(_) => true,
+            // FullCellPath with empty tail is simple (e.g., $var or undefined $var parsed as Garbage)
+            Expr::FullCellPath(full_path) => {
+                full_path.tail.is_empty()
+                    && matches!(
+                        &full_path.head.expr,
+                        Expr::Var(_) | Expr::Garbage | Expr::Int(_) | Expr::String(_)
+                    )
+            }
+            _ => false,
+        }
     }
 
     /// Get the final output

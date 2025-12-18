@@ -10,7 +10,4 @@
         b: {c: 1}
     }
 }
-{
-    ...$base
-    extra: true
-}
+{...$base, extra: true}
