@@ -27,6 +27,9 @@
   - [Options](#options)
   - [Configuration](#configuration)
 - [Supported Constructs](#supported-constructs)
+- [Testing](#testing)
+  - [Ground Truth Tests](#ground-truth-tests)
+  - [Running Tests](#running-tests)
 - [Contributing](#contributing)
 
 ## Features
@@ -167,19 +170,116 @@ The formatter walks the AST and emits properly formatted code with consistent:
 - Brace placement for blocks
 - Comment placement
 
-## Contributing
+## Testing
 
-Contributions are welcome! Please see our [contribution guide](docs/CONTRIBUTING.md).
+`nufmt` has a comprehensive ground truth testing system that verifies the formatter produces correct output for all supported Nushell constructs.
 
-### Running tests
+### Ground Truth Tests
+
+The testing system uses two sets of fixture files:
+
+- **Input files** (`tests/fixtures/input/`): Contain valid Nushell code with intentional formatting issues (extra spaces, inconsistent indentation, etc.)
+- **Expected files** (`tests/fixtures/expected/`): Contain the correctly formatted version of each input file
+
+When tests run, the formatter processes each input file and compares the output against the corresponding expected file. This ensures:
+
+1. The formatter produces consistent, correct output
+2. Formatting changes are intentional and reviewed
+3. Regressions are caught immediately
+
+**Important**: Input files should always differ from expected files. Input files represent "what not to do" - poorly formatted but valid Nushell code that the formatter should fix.
+
+### Test Categories
+
+Tests are organized by Nushell construct category:
+
+| Category | Constructs |
+|----------|------------|
+| `core` | `let_statement`, `mut_statement`, `const_statement`, `def_statement` |
+| `control_flow` | `if_else`, `for_loop`, `while_loop`, `loop_statement`, `match_expr`, `try_catch`, `break_continue`, `return_statement` |
+| `data_structures` | `list`, `record`, `table`, `nested_structures` |
+| `pipelines_expressions` | `pipeline`, `multiline_pipeline`, `closure`, `subexpression`, `binary_ops`, `range`, `cell_path`, `spread` |
+| `strings_interpolation` | `string_interpolation`, `comment` |
+| `types_values` | `value_with_unit`, `datetime`, `nothing`, `glob_pattern` |
+| `modules_imports` | `module`, `use_statement`, `export`, `source`, `hide`, `overlay` |
+| `commands_definitions` | `alias`, `extern`, `external_call` |
+| `special_constructs` | `do_block`, `where_clause`, `error_make` |
+
+### Running Tests
+
+#### Rust Tests
 
 ```bash
-# Run all tests
+# Run all tests (unit + ground truth + idempotency)
 cargo test
+
+# Run only ground truth tests
+cargo test --test ground_truth
 
 # Run with verbose output
 cargo test -- --nocapture
 ```
+
+#### Nushell Test Runner
+
+A Nushell script (`tests/run_ground_truth_tests.nu`) provides a more interactive testing experience:
+
+```bash
+# Build the release binary first
+cargo build --release
+
+# Run all tests
+nu tests/run_ground_truth_tests.nu
+
+# Run with verbose output (show diffs on failure)
+nu tests/run_ground_truth_tests.nu --verbose
+
+# Run only ground truth tests (skip idempotency)
+nu tests/run_ground_truth_tests.nu --ground-truth
+
+# Run only idempotency tests
+nu tests/run_ground_truth_tests.nu --idempotency
+
+# Run tests for a specific category
+nu tests/run_ground_truth_tests.nu --category control_flow
+
+# Run a single test
+nu tests/run_ground_truth_tests.nu --test let_statement
+
+# List all available tests
+nu tests/run_ground_truth_tests.nu --list
+
+# List available categories
+nu tests/run_ground_truth_tests.nu --list-categories
+
+# Check which test files exist
+nu tests/run_ground_truth_tests.nu --check-files
+```
+
+### Adding New Tests
+
+To add a test for a new construct:
+
+1. Create an input file at `tests/fixtures/input/<construct_name>.nu` with poorly-formatted but valid Nushell code
+2. Create an expected file at `tests/fixtures/expected/<construct_name>.nu` with the correctly formatted version
+3. Add the construct name to the appropriate category in `tests/run_ground_truth_tests.nu`
+4. Run the tests to verify
+
+Example input file (`tests/fixtures/input/my_construct.nu`):
+```nu
+let x  =  1
+let y   =   2
+```
+
+Example expected file (`tests/fixtures/expected/my_construct.nu`):
+```nu
+let x = 1
+let y = 2
+```
+
+## Contributing
+
+Contributions are welcome! Please see our [contribution guide](docs/CONTRIBUTING.md).
 
 ### Reporting issues
 
