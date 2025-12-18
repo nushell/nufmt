@@ -132,7 +132,7 @@ impl<'a> Formatter<'a> {
     // Comment handling
     // ─────────────────────────────────────────────────────────────────────────────
 
-    /// Check if there are any comments between last_pos and the given position
+    /// Check if there are any comments between `last_pos` and the given position
     fn write_comments_before(&mut self, pos: usize) {
         let mut comments_to_write: Vec<_> = self
             .comments
@@ -651,7 +651,7 @@ impl<'a> Formatter<'a> {
         self.write("]");
     }
 
-    /// Format cell path members (shared between CellPath and FullCellPath)
+    /// Format cell path members (shared between `CellPath` and `FullCellPath`)
     fn format_cell_path_members(&mut self, members: &[PathMember]) {
         for member in members {
             self.write(".");
