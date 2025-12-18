@@ -15,6 +15,12 @@ use nu_protocol::{
     Span,
 };
 
+/// Commands that format their block arguments in a special way
+const BLOCK_COMMANDS: &[&str] = &["for", "while", "loop", "module"];
+const CONDITIONAL_COMMANDS: &[&str] = &["if", "try"];
+const DEF_COMMANDS: &[&str] = &["def", "def-env", "export def"];
+const LET_COMMANDS: &[&str] = &["let", "let-env", "mut", "const"];
+
 /// Get the default engine state with built-in commands
 fn get_engine_state() -> EngineState {
     nu_cmd_lang::create_default_context()
@@ -59,6 +65,10 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Basic output methods
+    // ─────────────────────────────────────────────────────────────────────────────
+
     /// Write indentation if at start of line
     fn write_indent(&mut self) {
         if self.at_line_start {
@@ -86,38 +96,62 @@ impl<'a> Formatter<'a> {
         self.at_line_start = true;
     }
 
-    /// Write a space if not at line start
+    /// Write a space if not at line start and not already following whitespace/opener
     fn space(&mut self) {
         if !self.at_line_start && !self.output.is_empty() {
-            let last = *self.output.last().unwrap();
-            if last != b' ' && last != b'\n' && last != b'\t' && last != b'(' && last != b'[' {
-                self.output.push(b' ');
+            if let Some(&last) = self.output.last() {
+                if !matches!(last, b' ' | b'\n' | b'\t' | b'(' | b'[') {
+                    self.output.push(b' ');
+                }
             }
         }
     }
 
-    /// Get the source content for a span
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Span and source helpers
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// Get the source content for a span (returns owned Vec to avoid borrow issues)
     fn get_span_content(&self, span: Span) -> Vec<u8> {
         self.source[span.start..span.end].to_vec()
     }
 
+    /// Write the original source content for a span
+    fn write_span(&mut self, span: Span) {
+        let content = self.source[span.start..span.end].to_vec();
+        self.write_bytes(&content);
+    }
+
+    /// Write the original source content for an expression's span
+    fn write_expr_span(&mut self, expr: &Expression) {
+        self.write_span(expr.span);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Comment handling
+    // ─────────────────────────────────────────────────────────────────────────────
+
     /// Check if there are any comments between last_pos and the given position
     fn write_comments_before(&mut self, pos: usize) {
-        let mut comments_to_write = Vec::new();
-        for (i, (span, content)) in self.comments.iter().enumerate() {
-            if !self.written_comments[i] && span.start >= self.last_pos && span.end <= pos {
-                comments_to_write.push((i, span.start, content.clone()));
-            }
-        }
+        let mut comments_to_write: Vec<_> = self
+            .comments
+            .iter()
+            .enumerate()
+            .filter(|(i, (span, _))| {
+                !self.written_comments[*i] && span.start >= self.last_pos && span.end <= pos
+            })
+            .map(|(i, (span, content))| (i, span.start, content.clone()))
+            .collect();
+
         comments_to_write.sort_by_key(|(_, start, _)| *start);
 
         for (idx, _, content) in comments_to_write {
             self.written_comments[idx] = true;
-            // Check if we need a newline before the comment
-            if !self.at_line_start && !self.output.is_empty() {
-                let last = *self.output.last().unwrap();
-                if last != b'\n' {
-                    self.newline();
+            if !self.at_line_start {
+                if let Some(&last) = self.output.last() {
+                    if last != b'\n' {
+                        self.newline();
+                    }
                 }
             }
             self.write_indent();
@@ -128,22 +162,21 @@ impl<'a> Formatter<'a> {
 
     /// Check for inline comment after a position (on the same line)
     fn write_inline_comment(&mut self, after_pos: usize) {
-        // Look for a comment that starts on the same line as after_pos
         let line_end = self.source[after_pos..]
             .iter()
             .position(|&b| b == b'\n')
-            .map(|p| after_pos + p)
-            .unwrap_or(self.source.len());
+            .map_or(self.source.len(), |p| after_pos + p);
 
-        let mut found_comment: Option<(usize, Span, Vec<u8>)> = None;
-        for (i, (span, content)) in self.comments.iter().enumerate() {
-            if !self.written_comments[i] && span.start >= after_pos && span.start < line_end {
-                found_comment = Some((i, *span, content.clone()));
-                break;
-            }
-        }
+        let found = self
+            .comments
+            .iter()
+            .enumerate()
+            .find(|(i, (span, _))| {
+                !self.written_comments[*i] && span.start >= after_pos && span.start < line_end
+            })
+            .map(|(i, (span, content))| (i, *span, content.clone()));
 
-        if let Some((idx, span, content)) = found_comment {
+        if let Some((idx, span, content)) = found {
             self.written_comments[idx] = true;
             self.write(" ");
             self.output.extend(&content);
@@ -151,29 +184,22 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Block and pipeline formatting
+    // ─────────────────────────────────────────────────────────────────────────────
+
     /// Format a block
     fn format_block(&mut self, block: &Block) {
         let num_pipelines = block.pipelines.len();
         for (i, pipeline) in block.pipelines.iter().enumerate() {
-            // Write any comments before this pipeline
             if let Some(first_elem) = pipeline.elements.first() {
                 self.write_comments_before(first_elem.expr.span.start);
             }
 
             self.format_pipeline(pipeline);
 
-            // Check for inline comments after the pipeline
             if let Some(last_elem) = pipeline.elements.last() {
-                let end_pos = if let Some(ref redir) = last_elem.redirection {
-                    match redir {
-                        PipelineRedirection::Single { target, .. } => target.span().end,
-                        PipelineRedirection::Separate { out, err } => {
-                            out.span().end.max(err.span().end)
-                        }
-                    }
-                } else {
-                    last_elem.expr.span.end
-                };
+                let end_pos = self.get_element_end_pos(last_elem);
                 self.write_inline_comment(end_pos);
                 self.last_pos = end_pos;
             }
@@ -184,11 +210,21 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Get the end position of a pipeline element, including any redirections
+    fn get_element_end_pos(&self, element: &PipelineElement) -> usize {
+        element
+            .redirection
+            .as_ref()
+            .map_or(element.expr.span.end, |redir| match redir {
+                PipelineRedirection::Single { target, .. } => target.span().end,
+                PipelineRedirection::Separate { out, err } => out.span().end.max(err.span().end),
+            })
+    }
+
     /// Format a pipeline
     fn format_pipeline(&mut self, pipeline: &Pipeline) {
         for (i, element) in pipeline.elements.iter().enumerate() {
             if i > 0 {
-                // Pipe between elements - space before and after
                 self.write(" | ");
             }
             self.format_pipeline_element(element);
@@ -198,8 +234,6 @@ impl<'a> Formatter<'a> {
     /// Format a pipeline element
     fn format_pipeline_element(&mut self, element: &PipelineElement) {
         self.format_expression(&element.expr);
-
-        // Handle redirections
         if let Some(ref redirection) = element.redirection {
             self.format_redirection(redirection);
         }
@@ -225,280 +259,50 @@ impl<'a> Formatter<'a> {
     fn format_redirection_target(&mut self, target: &RedirectionTarget) {
         match target {
             RedirectionTarget::File { expr, span, .. } => {
-                let redir_content = self.get_span_content(*span);
-                self.write_bytes(&redir_content);
+                self.write_span(*span);
                 self.space();
                 self.format_expression(expr);
             }
             RedirectionTarget::Pipe { span } => {
-                let content = self.get_span_content(*span);
-                self.write_bytes(&content);
+                self.write_span(*span);
             }
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Expression formatting
+    // ─────────────────────────────────────────────────────────────────────────────
+
     /// Format an expression
     fn format_expression(&mut self, expr: &Expression) {
         match &expr.expr {
-            Expr::Int(_) | Expr::Float(_) | Expr::Bool(_) | Expr::Nothing | Expr::DateTime(_) => {
-                let content = self.get_span_content(expr.span);
-                self.write_bytes(&content);
+            // Literals and simple values - preserve original
+            Expr::Int(_)
+            | Expr::Float(_)
+            | Expr::Bool(_)
+            | Expr::Nothing
+            | Expr::DateTime(_)
+            | Expr::String(_)
+            | Expr::RawString(_)
+            | Expr::Binary(_)
+            | Expr::Filepath(_, _)
+            | Expr::Directory(_, _)
+            | Expr::GlobPattern(_, _)
+            | Expr::Var(_)
+            | Expr::VarDecl(_)
+            | Expr::Operator(_)
+            | Expr::StringInterpolation(_)
+            | Expr::GlobInterpolation(_, _)
+            | Expr::Signature(_)
+            | Expr::ImportPattern(_)
+            | Expr::Overlay(_)
+            | Expr::Garbage => {
+                self.write_expr_span(expr);
             }
 
-            Expr::String(_) | Expr::RawString(_) => {
-                let content = self.get_span_content(expr.span);
-                self.write_bytes(&content);
-            }
-
-            Expr::Binary(_) => {
-                let content = self.get_span_content(expr.span);
-                self.write_bytes(&content);
-            }
-
-            Expr::Filepath(_, _) | Expr::Directory(_, _) | Expr::GlobPattern(_, _) => {
-                let content = self.get_span_content(expr.span);
-                self.write_bytes(&content);
-            }
-
-            Expr::Var(_) | Expr::VarDecl(_) => {
-                let content = self.get_span_content(expr.span);
-                self.write_bytes(&content);
-            }
-
-            Expr::Call(call) => {
-                // Get the command name
-                let decl = self.working_set.get_decl(call.decl_id);
-                let decl_name = decl.name();
-
-                // Check if this is a special keyword-based command
-                let is_def =
-                    decl_name == "def" || decl_name == "def-env" || decl_name == "export def";
-                let is_if = decl_name == "if";
-                let is_let = decl_name == "let"
-                    || decl_name == "let-env"
-                    || decl_name == "mut"
-                    || decl_name == "const";
-                let is_try = decl_name == "try";
-                let is_for = decl_name == "for";
-                let is_while = decl_name == "while";
-                let is_loop = decl_name == "loop";
-                let is_module = decl_name == "module";
-
-                // Write command name
-                if call.head.end != 0 {
-                    let head_content = self.get_span_content(call.head);
-                    self.write_bytes(&head_content);
-                }
-
-                // Format arguments
-                for arg in &call.arguments {
-                    match arg {
-                        Argument::Positional(positional) | Argument::Unknown(positional) => {
-                            // Handle special cases for def signatures and blocks
-                            if is_def {
-                                match &positional.expr {
-                                    Expr::String(_) => {
-                                        // Function name
-                                        self.space();
-                                        self.format_expression(positional);
-                                    }
-                                    Expr::Signature(_) => {
-                                        // Signature - format specially
-                                        self.space();
-                                        self.format_signature_expression(positional);
-                                    }
-                                    Expr::Closure(block_id) | Expr::Block(block_id) => {
-                                        // Function body
-                                        self.space();
-                                        self.format_block_expression(
-                                            *block_id,
-                                            positional.span,
-                                            true,
-                                        );
-                                    }
-                                    _ => {
-                                        self.space();
-                                        self.format_expression(positional);
-                                    }
-                                }
-                            } else if is_if || is_try {
-                                match &positional.expr {
-                                    Expr::Block(block_id) | Expr::Closure(block_id) => {
-                                        self.space();
-                                        self.format_block_expression(
-                                            *block_id,
-                                            positional.span,
-                                            true,
-                                        );
-                                    }
-                                    _ => {
-                                        self.space();
-                                        self.format_expression(positional);
-                                    }
-                                }
-                            } else if is_let {
-                                self.space();
-                                // For let/mut/const, we need to handle VarDecl and the value specially
-                                match &positional.expr {
-                                    Expr::VarDecl(_) => {
-                                        self.format_expression(positional);
-                                    }
-                                    Expr::Block(block_id) => {
-                                        // The value is wrapped in a block for let statements
-                                        // Output the = sign before the value
-                                        self.write("= ");
-                                        let block = self.working_set.get_block(*block_id);
-                                        // Format the block contents inline
-                                        self.format_block(block);
-                                    }
-                                    Expr::Subexpression(block_id) => {
-                                        // For const statements, the value is wrapped in a Subexpression
-                                        // We should unwrap it and format the inner block without parens
-                                        self.write("= ");
-                                        let block = self.working_set.get_block(*block_id);
-                                        // Format the block contents inline
-                                        self.format_block(block);
-                                    }
-                                    _ => {
-                                        self.write("= ");
-                                        self.format_expression(positional);
-                                    }
-                                }
-                            } else if is_for {
-                                // for loop: `for x in list { body }`
-                                self.space();
-                                match &positional.expr {
-                                    Expr::Block(block_id) | Expr::Closure(block_id) => {
-                                        self.format_block_expression(
-                                            *block_id,
-                                            positional.span,
-                                            true,
-                                        );
-                                    }
-                                    _ => {
-                                        self.format_expression(positional);
-                                    }
-                                }
-                            } else if is_while {
-                                // while loop: `while condition { body }`
-                                self.space();
-                                match &positional.expr {
-                                    Expr::Block(block_id) | Expr::Closure(block_id) => {
-                                        self.format_block_expression(
-                                            *block_id,
-                                            positional.span,
-                                            true,
-                                        );
-                                    }
-                                    _ => {
-                                        self.format_expression(positional);
-                                    }
-                                }
-                            } else if is_loop {
-                                // loop: `loop { body }`
-                                self.space();
-                                match &positional.expr {
-                                    Expr::Block(block_id) | Expr::Closure(block_id) => {
-                                        self.format_block_expression(
-                                            *block_id,
-                                            positional.span,
-                                            true,
-                                        );
-                                    }
-                                    _ => {
-                                        self.format_expression(positional);
-                                    }
-                                }
-                            } else if is_module {
-                                // module: `module name { body }`
-                                self.space();
-                                match &positional.expr {
-                                    Expr::Block(block_id) | Expr::Closure(block_id) => {
-                                        self.format_block_expression(
-                                            *block_id,
-                                            positional.span,
-                                            true,
-                                        );
-                                    }
-                                    _ => {
-                                        self.format_expression(positional);
-                                    }
-                                }
-                            } else {
-                                // Regular command argument
-                                self.space();
-                                self.format_expression(positional);
-                            }
-                        }
-                        Argument::Named(named) => {
-                            self.space();
-                            // Write the flag
-                            if named.0.span.end != 0 {
-                                let flag_content = self.get_span_content(named.0.span);
-                                self.write_bytes(&flag_content);
-                            }
-                            // Write the short flag if present
-                            if let Some(short) = &named.1 {
-                                let short_content = self.get_span_content(short.span);
-                                self.write_bytes(&short_content);
-                            }
-                            // Write the value if present
-                            if let Some(value) = &named.2 {
-                                self.space();
-                                self.format_expression(value);
-                            }
-                        }
-                        Argument::Spread(spread_expr) => {
-                            self.space();
-                            self.write("...");
-                            self.format_expression(spread_expr);
-                        }
-                    }
-                }
-            }
-
-            Expr::ExternalCall(head, args) => {
-                // Format external command head
-                self.format_expression(head);
-
-                // Format arguments
-                for arg in args.as_ref() {
-                    self.space();
-                    match arg {
-                        ExternalArgument::Regular(arg_expr) => {
-                            self.format_expression(arg_expr);
-                        }
-                        ExternalArgument::Spread(spread_expr) => {
-                            self.write("...");
-                            self.format_expression(spread_expr);
-                        }
-                    }
-                }
-            }
-
-            Expr::Operator(_) => {
-                let content = self.get_span_content(expr.span);
-                self.write_bytes(&content);
-            }
-
-            Expr::BinaryOp(lhs, op, rhs) => {
-                self.format_expression(lhs);
-                self.space();
-                self.format_expression(op);
-                self.space();
-                // For assignment operators, unwrap Subexpression on RHS to avoid double parens
-                if let Expr::Operator(nu_protocol::ast::Operator::Assignment(_)) = &op.expr {
-                    if let Expr::Subexpression(block_id) = &rhs.expr {
-                        let block = self.working_set.get_block(*block_id);
-                        self.format_block(block);
-                    } else {
-                        self.format_expression(rhs);
-                    }
-                } else {
-                    self.format_expression(rhs);
-                }
-            }
-
+            Expr::Call(call) => self.format_call(call),
+            Expr::ExternalCall(head, args) => self.format_external_call(head, args),
+            Expr::BinaryOp(lhs, op, rhs) => self.format_binary_op(lhs, op, rhs),
             Expr::UnaryNot(inner) => {
                 self.write("not ");
                 self.format_expression(inner);
@@ -507,186 +311,262 @@ impl<'a> Formatter<'a> {
             Expr::Block(block_id) => {
                 self.format_block_expression(*block_id, expr.span, false);
             }
-
             Expr::Closure(block_id) => {
                 self.format_closure_expression(*block_id, expr.span);
             }
-
             Expr::Subexpression(block_id) => {
-                self.write("(");
-                let block = self.working_set.get_block(*block_id);
-                // Format inline if simple
-                if block.pipelines.len() == 1 && block.pipelines[0].elements.len() <= 3 {
-                    self.format_block(block);
-                } else {
-                    self.newline();
-                    self.indent_level += 1;
-                    self.format_block(block);
-                    self.newline();
-                    self.indent_level -= 1;
-                    self.write_indent();
-                }
-                self.write(")");
+                self.format_subexpression(*block_id);
             }
 
-            Expr::List(items) => {
-                self.format_list(items, expr.span);
-            }
+            Expr::List(items) => self.format_list(items),
+            Expr::Record(items) => self.format_record(items),
+            Expr::Table(table) => self.format_table(&table.columns, &table.rows),
 
-            Expr::Record(items) => {
-                self.format_record(items, expr.span);
-            }
-
-            Expr::Table(table) => {
-                self.format_table(&table.columns, &table.rows, expr.span);
-            }
-
-            Expr::Range(range) => {
-                if let Some(from) = &range.from {
-                    self.format_expression(from);
-                }
-                let op_content = self.get_span_content(range.operator.span);
-                self.write_bytes(&op_content);
-                if let Some(next) = &range.next {
-                    self.format_expression(next);
-                    // For step ranges (start..step..end), write the operator again before end
-                    self.write_bytes(&op_content);
-                }
-                if let Some(to) = &range.to {
-                    self.format_expression(to);
-                }
-            }
-
-            Expr::CellPath(cell_path) => {
-                for member in &cell_path.members {
-                    match member {
-                        PathMember::String { val, optional, .. } => {
-                            self.write(".");
-                            if *optional {
-                                self.write("?");
-                            }
-                            self.write(val);
-                        }
-                        PathMember::Int { val, optional, .. } => {
-                            self.write(".");
-                            if *optional {
-                                self.write("?");
-                            }
-                            self.write(&val.to_string());
-                        }
-                    }
-                }
-            }
-
+            Expr::Range(range) => self.format_range(range),
+            Expr::CellPath(cell_path) => self.format_cell_path_members(&cell_path.members),
             Expr::FullCellPath(full_path) => {
                 self.format_expression(&full_path.head);
-                for member in &full_path.tail {
-                    match member {
-                        PathMember::String { val, optional, .. } => {
-                            self.write(".");
-                            if *optional {
-                                self.write("?");
-                            }
-                            self.write(val);
-                        }
-                        PathMember::Int { val, optional, .. } => {
-                            self.write(".");
-                            if *optional {
-                                self.write("?");
-                            }
-                            self.write(&val.to_string());
-                        }
-                    }
-                }
-            }
-
-            Expr::StringInterpolation(_) => {
-                // Use original content for string interpolation to preserve structure
-                let content = self.get_span_content(expr.span);
-                self.write_bytes(&content);
-            }
-
-            Expr::GlobInterpolation(_, _) => {
-                let content = self.get_span_content(expr.span);
-                self.write_bytes(&content);
+                self.format_cell_path_members(&full_path.tail);
             }
 
             Expr::RowCondition(block_id) => {
-                // Row conditions are usually simple expressions
                 let block = self.working_set.get_block(*block_id);
                 self.format_block(block);
             }
 
             Expr::Keyword(keyword) => {
-                let kw_content = self.get_span_content(keyword.span);
-                self.write_bytes(&kw_content);
+                self.write_span(keyword.span);
                 self.space();
-                // Handle the expression after the keyword (e.g., else block)
-                match &keyword.expr.expr {
-                    Expr::Block(block_id) | Expr::Closure(block_id) => {
-                        self.format_block_expression(*block_id, keyword.expr.span, true);
-                    }
-                    _ => {
-                        self.format_expression(&keyword.expr);
-                    }
-                }
+                self.format_block_or_expr(&keyword.expr);
             }
 
             Expr::ValueWithUnit(value_unit) => {
                 self.format_expression(&value_unit.expr);
-                let unit_content = self.get_span_content(value_unit.unit.span);
-                self.write_bytes(&unit_content);
+                self.write_span(value_unit.unit.span);
             }
 
-            Expr::MatchBlock(matches) => {
-                self.format_match_block(matches);
-            }
+            Expr::MatchBlock(matches) => self.format_match_block(matches),
 
-            Expr::Signature(_) => {
-                // Format signature
-                let content = self.get_span_content(expr.span);
-                self.write_bytes(&content);
-            }
-
-            Expr::ImportPattern(_) => {
-                let content = self.get_span_content(expr.span);
-                self.write_bytes(&content);
-            }
-
-            Expr::Overlay(_) => {
-                let content = self.get_span_content(expr.span);
-                self.write_bytes(&content);
-            }
-
-            Expr::Collect(_, inner) => {
-                self.format_expression(inner);
-            }
+            Expr::Collect(_, inner) => self.format_expression(inner),
 
             Expr::AttributeBlock(attr_block) => {
                 for attr in &attr_block.attributes {
-                    let content = self.get_span_content(attr.expr.span);
-                    self.write_bytes(&content);
+                    self.write_span(attr.expr.span);
                     self.newline();
                 }
                 self.format_expression(&attr_block.item);
             }
+        }
+    }
 
-            Expr::Garbage => {
-                // Output original garbage content
-                let content = self.get_span_content(expr.span);
-                self.write_bytes(&content);
+    /// Format a call expression
+    fn format_call(&mut self, call: &nu_protocol::ast::Call) {
+        let decl = self.working_set.get_decl(call.decl_id);
+        let decl_name = decl.name();
+
+        // Determine command type
+        let cmd_type = Self::classify_command(decl_name);
+
+        // Write command name
+        if call.head.end != 0 {
+            self.write_span(call.head);
+        }
+
+        // Format arguments based on command type
+        for arg in &call.arguments {
+            self.format_call_argument(arg, &cmd_type);
+        }
+    }
+
+    /// Classify a command by its formatting requirements
+    fn classify_command(name: &str) -> CommandType {
+        if DEF_COMMANDS.contains(&name) {
+            CommandType::Def
+        } else if CONDITIONAL_COMMANDS.contains(&name) {
+            CommandType::Conditional
+        } else if LET_COMMANDS.contains(&name) {
+            CommandType::Let
+        } else if BLOCK_COMMANDS.contains(&name) {
+            CommandType::Block
+        } else {
+            CommandType::Regular
+        }
+    }
+
+    /// Format a call argument based on command type
+    fn format_call_argument(&mut self, arg: &Argument, cmd_type: &CommandType) {
+        match arg {
+            Argument::Positional(positional) | Argument::Unknown(positional) => {
+                self.format_positional_argument(positional, cmd_type);
+            }
+            Argument::Named(named) => {
+                self.space();
+                if named.0.span.end != 0 {
+                    self.write_span(named.0.span);
+                }
+                if let Some(short) = &named.1 {
+                    self.write_span(short.span);
+                }
+                if let Some(value) = &named.2 {
+                    self.space();
+                    self.format_expression(value);
+                }
+            }
+            Argument::Spread(spread_expr) => {
+                self.space();
+                self.write("...");
+                self.format_expression(spread_expr);
             }
         }
     }
 
-    /// Format a signature expression (for def commands)
-    fn format_signature_expression(&mut self, expr: &Expression) {
-        let content = self.get_span_content(expr.span);
-        // Parse and reformat the signature to ensure consistent spacing
-        self.write_bytes(&content);
+    /// Format a positional argument based on command type
+    fn format_positional_argument(&mut self, positional: &Expression, cmd_type: &CommandType) {
+        self.space();
+        match cmd_type {
+            CommandType::Def => self.format_def_argument(positional),
+            CommandType::Conditional | CommandType::Block => {
+                self.format_block_or_expr(positional);
+            }
+            CommandType::Let => self.format_let_argument(positional),
+            CommandType::Regular => self.format_expression(positional),
+        }
     }
 
-    /// Format a block expression with braces
+    /// Format an argument for def commands
+    fn format_def_argument(&mut self, positional: &Expression) {
+        match &positional.expr {
+            Expr::String(_) => self.format_expression(positional),
+            Expr::Signature(_) => self.write_expr_span(positional),
+            Expr::Closure(block_id) | Expr::Block(block_id) => {
+                self.format_block_expression(*block_id, positional.span, true);
+            }
+            _ => self.format_expression(positional),
+        }
+    }
+
+    /// Format an argument for let/mut/const commands
+    fn format_let_argument(&mut self, positional: &Expression) {
+        match &positional.expr {
+            Expr::VarDecl(_) => self.format_expression(positional),
+            Expr::Block(block_id) | Expr::Subexpression(block_id) => {
+                self.write("= ");
+                let block = self.working_set.get_block(*block_id);
+                self.format_block(block);
+            }
+            _ => {
+                self.write("= ");
+                self.format_expression(positional);
+            }
+        }
+    }
+
+    /// Format an expression that could be a block or a regular expression
+    fn format_block_or_expr(&mut self, expr: &Expression) {
+        match &expr.expr {
+            Expr::Block(block_id) | Expr::Closure(block_id) => {
+                self.format_block_expression(*block_id, expr.span, true);
+            }
+            _ => self.format_expression(expr),
+        }
+    }
+
+    /// Format an external call
+    fn format_external_call(&mut self, head: &Expression, args: &[ExternalArgument]) {
+        self.format_expression(head);
+        for arg in args {
+            self.space();
+            match arg {
+                ExternalArgument::Regular(arg_expr) => self.format_expression(arg_expr),
+                ExternalArgument::Spread(spread_expr) => {
+                    self.write("...");
+                    self.format_expression(spread_expr);
+                }
+            }
+        }
+    }
+
+    /// Format a binary operation
+    fn format_binary_op(&mut self, lhs: &Expression, op: &Expression, rhs: &Expression) {
+        self.format_expression(lhs);
+        self.space();
+        self.format_expression(op);
+        self.space();
+
+        // For assignment operators, unwrap Subexpression on RHS to avoid double parens
+        if let Expr::Operator(nu_protocol::ast::Operator::Assignment(_)) = &op.expr {
+            if let Expr::Subexpression(block_id) = &rhs.expr {
+                let block = self.working_set.get_block(*block_id);
+                self.format_block(block);
+                return;
+            }
+        }
+        self.format_expression(rhs);
+    }
+
+    /// Format a range expression
+    fn format_range(&mut self, range: &nu_protocol::ast::Range) {
+        if let Some(from) = &range.from {
+            self.format_expression(from);
+        }
+        let op_content = self.get_span_content(range.operator.span);
+        self.write_bytes(&op_content);
+        if let Some(next) = &range.next {
+            self.format_expression(next);
+            // For step ranges (start..step..end), write the operator again before end
+            let op_content = self.get_span_content(range.operator.span);
+            self.write_bytes(&op_content);
+        }
+        if let Some(to) = &range.to {
+            self.format_expression(to);
+        }
+    }
+
+    /// Format cell path members (shared between CellPath and FullCellPath)
+    fn format_cell_path_members(&mut self, members: &[PathMember]) {
+        for member in members {
+            self.write(".");
+            match member {
+                PathMember::String { val, optional, .. } => {
+                    if *optional {
+                        self.write("?");
+                    }
+                    self.write(val);
+                }
+                PathMember::Int { val, optional, .. } => {
+                    if *optional {
+                        self.write("?");
+                    }
+                    self.write(&val.to_string());
+                }
+            }
+        }
+    }
+
+    /// Format a subexpression
+    fn format_subexpression(&mut self, block_id: nu_protocol::BlockId) {
+        self.write("(");
+        let block = self.working_set.get_block(block_id);
+        let is_simple = block.pipelines.len() == 1 && block.pipelines[0].elements.len() <= 3;
+
+        if is_simple {
+            self.format_block(block);
+        } else {
+            self.newline();
+            self.indent_level += 1;
+            self.format_block(block);
+            self.newline();
+            self.indent_level -= 1;
+            self.write_indent();
+        }
+        self.write(")");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Block expression formatting
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// Format a block expression with optional braces
     fn format_block_expression(
         &mut self,
         block_id: nu_protocol::BlockId,
@@ -699,7 +579,6 @@ impl<'a> Formatter<'a> {
             self.write("{");
         }
 
-        // Check if block is simple enough to be inline
         let is_simple = block.pipelines.len() == 1
             && block.pipelines[0].elements.len() == 1
             && !self.block_has_nested_structures(block);
@@ -709,7 +588,6 @@ impl<'a> Formatter<'a> {
             self.format_block(block);
             self.write(" ");
         } else if block.pipelines.is_empty() {
-            // Empty block
             if with_braces {
                 self.write(" ");
             }
@@ -729,14 +607,11 @@ impl<'a> Formatter<'a> {
 
     /// Check if a block has nested structures that require multiline formatting
     fn block_has_nested_structures(&self, block: &Block) -> bool {
-        for pipeline in &block.pipelines {
-            for element in &pipeline.elements {
-                if self.expr_is_complex(&element.expr) {
-                    return true;
-                }
-            }
-        }
-        false
+        block
+            .pipelines
+            .iter()
+            .flat_map(|p| &p.elements)
+            .any(|e| self.expr_is_complex(&e.expr))
     }
 
     /// Check if an expression is complex enough to warrant multiline formatting
@@ -758,67 +633,69 @@ impl<'a> Formatter<'a> {
     /// Format a closure expression
     fn format_closure_expression(&mut self, block_id: nu_protocol::BlockId, span: Span) {
         let content = self.get_span_content(span);
-        // Check if this closure has parameters (starts with {|)
         let has_params = content.starts_with(b"{|") || content.starts_with(b"{ |");
 
-        if has_params {
-            // Find the end of the parameter section
-            let param_end = content.iter().position(|&b| b == b'|').and_then(|first| {
-                content[first + 1..]
-                    .iter()
-                    .position(|&b| b == b'|')
-                    .map(|p| first + 1 + p + 1)
-            });
-
-            if let Some(end) = param_end {
-                self.write("{|");
-                // Extract parameter content (between the two |)
-                let params = &content[2..end - 1];
-                let trimmed = params
-                    .iter()
-                    .copied()
-                    .skip_while(|b| b.is_ascii_whitespace())
-                    .collect::<Vec<_>>();
-                let trimmed: Vec<u8> = trimmed
-                    .into_iter()
-                    .rev()
-                    .skip_while(|b| b.is_ascii_whitespace())
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .collect();
-                self.write_bytes(&trimmed);
-                self.write("| ");
-
-                // Format the body
-                let block = self.working_set.get_block(block_id);
-                let is_simple = block.pipelines.len() == 1
-                    && block.pipelines[0].elements.len() == 1
-                    && !self.block_has_nested_structures(block);
-
-                if is_simple {
-                    self.format_block(block);
-                    self.write(" }");
-                } else {
-                    self.newline();
-                    self.indent_level += 1;
-                    self.format_block(block);
-                    self.newline();
-                    self.indent_level -= 1;
-                    self.write_indent();
-                    self.write("}");
-                }
-            } else {
-                // Fallback: just output original
-                self.write_bytes(&content);
-            }
-        } else {
+        if !has_params {
             self.format_block_expression(block_id, span, true);
+            return;
+        }
+
+        // Find the end of the parameter section (second |)
+        let param_end = content.iter().position(|&b| b == b'|').and_then(|first| {
+            content[first + 1..]
+                .iter()
+                .position(|&b| b == b'|')
+                .map(|p| first + 1 + p + 1)
+        });
+
+        let Some(end) = param_end else {
+            self.write_bytes(&content);
+            return;
+        };
+
+        self.write("{|");
+        // Extract and trim parameter content
+        let params = &content[2..end - 1];
+        let trimmed: Vec<u8> = params
+            .iter()
+            .copied()
+            .skip_while(|b| b.is_ascii_whitespace())
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .skip_while(|b| b.is_ascii_whitespace())
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        self.write_bytes(&trimmed);
+        self.write("| ");
+
+        let block = self.working_set.get_block(block_id);
+        let is_simple = block.pipelines.len() == 1
+            && block.pipelines[0].elements.len() == 1
+            && !self.block_has_nested_structures(block);
+
+        if is_simple {
+            self.format_block(block);
+            self.write(" }");
+        } else {
+            self.newline();
+            self.indent_level += 1;
+            self.format_block(block);
+            self.newline();
+            self.indent_level -= 1;
+            self.write_indent();
+            self.write("}");
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Collection formatting (lists, records, tables)
+    // ─────────────────────────────────────────────────────────────────────────────
+
     /// Format a list
-    fn format_list(&mut self, items: &[ListItem], _span: Span) {
+    fn format_list(&mut self, items: &[ListItem]) {
         if items.is_empty() {
             self.write("[]");
             return;
@@ -837,13 +714,7 @@ impl<'a> Formatter<'a> {
                 if i > 0 {
                     self.write(", ");
                 }
-                match item {
-                    ListItem::Item(expr) => self.format_expression(expr),
-                    ListItem::Spread(_, expr) => {
-                        self.write("...");
-                        self.format_expression(expr);
-                    }
-                }
+                self.format_list_item(item);
             }
             self.write("]");
         } else {
@@ -853,13 +724,7 @@ impl<'a> Formatter<'a> {
             self.indent_level += 1;
             for item in items {
                 self.write_indent();
-                match item {
-                    ListItem::Item(expr) => self.format_expression(expr),
-                    ListItem::Spread(_, expr) => {
-                        self.write("...");
-                        self.format_expression(expr);
-                    }
-                }
+                self.format_list_item(item);
                 self.newline();
             }
             self.indent_level -= 1;
@@ -868,8 +733,19 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Format a single list item
+    fn format_list_item(&mut self, item: &ListItem) {
+        match item {
+            ListItem::Item(expr) => self.format_expression(expr),
+            ListItem::Spread(_, expr) => {
+                self.write("...");
+                self.format_expression(expr);
+            }
+        }
+    }
+
     /// Format a record
-    fn format_record(&mut self, items: &[RecordItem], _span: Span) {
+    fn format_record(&mut self, items: &[RecordItem]) {
         if items.is_empty() {
             self.write("{}");
             return;
@@ -888,17 +764,7 @@ impl<'a> Formatter<'a> {
                 if i > 0 {
                     self.write(", ");
                 }
-                match item {
-                    RecordItem::Pair(key, value) => {
-                        self.format_expression(key);
-                        self.write(": ");
-                        self.format_expression(value);
-                    }
-                    RecordItem::Spread(_, expr) => {
-                        self.write("...");
-                        self.format_expression(expr);
-                    }
-                }
+                self.format_record_item(item);
             }
             self.write("}");
         } else {
@@ -908,17 +774,7 @@ impl<'a> Formatter<'a> {
             self.indent_level += 1;
             for item in items {
                 self.write_indent();
-                match item {
-                    RecordItem::Pair(key, value) => {
-                        self.format_expression(key);
-                        self.write(": ");
-                        self.format_expression(value);
-                    }
-                    RecordItem::Spread(_, expr) => {
-                        self.write("...");
-                        self.format_expression(expr);
-                    }
-                }
+                self.format_record_item(item);
                 self.newline();
             }
             self.indent_level -= 1;
@@ -927,8 +783,23 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Format a single record item
+    fn format_record_item(&mut self, item: &RecordItem) {
+        match item {
+            RecordItem::Pair(key, value) => {
+                self.format_expression(key);
+                self.write(": ");
+                self.format_expression(value);
+            }
+            RecordItem::Spread(_, expr) => {
+                self.write("...");
+                self.format_expression(expr);
+            }
+        }
+    }
+
     /// Format a table
-    fn format_table(&mut self, columns: &[Expression], rows: &[Box<[Expression]>], _span: Span) {
+    fn format_table(&mut self, columns: &[Expression], rows: &[Box<[Expression]>]) {
         self.write("[");
 
         // Format header row
@@ -962,6 +833,10 @@ impl<'a> Formatter<'a> {
         self.write("]");
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Match block formatting
+    // ─────────────────────────────────────────────────────────────────────────────
+
     /// Format a match block
     fn format_match_block(&mut self, matches: &[(MatchPattern, Expression)]) {
         self.write("{");
@@ -972,15 +847,7 @@ impl<'a> Formatter<'a> {
             self.write_indent();
             self.format_match_pattern(pattern);
             self.write(" => ");
-
-            match &expr.expr {
-                Expr::Block(block_id) | Expr::Closure(block_id) => {
-                    self.format_block_expression(*block_id, expr.span, true);
-                }
-                _ => {
-                    self.format_expression(expr);
-                }
-            }
+            self.format_block_or_expr(expr);
             self.newline();
         }
 
@@ -993,16 +860,8 @@ impl<'a> Formatter<'a> {
     fn format_match_pattern(&mut self, pattern: &MatchPattern) {
         match &pattern.pattern {
             Pattern::Expression(expr) => self.format_expression(expr),
-            Pattern::Value(val) => {
-                // For Value patterns, use the original span content
-                let content = self.get_span_content(pattern.span);
-                self.write_bytes(&content);
-                let _ = val; // Suppress unused warning
-            }
-            Pattern::Variable(_) => {
-                // Use the original span content for variable patterns
-                let content = self.get_span_content(pattern.span);
-                self.write_bytes(&content);
+            Pattern::Value(_) | Pattern::Variable(_) | Pattern::Rest(_) | Pattern::Garbage => {
+                self.write_span(pattern.span);
             }
             Pattern::Or(patterns) => {
                 for (i, p) in patterns.iter().enumerate() {
@@ -1034,23 +893,14 @@ impl<'a> Formatter<'a> {
                 }
                 self.write("}");
             }
-            Pattern::Rest(_) => {
-                let content = self.get_span_content(pattern.span);
-                self.write_bytes(&content);
-            }
-            Pattern::IgnoreRest => {
-                self.write("..");
-            }
-            Pattern::IgnoreValue => {
-                self.write("_");
-            }
-            Pattern::Garbage => {
-                // Output original content
-                let content = self.get_span_content(pattern.span);
-                self.write_bytes(&content);
-            }
+            Pattern::IgnoreRest => self.write(".."),
+            Pattern::IgnoreValue => self.write("_"),
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────────
 
     /// Check if an expression is simple (primitive type)
     fn is_simple_expr(&self, expr: &Expression) -> bool {
@@ -1074,6 +924,15 @@ impl<'a> Formatter<'a> {
     fn finish(self) -> Vec<u8> {
         self.output
     }
+}
+
+/// Command types for formatting purposes
+enum CommandType {
+    Def,
+    Conditional,
+    Let,
+    Block,
+    Regular,
 }
 
 /// Extract comments from source code
@@ -1109,12 +968,10 @@ fn extract_comments(source: &[u8]) -> Vec<(Span, Vec<u8>)> {
         // Found a comment
         if c == b'#' {
             let start = i;
-            // Find end of line
             while i < source.len() && source[i] != b'\n' {
                 i += 1;
             }
-            let content = source[start..i].to_vec();
-            comments.push((Span::new(start, i), content));
+            comments.push((Span::new(start, i), source[start..i].to_vec()));
         }
 
         i += 1;
@@ -1141,7 +998,6 @@ pub(crate) fn format_inner(contents: &[u8], config: &Config) -> Result<Vec<u8>, 
     if parsed_block.pipelines.is_empty() {
         trace!("block has no pipelines!");
         debug!("File has no code to format.");
-        // Still process for comments
         let comments = extract_comments(contents);
         if comments.is_empty() {
             return Ok(contents.to_vec());
@@ -1160,15 +1016,12 @@ pub(crate) fn format_inner(contents: &[u8], config: &Config) -> Result<Vec<u8>, 
     formatter.format_block(&parsed_block);
 
     // Write trailing comments
-    let end_pos = if let Some(last_pipeline) = parsed_block.pipelines.last() {
-        if let Some(last_elem) = last_pipeline.elements.last() {
-            last_elem.expr.span.end
-        } else {
-            0
-        }
-    } else {
-        0
-    };
+    let end_pos = parsed_block
+        .pipelines
+        .last()
+        .and_then(|p| p.elements.last())
+        .map(|e| e.expr.span.end)
+        .unwrap_or(0);
 
     if end_pos > 0 {
         formatter.last_pos = end_pos;
@@ -1180,13 +1033,12 @@ pub(crate) fn format_inner(contents: &[u8], config: &Config) -> Result<Vec<u8>, 
 
 /// Make sure there is a newline at the end of a buffer
 pub(crate) fn add_newline_at_end_of_file(out: Vec<u8>) -> Vec<u8> {
-    match out.last() {
-        Some(&b'\n') => out,
-        _ => {
-            let mut result = out;
-            result.push(b'\n');
-            result
-        }
+    if out.last() == Some(&b'\n') {
+        out
+    } else {
+        let mut result = out;
+        result.push(b'\n');
+        result
     }
 }
 
@@ -1223,7 +1075,6 @@ mod tests {
 
     #[test]
     fn test_pipeline() {
-        // External commands are parsed when internal commands aren't available
         let input = "ls | get name";
         let output = format(input);
         assert!(output.contains("| get"));
