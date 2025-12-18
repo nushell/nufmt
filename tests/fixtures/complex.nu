@@ -36,7 +36,7 @@ def classify [x: int] { match $x {
 # Closures with multiple parameters
 let transform = {|x, y, z| ($x + $y) * $z }
 # Pipelines with closures
-let processed = [1, 2, 3, 4, 5] | each {|n| $n * 2 } | filter {|n| $n > 4 }
+let processed = [1, 2, 3, 4, 5] | each {|n| $n * 2 } | where {|n| $n > 4 }
 # Error handling with catch
 def safe_divide [a: int, b: int] {
     try {
@@ -60,7 +60,7 @@ let report = [[name, department, salary]; ["Alice", "Engineering", 100000], ["Bo
 # String with multiple interpolations
 let message = $"User ($complex_data.users.0.name) has scores: ($complex_data.users.0.scores | str join ', ')"
 # Range operations
-let numbers = 1..100 | filter {|n| $n mod 2 == 0 } | take 10
+let numbers = 1..100 | where {|n| $n mod 2 == 0 } | take 10
 # Record spread
 let base_config = {host: "localhost", port: 8080}
 let full_config = {...$base_config, debug: true, timeout: 30}

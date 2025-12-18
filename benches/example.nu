@@ -107,7 +107,7 @@
         char -i (0x60 + 1) (0x60 + 2)
         char -u 1F468 200D 1F466 200D 1F466
         clear
-        [1, 2, 3] | collect {|| 
+        [1, 2, 3] | collect {||
             x | $x.1
         }
         {acronym: PWD, meaning: 'Print Working Directory'} | columns
@@ -619,16 +619,16 @@
     1 | fill --alignment right --character '0' --width 5
     1.1 | fill --alignment center --character '0' --width 5
     1kib | fill --alignment middle --character '0' --width 10
-    [1, 2] | filter {|x| $x > 1}
+    [1, 2] | where {|x| $x > 1}
     [
         {a: 1}
         {a: 2}
-    ] | filter {|x| $x.a > 1}
+    ] | where {|x| $x.a > 1}
     let cond = {|x| $x.a > 1 }
     [
         {a: 1}
         {a: 2}
-    ] | filter $cond
+    ] | where $cond
     ls | find toml md sh
     'Cargo.toml' | find toml
     [
