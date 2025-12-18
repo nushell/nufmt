@@ -12,13 +12,14 @@ use nu_protocol::{
         Pattern, Pipeline, PipelineElement, PipelineRedirection, RecordItem, RedirectionTarget,
     },
     engine::{EngineState, StateWorkingSet},
-    Span,
+    Signature, Span, SyntaxShape,
 };
 
 /// Commands that format their block arguments in a special way
 const BLOCK_COMMANDS: &[&str] = &["for", "while", "loop", "module"];
 const CONDITIONAL_COMMANDS: &[&str] = &["if", "try"];
 const DEF_COMMANDS: &[&str] = &["def", "def-env", "export def"];
+const EXTERN_COMMANDS: &[&str] = &["extern"];
 const LET_COMMANDS: &[&str] = &["let", "let-env", "mut", "const"];
 
 /// Get the default engine state with built-in commands
@@ -293,12 +294,13 @@ impl<'a> Formatter<'a> {
             | Expr::Operator(_)
             | Expr::StringInterpolation(_)
             | Expr::GlobInterpolation(_, _)
-            | Expr::Signature(_)
             | Expr::ImportPattern(_)
             | Expr::Overlay(_)
             | Expr::Garbage => {
                 self.write_expr_span(expr);
             }
+
+            Expr::Signature(sig) => self.format_signature(sig),
 
             Expr::Call(call) => self.format_call(call),
             Expr::ExternalCall(head, args) => self.format_external_call(head, args),
@@ -340,9 +342,10 @@ impl<'a> Formatter<'a> {
                 self.format_block_or_expr(&keyword.expr);
             }
 
-            Expr::ValueWithUnit(value_unit) => {
-                self.format_expression(&value_unit.expr);
-                self.write_span(value_unit.unit.span);
+            Expr::ValueWithUnit(_) => {
+                // Preserve original span since the parser normalizes units
+                // (e.g., 1kb becomes 1000b internally)
+                self.write_expr_span(expr);
             }
 
             Expr::MatchBlock(matches) => self.format_match_block(matches),
@@ -382,6 +385,8 @@ impl<'a> Formatter<'a> {
     fn classify_command(name: &str) -> CommandType {
         if DEF_COMMANDS.contains(&name) {
             CommandType::Def
+        } else if EXTERN_COMMANDS.contains(&name) {
+            CommandType::Extern
         } else if CONDITIONAL_COMMANDS.contains(&name) {
             CommandType::Conditional
         } else if LET_COMMANDS.contains(&name) {
@@ -425,6 +430,7 @@ impl<'a> Formatter<'a> {
         self.space();
         match cmd_type {
             CommandType::Def => self.format_def_argument(positional),
+            CommandType::Extern => self.format_extern_argument(positional),
             CommandType::Conditional | CommandType::Block => {
                 self.format_block_or_expr(positional);
             }
@@ -437,10 +443,19 @@ impl<'a> Formatter<'a> {
     fn format_def_argument(&mut self, positional: &Expression) {
         match &positional.expr {
             Expr::String(_) => self.format_expression(positional),
-            Expr::Signature(_) => self.write_expr_span(positional),
+            Expr::Signature(sig) => self.format_signature(sig),
             Expr::Closure(block_id) | Expr::Block(block_id) => {
                 self.format_block_expression(*block_id, positional.span, true);
             }
+            _ => self.format_expression(positional),
+        }
+    }
+
+    /// Format an argument for extern commands (preserve original signature)
+    fn format_extern_argument(&mut self, positional: &Expression) {
+        match &positional.expr {
+            // For extern, preserve the signature span to maintain parameter order
+            Expr::Signature(_) => self.write_expr_span(positional),
             _ => self.format_expression(positional),
         }
     }
@@ -473,6 +488,11 @@ impl<'a> Formatter<'a> {
 
     /// Format an external call
     fn format_external_call(&mut self, head: &Expression, args: &[ExternalArgument]) {
+        // Check if the original source had an explicit ^ prefix
+        // by looking at the byte before the head span
+        if head.span.start > 0 && self.source.get(head.span.start - 1) == Some(&b'^') {
+            self.write("^");
+        }
         self.format_expression(head);
         for arg in args {
             self.space();
@@ -489,9 +509,10 @@ impl<'a> Formatter<'a> {
     /// Format a binary operation
     fn format_binary_op(&mut self, lhs: &Expression, op: &Expression, rhs: &Expression) {
         self.format_expression(lhs);
-        self.space();
+        // Always add space around binary operators for valid nushell syntax
+        self.write(" ");
         self.format_expression(op);
-        self.space();
+        self.write(" ");
 
         // For assignment operators, unwrap Subexpression on RHS to avoid double parens
         if let Expr::Operator(nu_protocol::ast::Operator::Assignment(_)) = &op.expr {
@@ -509,17 +530,125 @@ impl<'a> Formatter<'a> {
         if let Some(from) = &range.from {
             self.format_expression(from);
         }
-        let op_content = self.get_span_content(range.operator.span);
-        self.write_bytes(&op_content);
+        self.write("..");
         if let Some(next) = &range.next {
             self.format_expression(next);
             // For step ranges (start..step..end), write the operator again before end
-            let op_content = self.get_span_content(range.operator.span);
-            self.write_bytes(&op_content);
+            self.write("..");
         }
         if let Some(to) = &range.to {
             self.format_expression(to);
         }
+    }
+
+    /// Format a signature (for def commands)
+    fn format_signature(&mut self, sig: &Signature) {
+        self.write("[");
+
+        let param_count = sig.required_positional.len()
+            + sig.optional_positional.len()
+            + sig.named.iter().filter(|f| f.long != "help").count()
+            + if sig.rest_positional.is_some() { 1 } else { 0 };
+        let has_multiline = param_count > 3;
+
+        if has_multiline {
+            self.newline();
+            self.indent_level += 1;
+        }
+
+        let mut first = true;
+
+        // Helper to write separator
+        let write_sep = |formatter: &mut Formatter, first: &mut bool, has_multiline: bool| {
+            if !*first {
+                if has_multiline {
+                    formatter.newline();
+                    formatter.write_indent();
+                } else {
+                    formatter.write(", ");
+                }
+            }
+            *first = false;
+        };
+
+        // Required positional
+        for param in &sig.required_positional {
+            write_sep(self, &mut first, has_multiline);
+            self.write(&param.name);
+            if param.shape != SyntaxShape::Any {
+                self.write(": ");
+                self.write(&format!("{}", param.shape));
+            }
+        }
+
+        // Optional positional
+        for param in &sig.optional_positional {
+            write_sep(self, &mut first, has_multiline);
+            self.write(&param.name);
+            // If there's a default value, don't use ? syntax, use = syntax
+            if param.default_value.is_none() {
+                self.write("?");
+            }
+            if param.shape != SyntaxShape::Any {
+                self.write(": ");
+                self.write(&format!("{}", param.shape));
+            }
+            if let Some(default) = &param.default_value {
+                self.write(" = ");
+                self.write(&default.to_expanded_string(" ", &nu_protocol::Config::default()));
+            }
+        }
+
+        // Named flags (before rest positional to match common convention)
+        for flag in &sig.named {
+            // Skip help flag as it's auto-added
+            if flag.long == "help" {
+                continue;
+            }
+            write_sep(self, &mut first, has_multiline);
+
+            // Handle short-only flags (empty long name)
+            if flag.long.is_empty() {
+                if let Some(short) = flag.short {
+                    self.write("-");
+                    self.write(&short.to_string());
+                }
+            } else {
+                self.write("--");
+                self.write(&flag.long);
+                if let Some(short) = flag.short {
+                    self.write("(-");
+                    self.write(&short.to_string());
+                    self.write(")");
+                }
+            }
+            if let Some(shape) = &flag.arg {
+                self.write(": ");
+                self.write(&format!("{}", shape));
+            }
+            if let Some(default) = &flag.default_value {
+                self.write(" = ");
+                self.write(&default.to_expanded_string(" ", &nu_protocol::Config::default()));
+            }
+        }
+
+        // Rest positional (comes last)
+        if let Some(rest) = &sig.rest_positional {
+            write_sep(self, &mut first, has_multiline);
+            self.write("...");
+            self.write(&rest.name);
+            if rest.shape != SyntaxShape::Any {
+                self.write(": ");
+                self.write(&format!("{}", rest.shape));
+            }
+        }
+
+        if has_multiline {
+            self.newline();
+            self.indent_level -= 1;
+            self.write_indent();
+        }
+        self.write("]");
     }
 
     /// Format cell path members (shared between CellPath and FullCellPath)
@@ -929,6 +1058,7 @@ impl<'a> Formatter<'a> {
 /// Command types for formatting purposes
 enum CommandType {
     Def,
+    Extern,
     Conditional,
     Let,
     Block,
