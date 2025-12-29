@@ -13,3 +13,5 @@ result
 
 # Everyone their own
 tmp/
+tests/.DS_Store
+.DS_Store

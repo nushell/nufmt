@@ -5,6 +5,7 @@ use std::convert::TryFrom;
 use crate::config_error::ConfigError;
 use nu_protocol::Value;
 
+/// Configuration options for the formatter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub indent: usize,
@@ -15,22 +16,22 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Config {
+        Self {
             indent: 4,
             line_length: 80,
             margin: 1,
-            excludes: vec![],
+            excludes: Vec::new(),
         }
     }
 }
 
 impl Config {
     pub fn new(tab_spaces: usize, max_width: usize, margin: usize) -> Self {
-        Config {
+        Self {
             indent: tab_spaces,
             line_length: max_width,
             margin,
-            excludes: vec![],
+            excludes: Vec::new(),
         }
     }
 }
@@ -40,83 +41,70 @@ impl TryFrom<Value> for Config {
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         let mut config = Config::default();
-        match value {
-            Value::Nothing { .. } => (),
-            Value::Record { val: record, .. } => {
-                for (key, value) in record.iter() {
-                    match key.as_str() {
-                        "indent" => {
-                            let indent = parse_value_to_usize(key, value)?;
-                            config.indent = indent;
-                        }
-                        "line_length" => {
-                            let line_length = parse_value_to_usize(key, value)?;
-                            config.line_length = line_length;
-                        }
-                        "margin" => {
-                            let margin = parse_value_to_usize(key, value)?;
-                            config.margin = margin;
-                        }
-                        "exclude" => {
-                            let excludes = parse_excludes(value)?;
-                            config.excludes = excludes;
-                        }
-                        unknown => return Err(ConfigError::UnknownOption(unknown.to_string())),
-                    }
-                }
+
+        let Value::Record { val: record, .. } = value else {
+            // Nothing means use defaults
+            if matches!(value, Value::Nothing { .. }) {
+                return Ok(config);
             }
-            _ => {
-                return Err(ConfigError::InvalidFormat);
-            }
+            return Err(ConfigError::InvalidFormat);
         };
+
+        for (key, value) in record.iter() {
+            match key.as_str() {
+                "indent" => config.indent = parse_positive_int(key, value)?,
+                "line_length" => config.line_length = parse_positive_int(key, value)?,
+                "margin" => config.margin = parse_positive_int(key, value)?,
+                "exclude" => config.excludes = parse_string_list(value)?,
+                unknown => return Err(ConfigError::UnknownOption(unknown.to_string())),
+            }
+        }
+
         Ok(config)
     }
 }
 
-fn parse_value_to_usize(key: &str, value: &Value) -> Result<usize, ConfigError> {
-    match value {
-        Value::Int { val, .. } => {
-            if *val <= 0 {
-                return Err(ConfigError::InvalidOptionValue(
-                    key.to_string(),
-                    format!("{}", val),
-                    "a positive number",
-                ));
-            }
-            Ok(*val as usize)
-        }
-        other => Err(ConfigError::InvalidOptionType(
+/// Parse a value as a positive integer (usize)
+fn parse_positive_int(key: &str, value: &Value) -> Result<usize, ConfigError> {
+    let Value::Int { val, .. } = value else {
+        return Err(ConfigError::InvalidOptionType(
             key.to_string(),
-            other.get_type().to_string(),
+            value.get_type().to_string(),
             "number",
-        )),
+        ));
+    };
+
+    if *val <= 0 {
+        return Err(ConfigError::InvalidOptionValue(
+            key.to_string(),
+            val.to_string(),
+            "a positive number",
+        ));
     }
+
+    Ok(*val as usize)
 }
 
-fn parse_excludes(value: &Value) -> Result<Vec<String>, ConfigError> {
-    match value {
-        Value::List { vals, .. } => {
-            let mut excludes = vec![];
-            for val in vals {
-                match val {
-                    Value::String { val, .. } => {
-                        excludes.push(val.clone());
-                    }
-                    other => {
-                        return Err(ConfigError::InvalidOptionType(
-                            "excludes".to_string(),
-                            other.get_type().to_string(),
-                            "list<string>",
-                        ));
-                    }
-                }
-            }
-            Ok(excludes)
-        }
-        other => Err(ConfigError::InvalidOptionType(
+/// Parse a value as a list of strings
+fn parse_string_list(value: &Value) -> Result<Vec<String>, ConfigError> {
+    let Value::List { vals, .. } = value else {
+        return Err(ConfigError::InvalidOptionType(
             "excludes".to_string(),
-            other.get_type().to_string(),
+            value.get_type().to_string(),
             "list<string>",
-        )),
-    }
+        ));
+    };
+
+    vals.iter()
+        .map(|val| {
+            let Value::String { val, .. } = val else {
+                return Err(ConfigError::InvalidOptionType(
+                    "excludes".to_string(),
+                    val.get_type().to_string(),
+                    "list<string>",
+                ));
+            };
+            Ok(val.clone())
+        })
+        .collect()
 }

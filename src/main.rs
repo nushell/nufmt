@@ -26,26 +26,19 @@ use std::{
 const DEFAULT_CONFIG_FILE: &str = "nufmt.nuon";
 
 /// The possible exit codes
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExitCode {
     /// nufmt terminates successfully, regardless of whether files or stdin were formatted.
-    Success,
+    Success = 0,
     /// only used in check mode: nufmt terminates successfully and at least one file would be formatted if check mode was off.
-    CheckFailed,
+    CheckFailed = 1,
     /// nufmt terminates abnormally due to invalid configuration, invalid CLI options, or an internal error.
-    Failure,
+    Failure = 2,
 }
 
 impl ExitCode {
-    /// Return the exit code to use.
-    /// If check mode is off: return 2 if at least one file could not be formatted, 0 otherwise (regardless of whether any files were formatted).
-    /// If check mode is on: return 1 if some files would be formatted if check mode was off, 0 otherwise.
-    fn code(&self) -> i32 {
-        match self {
-            ExitCode::Success => 0,
-            ExitCode::CheckFailed => 1,
-            ExitCode::Failure => 2,
-        }
+    fn code(self) -> i32 {
+        self as i32
     }
 }
 
@@ -80,54 +73,35 @@ struct Cli {
     config: Option<PathBuf>,
 }
 
-fn exit_with_code(exit_code: ExitCode) {
+fn exit_with_code(exit_code: ExitCode) -> ! {
     let code = exit_code.code();
     trace!("exit code: {code}");
 
     // NOTE: this immediately terminates the process without doing any cleanup,
     // so make sure to finish all necessary cleanup before this is called.
-    std::process::exit(code);
+    std::process::exit(code)
 }
 
 fn main() {
     env_logger::init();
 
     let cli = Cli::parse();
-    trace!("recieved cli.files: {:?}", cli.files);
-    trace!("recieved cli.stdin: {:?}", cli.stdin);
-    trace!("recieved cli.config: {:?}", cli.config);
+    trace!("received cli.files: {:?}", cli.files);
+    trace!("received cli.stdin: {:?}", cli.stdin);
+    trace!("received cli.config: {:?}", cli.config);
 
-    let config_file = cli.config.or(find_in_parent_dirs(DEFAULT_CONFIG_FILE));
-    let config = match config_file {
-        None => Config::default(),
-        Some(cli_config) => match read_config(&cli_config) {
-            Ok(config) => config,
-            Err(err) => {
-                eprintln!("{}: {}", Color::LightRed.paint("error"), &err);
-                return exit_with_code(ExitCode::Failure);
-            }
-        },
+    let config = match load_config(cli.config) {
+        Ok(config) => config,
+        Err(err) => {
+            eprintln!("{}: {}", Color::LightRed.paint("error"), &err);
+            exit_with_code(ExitCode::Failure);
+        }
     };
 
     let exit_code = if cli.stdin {
-        let stdin_input = io::stdin().lines().map(|x| x.unwrap()).collect();
-        format_string(stdin_input, &config)
+        format_stdin(&config)
     } else {
-        let (target_files, invalid_files) = match discover_nu_files(cli.files, &config.excludes) {
-            Ok(files) => files,
-            Err(err) => {
-                eprintln!("{}: {}", Color::LightRed.paint("error"), err);
-                return exit_with_code(ExitCode::Failure);
-            }
-        };
-        let mode = if cli.dry_run {
-            Mode::DryRun
-        } else {
-            Mode::default()
-        };
-        let mut results = handle_invalid_file(invalid_files);
-        results.extend(format_files(target_files, &config, &mode));
-        display_diagnostic_and_compute_exit_code(&results, cli.dry_run)
+        format_files_from_paths(cli.files, &config, cli.dry_run)
     };
 
     std::io::stdout()
@@ -137,15 +111,31 @@ fn main() {
     exit_with_code(exit_code);
 }
 
+/// Load configuration from file or use defaults
+fn load_config(cli_config: Option<PathBuf>) -> Result<Config, ConfigError> {
+    let config_file = cli_config.or_else(|| find_in_parent_dirs(DEFAULT_CONFIG_FILE));
+
+    match config_file {
+        None => Ok(Config::default()),
+        Some(path) => read_config(&path),
+    }
+}
+
 fn read_config(path: &PathBuf) -> Result<Config, ConfigError> {
     let content = std::fs::read_to_string(path)?;
     let content_nuon = nuon::from_nuon(&content, None)?;
     Config::try_from(content_nuon)
 }
 
-/// format a string passed via stdin and output it directly to stdout
-fn format_string(string: String, options: &Config) -> ExitCode {
-    match nu_formatter::format_string(&string, options) {
+/// Format a string passed via stdin and output it directly to stdout
+fn format_stdin(config: &Config) -> ExitCode {
+    let stdin_input: String = io::stdin()
+        .lines()
+        .map_while(Result::ok)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    match nu_formatter::format_string(&stdin_input, config) {
         Ok(output) => {
             println!("{output}");
             ExitCode::Success
@@ -161,43 +151,63 @@ fn format_string(string: String, options: &Config) -> ExitCode {
     }
 }
 
-fn handle_invalid_file(files: Vec<PathBuf>) -> Vec<(PathBuf, FileDiagnostic)> {
-    let mut results: Vec<(PathBuf, FileDiagnostic)> = vec![];
-    for file in files {
-        results.push((
-            file,
-            FileDiagnostic::Failure("cannot find the file specified".to_string()),
-        ));
-    }
-    results
+/// Format files from the given paths
+fn format_files_from_paths(paths: Vec<PathBuf>, config: &Config, dry_run: bool) -> ExitCode {
+    let (target_files, invalid_files) = match discover_nu_files(paths, &config.excludes) {
+        Ok(files) => files,
+        Err(err) => {
+            eprintln!("{}: {}", Color::LightRed.paint("error"), err);
+            return ExitCode::Failure;
+        }
+    };
+
+    let mode = if dry_run {
+        Mode::DryRun
+    } else {
+        Mode::default()
+    };
+
+    let mut results = mark_invalid_files(invalid_files);
+    results.extend(format_files(target_files, config, &mode));
+    display_diagnostic_and_compute_exit_code(&results, dry_run)
 }
 
-/// format a list of files, possibly one, and modify them in place
-/// if check mode is on, only check the files but do not modify them in place
+/// Mark invalid file paths as failures
+fn mark_invalid_files(files: Vec<PathBuf>) -> Vec<(PathBuf, FileDiagnostic)> {
+    files
+        .into_iter()
+        .map(|file| {
+            (
+                file,
+                FileDiagnostic::Failure("cannot find the file specified".to_string()),
+            )
+        })
+        .collect()
+}
+
+/// Format a list of files and modify them in place
+/// If check mode is on, only check the files but do not modify them
 fn format_files(
     files: Vec<PathBuf>,
-    options: &Config,
+    config: &Config,
     mode: &Mode,
 ) -> Vec<(PathBuf, FileDiagnostic)> {
     files
         .into_par_iter()
         .map(|file| {
             info!("formatting file: {:?}", &file);
-            nu_formatter::format_single_file(file, options, mode)
+            nu_formatter::format_single_file(file, config, mode)
         })
         .collect()
 }
 
-/// Display results and return the appropriate exit code after formatting in check mode
+/// Display results and return the appropriate exit code after formatting
 fn display_diagnostic_and_compute_exit_code(
     results: &[(PathBuf, FileDiagnostic)],
     check_mode: bool,
 ) -> ExitCode {
-    let mut already_formatted: usize = 0;
-    let mut reformatted_or_would_reformat: usize = 0;
-    let mut failures: usize = 0;
-    let mut at_least_one_failure = false;
-    let mut warning_messages: Vec<String> = vec![];
+    let mut stats = FormattingStats::default();
+    let mut warning_messages = Vec::new();
 
     let file_failed_msg = if check_mode {
         "Failed to check"
@@ -207,97 +217,110 @@ fn display_diagnostic_and_compute_exit_code(
 
     for (file, result) in results {
         match result {
-            FileDiagnostic::AlreadyFormatted => already_formatted += 1,
+            FileDiagnostic::AlreadyFormatted => stats.already_formatted += 1,
             FileDiagnostic::Reformatted => {
-                reformatted_or_would_reformat += 1;
+                stats.reformatted += 1;
                 if check_mode {
                     warning_messages.push(format!(
                         "Would reformat: {}",
                         Style::new().bold().paint(make_relative(file))
                     ));
-                };
+                }
             }
             FileDiagnostic::Failure(reason) => {
-                failures += 1;
+                stats.failures += 1;
                 eprintln!(
                     "{}: {} {}: {}",
                     Color::LightRed.paint("error"),
                     Style::new().bold().paint(file_failed_msg),
                     Style::new().bold().paint(make_relative(file)),
-                    &reason
+                    reason
                 );
-                at_least_one_failure = true;
             }
         }
     }
 
+    // Print warnings after processing
     for msg in warning_messages {
-        println!("{}", msg);
+        println!("{msg}");
     }
 
-    if already_formatted + reformatted_or_would_reformat + failures == 0 {
-        print!(
-            "{}: no Nushell files found under the given path(s)",
-            Color::LightYellow.paint("warning"),
-        );
-        return ExitCode::Success;
+    // Print summary and determine exit code
+    stats.print_summary(check_mode)
+}
+
+/// Statistics about formatting results
+#[derive(Default)]
+struct FormattingStats {
+    already_formatted: usize,
+    reformatted: usize,
+    failures: usize,
+}
+
+impl FormattingStats {
+    fn total(&self) -> usize {
+        self.already_formatted + self.reformatted + self.failures
     }
 
-    if reformatted_or_would_reformat > 0 {
-        let msg = if check_mode {
-            "would be reformatted"
-        } else {
-            "were formatted"
-        };
-        println!(
-            "{} file{} {}",
-            reformatted_or_would_reformat,
-            if reformatted_or_would_reformat == 1 {
-                ""
+    fn print_summary(&self, check_mode: bool) -> ExitCode {
+        if self.total() == 0 {
+            print!(
+                "{}: no Nushell files found under the given path(s)",
+                Color::LightYellow.paint("warning"),
+            );
+            return ExitCode::Success;
+        }
+
+        if self.reformatted > 0 {
+            let msg = if check_mode {
+                "would be reformatted"
             } else {
-                "s"
-            },
-            msg,
-        );
-    }
-    if already_formatted > 0 {
-        println!(
-            "{} file{} already formatted",
-            already_formatted,
-            if already_formatted == 1 { "" } else { "s" }
-        );
-    };
-    if at_least_one_failure {
-        ExitCode::Failure
-    } else if check_mode && reformatted_or_would_reformat > 0 {
-        ExitCode::CheckFailed
-    } else {
-        ExitCode::Success
+                "were formatted"
+            };
+            println!(
+                "{} file{} {}",
+                self.reformatted,
+                plural(self.reformatted),
+                msg
+            );
+        }
+
+        if self.already_formatted > 0 {
+            println!(
+                "{} file{} already formatted",
+                self.already_formatted,
+                plural(self.already_formatted)
+            );
+        }
+
+        if self.failures > 0 {
+            ExitCode::Failure
+        } else if check_mode && self.reformatted > 0 {
+            ExitCode::CheckFailed
+        } else {
+            ExitCode::Success
+        }
     }
 }
 
-/// Return the different files to analyze, taking only files with .nu extension and discarding files excluded in the config
-/// and the invalid paths provided
+/// Return "s" for plural, empty string for singular
+fn plural(count: usize) -> &'static str {
+    if count == 1 {
+        ""
+    } else {
+        "s"
+    }
+}
+
+/// Return the different files to analyze, filtering by .nu extension and config excludes
 fn discover_nu_files(
     paths: Vec<PathBuf>,
-    excludes: &Vec<String>,
+    excludes: &[String],
 ) -> Result<(Vec<PathBuf>, Vec<PathBuf>), ConfigError> {
-    let mut valid_paths: Vec<PathBuf> = vec![];
-    let mut invalid_paths: Vec<PathBuf> = vec![];
+    let (valid_paths, invalid_paths): (Vec<_>, Vec<_>) =
+        paths.into_iter().partition(|p| p.exists());
 
-    for path in paths {
-        if path.exists() {
-            valid_paths.push(path);
-        } else {
-            invalid_paths.push(path);
-        }
-    }
-
-    let mut overrides = OverrideBuilder::new(".");
-    for pattern in excludes {
-        overrides.add(&format!("!{}", pattern))?;
-    }
-    let overrides = overrides.build()?;
+    let overrides = build_overrides(excludes)?;
 
     let nu_files = valid_paths
         .iter()
@@ -307,43 +330,52 @@ fn discover_nu_files(
                 .build()
                 .filter_map(Result::ok)
                 .filter(is_nu_file)
-                .map(|path| path.into_path())
-                .collect::<Vec<PathBuf>>()
+                .map(|entry| entry.into_path())
         })
         .collect();
 
     Ok((nu_files, invalid_paths))
 }
 
-/// Return whether a `DirEntry` is a .nu file or not
+/// Build override rules for excluded patterns
+fn build_overrides(excludes: &[String]) -> Result<ignore::overrides::Override, ConfigError> {
+    let mut builder = OverrideBuilder::new(".");
+    for pattern in excludes {
+        builder.add(&format!("!{pattern}"))?;
+    }
+    Ok(builder.build()?)
+}
+
+/// Return whether a `DirEntry` is a .nu file
 fn is_nu_file(entry: &DirEntry) -> bool {
-    entry.file_type().map(|ft| ft.is_file()).unwrap_or(false)
+    entry.file_type().is_some_and(|ft| ft.is_file())
         && entry.path().extension().is_some_and(|ext| ext == "nu")
 }
 
+/// Convert a path to a relative path string for display
 fn make_relative(path: &Path) -> String {
-    let current = std::env::current_dir().unwrap_or(PathBuf::from("."));
-    path.strip_prefix(&current)
+    std::env::current_dir()
+        .ok()
+        .and_then(|cwd| path.strip_prefix(&cwd).ok())
         .unwrap_or(path)
         .display()
         .to_string()
-        .replace("\\", "/")
+        .replace('\\', "/")
         .trim_start_matches("./")
         .to_string()
 }
 
-/// Search for `filename` in current or any parent directories.
-/// If `start_dir` is not provided, the current directory is used
+/// Search for `filename` in current or any parent directories
 fn find_in_parent_dirs(filename: &str) -> Option<PathBuf> {
-    let start_dir = std::env::current_dir().unwrap_or(PathBuf::from("."));
+    let start_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
-    let mut dir = Some(start_dir.as_path());
-    while let Some(current) = dir {
-        let candidate = current.join(filename);
+    let mut current = Some(start_dir.as_path());
+    while let Some(dir) = current {
+        let candidate = dir.join(filename);
         if candidate.exists() {
             return Some(candidate);
         }
-        dir = current.parent();
+        current = dir.parent();
     }
     None
 }
@@ -402,25 +434,31 @@ mod tests {
     #[rstest]
     #[case(vec![
         (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
-        (PathBuf::from("b.nu"), FileDiagnostic::AlreadyFormatted),], false, ExitCode::Success)]
+        (PathBuf::from("b.nu"), FileDiagnostic::AlreadyFormatted),
+    ], false, ExitCode::Success)]
     #[case(vec![
         (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
-        (PathBuf::from("b.nu"), FileDiagnostic::AlreadyFormatted),], true, ExitCode::Success)]
-    #[case(vec![
-        (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
-        (PathBuf::from("b.nu"), FileDiagnostic::Reformatted),], false, ExitCode::Success)]
-    #[case(vec![
-        (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
-        (PathBuf::from("b.nu"), FileDiagnostic::Reformatted),], true, ExitCode::CheckFailed)]
+        (PathBuf::from("b.nu"), FileDiagnostic::AlreadyFormatted),
+    ], true, ExitCode::Success)]
     #[case(vec![
         (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
         (PathBuf::from("b.nu"), FileDiagnostic::Reformatted),
-        (PathBuf::from("c.nu"), FileDiagnostic::Failure("some error".to_string())),], false, ExitCode::Failure)]
+    ], false, ExitCode::Success)]
     #[case(vec![
         (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
         (PathBuf::from("b.nu"), FileDiagnostic::Reformatted),
-        (PathBuf::from("c.nu"), FileDiagnostic::Failure("some error".to_string())),], true, ExitCode::Failure)]
-    fn exit_code(
+    ], true, ExitCode::CheckFailed)]
+    #[case(vec![
+        (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
+        (PathBuf::from("b.nu"), FileDiagnostic::Reformatted),
+        (PathBuf::from("c.nu"), FileDiagnostic::Failure("some error".to_string())),
+    ], false, ExitCode::Failure)]
+    #[case(vec![
+        (PathBuf::from("a.nu"), FileDiagnostic::AlreadyFormatted),
+        (PathBuf::from("b.nu"), FileDiagnostic::Reformatted),
+        (PathBuf::from("c.nu"), FileDiagnostic::Failure("some error".to_string())),
+    ], true, ExitCode::Failure)]
+    fn exit_code_tests(
         #[case] results: Vec<(PathBuf, FileDiagnostic)>,
         #[case] check_mode: bool,
         #[case] expected: ExitCode,
