@@ -300,7 +300,24 @@ impl<'a> Formatter<'a> {
                 self.write_expr_span(expr);
             }
 
-            Expr::Signature(sig) => self.format_signature(sig),
+            Expr::Signature(sig) => {
+                let has_comments = self
+                    .comments
+                    .iter()
+                    .any(|(span, _)| span.start >= expr.span.start && span.end <= expr.span.end);
+                if has_comments {
+                    self.write_expr_span(expr);
+                    self.last_pos = expr.span.end;
+                    // Mark comments within the span as written
+                    for (i, (span, _)) in self.comments.iter().enumerate() {
+                        if span.start >= expr.span.start && span.end <= expr.span.end {
+                            self.written_comments[i] = true;
+                        }
+                    }
+                } else {
+                    self.format_signature(sig);
+                }
+            }
 
             Expr::Call(call) => self.format_call(call),
             Expr::ExternalCall(head, args) => self.format_external_call(head, args),
@@ -443,7 +460,22 @@ impl<'a> Formatter<'a> {
     fn format_def_argument(&mut self, positional: &Expression) {
         match &positional.expr {
             Expr::String(_) => self.format_expression(positional),
-            Expr::Signature(sig) => self.format_signature(sig),
+            Expr::Signature(sig) => {
+                let has_comments = self.comments.iter().any(|(span, _)| {
+                    span.start >= positional.span.start && span.end <= positional.span.end
+                });
+                if has_comments {
+                    self.write_expr_span(positional);
+                    // Mark comments within the span as written
+                    for (i, (span, _)) in self.comments.iter().enumerate() {
+                        if span.start >= positional.span.start && span.end <= positional.span.end {
+                            self.written_comments[i] = true;
+                        }
+                    }
+                } else {
+                    self.format_signature(sig);
+                }
+            }
             Expr::Closure(block_id) | Expr::Block(block_id) => {
                 self.format_block_expression(*block_id, positional.span, true);
             }
