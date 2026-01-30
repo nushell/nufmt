@@ -7,10 +7,32 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-const TEST_BINARY: &str = "target/debug/nufmt";
+/// Get the path to the test binary
+pub fn get_test_binary() -> PathBuf {
+    let exe_name = if cfg!(windows) { "nufmt.exe" } else { "nufmt" };
+
+    // Try CARGO_TARGET_DIR first
+    if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
+        let path = PathBuf::from(target_dir).join("debug").join(&exe_name);
+        if path.exists() {
+            return path.canonicalize().unwrap_or(path);
+        }
+    }
+
+    // Try default target directory
+    let default_path = PathBuf::from("target").join("debug").join(&exe_name);
+    if default_path.exists() {
+        return default_path.canonicalize().unwrap_or(default_path);
+    } else {
+        panic!(
+            "Test binary not found. Please build the project first to create {:?}",
+            default_path
+        );
+    }
+}
 
 /// Helper to run the formatter on input and compare with expected output
-fn run_ground_truth_test(name: &str) {
+fn run_ground_truth_test(test_binary: &PathBuf, name: &str) {
     let input_path = PathBuf::from(format!("tests/fixtures/input/{}.nu", name));
     let expected_path = PathBuf::from(format!("tests/fixtures/expected/{}.nu", name));
 
@@ -30,37 +52,10 @@ fn run_ground_truth_test(name: &str) {
     let input = fs::read_to_string(&input_path).expect("Failed to read input file");
 
     // Run formatter via stdin
-    let output = Command::new(TEST_BINARY)
-        .arg("--stdin")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("Failed to spawn nufmt");
-
-    use std::io::Write;
-    output
-        .stdin
-        .as_ref()
-        .unwrap()
-        .write_all(input.as_bytes())
-        .expect("Failed to write to stdin");
-
-    let output = output.wait_with_output().expect("Failed to wait for nufmt");
-
-    // Check for errors
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        panic!(
-            "Formatter failed for {}: exit code {:?}\nstderr: {}",
-            name,
-            output.status.code(),
-            stderr
-        );
-    }
-
-    // Get formatted output
-    let formatted = String::from_utf8(output.stdout).expect("Invalid UTF-8 in output");
+    let formatted = match format_via_stdin(&test_binary, &input) {
+        Ok(output) => output,
+        Err(err) => panic!("Formatter failed for {}: {}", name, err),
+    };
 
     // Read expected output
     let expected = fs::read_to_string(&expected_path).expect("Failed to read expected file");
@@ -98,7 +93,7 @@ fn run_ground_truth_test(name: &str) {
 }
 
 /// Test that formatting is idempotent (formatting twice gives same result)
-fn run_idempotency_test(name: &str) {
+fn run_idempotency_test(test_binary: &PathBuf, name: &str) {
     let input_path = PathBuf::from(format!("tests/fixtures/input/{}.nu", name));
 
     if !input_path.exists() {
@@ -108,14 +103,14 @@ fn run_idempotency_test(name: &str) {
     let input = fs::read_to_string(&input_path).expect("Failed to read input file");
 
     // First format
-    let first_output = format_via_stdin(&input);
+    let first_output = format_via_stdin(test_binary, &input);
     if first_output.is_err() {
         return; // Skip if formatting fails
     }
     let first = first_output.unwrap();
 
     // Second format
-    let second_output = format_via_stdin(&first);
+    let second_output = format_via_stdin(test_binary, &first);
     if second_output.is_err() {
         panic!("Second format failed for {}, but first succeeded", name);
     }
@@ -131,8 +126,8 @@ fn run_idempotency_test(name: &str) {
     }
 }
 
-fn format_via_stdin(input: &str) -> Result<String, String> {
-    let output = Command::new(TEST_BINARY)
+fn format_via_stdin(test_binary: &PathBuf, input: &str) -> Result<String, String> {
+    let output = Command::new(test_binary)
         .arg("--stdin")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -163,22 +158,26 @@ fn format_via_stdin(input: &str) -> Result<String, String> {
 
 #[test]
 fn ground_truth_let_statement() {
-    run_ground_truth_test("let_statement");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "let_statement");
 }
 
 #[test]
 fn ground_truth_mut_statement() {
-    run_ground_truth_test("mut_statement");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "mut_statement");
 }
 
 #[test]
 fn ground_truth_const_statement() {
-    run_ground_truth_test("const_statement");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "const_statement");
 }
 
 #[test]
 fn ground_truth_def_statement() {
-    run_ground_truth_test("def_statement");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "def_statement");
 }
 
 // ============================================================================
@@ -187,42 +186,50 @@ fn ground_truth_def_statement() {
 
 #[test]
 fn ground_truth_if_else() {
-    run_ground_truth_test("if_else");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "if_else");
 }
 
 #[test]
 fn ground_truth_for_loop() {
-    run_ground_truth_test("for_loop");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "for_loop");
 }
 
 #[test]
 fn ground_truth_while_loop() {
-    run_ground_truth_test("while_loop");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "while_loop");
 }
 
 #[test]
 fn ground_truth_loop_statement() {
-    run_ground_truth_test("loop_statement");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "loop_statement");
 }
 
 #[test]
 fn ground_truth_match_expr() {
-    run_ground_truth_test("match_expr");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "match_expr");
 }
 
 #[test]
 fn ground_truth_try_catch() {
-    run_ground_truth_test("try_catch");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "try_catch");
 }
 
 #[test]
 fn ground_truth_break_continue() {
-    run_ground_truth_test("break_continue");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "break_continue");
 }
 
 #[test]
 fn ground_truth_return_statement() {
-    run_ground_truth_test("return_statement");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "return_statement");
 }
 
 // ============================================================================
@@ -231,22 +238,26 @@ fn ground_truth_return_statement() {
 
 #[test]
 fn ground_truth_list() {
-    run_ground_truth_test("list");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "list");
 }
 
 #[test]
 fn ground_truth_record() {
-    run_ground_truth_test("record");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "record");
 }
 
 #[test]
 fn ground_truth_table() {
-    run_ground_truth_test("table");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "table");
 }
 
 #[test]
 fn ground_truth_nested_structures() {
-    run_ground_truth_test("nested_structures");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "nested_structures");
 }
 
 // ============================================================================
@@ -255,42 +266,50 @@ fn ground_truth_nested_structures() {
 
 #[test]
 fn ground_truth_pipeline() {
-    run_ground_truth_test("pipeline");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "pipeline");
 }
 
 #[test]
 fn ground_truth_multiline_pipeline() {
-    run_ground_truth_test("multiline_pipeline");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "multiline_pipeline");
 }
 
 #[test]
 fn ground_truth_closure() {
-    run_ground_truth_test("closure");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "closure");
 }
 
 #[test]
 fn ground_truth_subexpression() {
-    run_ground_truth_test("subexpression");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "subexpression");
 }
 
 #[test]
 fn ground_truth_binary_ops() {
-    run_ground_truth_test("binary_ops");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "binary_ops");
 }
 
 #[test]
 fn ground_truth_range() {
-    run_ground_truth_test("range");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "range");
 }
 
 #[test]
 fn ground_truth_cell_path() {
-    run_ground_truth_test("cell_path");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "cell_path");
 }
 
 #[test]
 fn ground_truth_spread() {
-    run_ground_truth_test("spread");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "spread");
 }
 
 // ============================================================================
@@ -299,12 +318,14 @@ fn ground_truth_spread() {
 
 #[test]
 fn ground_truth_string_interpolation() {
-    run_ground_truth_test("string_interpolation");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "string_interpolation");
 }
 
 #[test]
 fn ground_truth_comment() {
-    run_ground_truth_test("comment");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "comment");
 }
 
 // ============================================================================
@@ -313,22 +334,26 @@ fn ground_truth_comment() {
 
 #[test]
 fn ground_truth_value_with_unit() {
-    run_ground_truth_test("value_with_unit");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "value_with_unit");
 }
 
 #[test]
 fn ground_truth_datetime() {
-    run_ground_truth_test("datetime");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "datetime");
 }
 
 #[test]
 fn ground_truth_nothing() {
-    run_ground_truth_test("nothing");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "nothing");
 }
 
 #[test]
 fn ground_truth_glob_pattern() {
-    run_ground_truth_test("glob_pattern");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "glob_pattern");
 }
 
 // ============================================================================
@@ -337,32 +362,38 @@ fn ground_truth_glob_pattern() {
 
 #[test]
 fn ground_truth_module() {
-    run_ground_truth_test("module");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "module");
 }
 
 #[test]
 fn ground_truth_use_statement() {
-    run_ground_truth_test("use_statement");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "use_statement");
 }
 
 #[test]
 fn ground_truth_export() {
-    run_ground_truth_test("export");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "export");
 }
 
 #[test]
 fn ground_truth_source() {
-    run_ground_truth_test("source");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "source");
 }
 
 #[test]
 fn ground_truth_hide() {
-    run_ground_truth_test("hide");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "hide");
 }
 
 #[test]
 fn ground_truth_overlay() {
-    run_ground_truth_test("overlay");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "overlay");
 }
 
 // ============================================================================
@@ -371,17 +402,20 @@ fn ground_truth_overlay() {
 
 #[test]
 fn ground_truth_alias() {
-    run_ground_truth_test("alias");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "alias");
 }
 
 #[test]
 fn ground_truth_extern() {
-    run_ground_truth_test("extern");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "extern");
 }
 
 #[test]
 fn ground_truth_external_call() {
-    run_ground_truth_test("external_call");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "external_call");
 }
 
 // ============================================================================
@@ -390,17 +424,20 @@ fn ground_truth_external_call() {
 
 #[test]
 fn ground_truth_do_block() {
-    run_ground_truth_test("do_block");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "do_block");
 }
 
 #[test]
 fn ground_truth_where_clause() {
-    run_ground_truth_test("where_clause");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "where_clause");
 }
 
 #[test]
 fn ground_truth_error_make() {
-    run_ground_truth_test("error_make");
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "error_make");
 }
 
 // ============================================================================
@@ -409,22 +446,26 @@ fn ground_truth_error_make() {
 
 #[test]
 fn idempotency_let_statement() {
-    run_idempotency_test("let_statement");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "let_statement");
 }
 
 #[test]
 fn idempotency_mut_statement() {
-    run_idempotency_test("mut_statement");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "mut_statement");
 }
 
 #[test]
 fn idempotency_const_statement() {
-    run_idempotency_test("const_statement");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "const_statement");
 }
 
 #[test]
 fn idempotency_def_statement() {
-    run_idempotency_test("def_statement");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "def_statement");
 }
 
 // ============================================================================
@@ -433,42 +474,50 @@ fn idempotency_def_statement() {
 
 #[test]
 fn idempotency_if_else() {
-    run_idempotency_test("if_else");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "if_else");
 }
 
 #[test]
 fn idempotency_for_loop() {
-    run_idempotency_test("for_loop");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "for_loop");
 }
 
 #[test]
 fn idempotency_while_loop() {
-    run_idempotency_test("while_loop");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "while_loop");
 }
 
 #[test]
 fn idempotency_loop_statement() {
-    run_idempotency_test("loop_statement");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "loop_statement");
 }
 
 #[test]
 fn idempotency_match_expr() {
-    run_idempotency_test("match_expr");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "match_expr");
 }
 
 #[test]
 fn idempotency_try_catch() {
-    run_idempotency_test("try_catch");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "try_catch");
 }
 
 #[test]
 fn idempotency_break_continue() {
-    run_idempotency_test("break_continue");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "break_continue");
 }
 
 #[test]
 fn idempotency_return_statement() {
-    run_idempotency_test("return_statement");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "return_statement");
 }
 
 // ============================================================================
@@ -477,22 +526,26 @@ fn idempotency_return_statement() {
 
 #[test]
 fn idempotency_list() {
-    run_idempotency_test("list");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "list");
 }
 
 #[test]
 fn idempotency_record() {
-    run_idempotency_test("record");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "record");
 }
 
 #[test]
 fn idempotency_table() {
-    run_idempotency_test("table");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "table");
 }
 
 #[test]
 fn idempotency_nested_structures() {
-    run_idempotency_test("nested_structures");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "nested_structures");
 }
 
 // ============================================================================
@@ -501,42 +554,50 @@ fn idempotency_nested_structures() {
 
 #[test]
 fn idempotency_pipeline() {
-    run_idempotency_test("pipeline");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "pipeline");
 }
 
 #[test]
 fn idempotency_multiline_pipeline() {
-    run_idempotency_test("multiline_pipeline");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "multiline_pipeline");
 }
 
 #[test]
 fn idempotency_closure() {
-    run_idempotency_test("closure");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "closure");
 }
 
 #[test]
 fn idempotency_subexpression() {
-    run_idempotency_test("subexpression");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "subexpression");
 }
 
 #[test]
 fn idempotency_binary_ops() {
-    run_idempotency_test("binary_ops");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "binary_ops");
 }
 
 #[test]
 fn idempotency_range() {
-    run_idempotency_test("range");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "range");
 }
 
 #[test]
 fn idempotency_cell_path() {
-    run_idempotency_test("cell_path");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "cell_path");
 }
 
 #[test]
 fn idempotency_spread() {
-    run_idempotency_test("spread");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "spread");
 }
 
 // ============================================================================
@@ -545,12 +606,14 @@ fn idempotency_spread() {
 
 #[test]
 fn idempotency_string_interpolation() {
-    run_idempotency_test("string_interpolation");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "string_interpolation");
 }
 
 #[test]
 fn idempotency_comment() {
-    run_idempotency_test("comment");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "comment");
 }
 
 // ============================================================================
@@ -559,22 +622,26 @@ fn idempotency_comment() {
 
 #[test]
 fn idempotency_value_with_unit() {
-    run_idempotency_test("value_with_unit");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "value_with_unit");
 }
 
 #[test]
 fn idempotency_datetime() {
-    run_idempotency_test("datetime");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "datetime");
 }
 
 #[test]
 fn idempotency_nothing() {
-    run_idempotency_test("nothing");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "nothing");
 }
 
 #[test]
 fn idempotency_glob_pattern() {
-    run_idempotency_test("glob_pattern");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "glob_pattern");
 }
 
 // ============================================================================
@@ -583,32 +650,38 @@ fn idempotency_glob_pattern() {
 
 #[test]
 fn idempotency_module() {
-    run_idempotency_test("module");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "module");
 }
 
 #[test]
 fn idempotency_use_statement() {
-    run_idempotency_test("use_statement");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "use_statement");
 }
 
 #[test]
 fn idempotency_export() {
-    run_idempotency_test("export");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "export");
 }
 
 #[test]
 fn idempotency_source() {
-    run_idempotency_test("source");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "source");
 }
 
 #[test]
 fn idempotency_hide() {
-    run_idempotency_test("hide");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "hide");
 }
 
 #[test]
 fn idempotency_overlay() {
-    run_idempotency_test("overlay");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "overlay");
 }
 
 // ============================================================================
@@ -617,17 +690,20 @@ fn idempotency_overlay() {
 
 #[test]
 fn idempotency_alias() {
-    run_idempotency_test("alias");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "alias");
 }
 
 #[test]
 fn idempotency_extern() {
-    run_idempotency_test("extern");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "extern");
 }
 
 #[test]
 fn idempotency_external_call() {
-    run_idempotency_test("external_call");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "external_call");
 }
 
 // ============================================================================
@@ -636,15 +712,27 @@ fn idempotency_external_call() {
 
 #[test]
 fn idempotency_do_block() {
-    run_idempotency_test("do_block");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "do_block");
 }
 
 #[test]
 fn idempotency_where_clause() {
-    run_idempotency_test("where_clause");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "where_clause");
 }
 
 #[test]
 fn idempotency_error_make() {
-    run_idempotency_test("error_make");
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "error_make");
+}
+
+// ============================================================================
+// Issue Tests -
+// ============================================================================
+#[test]
+fn issue76_test() {
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "issue76");
 }

@@ -1,3 +1,5 @@
+mod ground_truth;
+use ground_truth::get_test_binary;
 use std::{fs, path::PathBuf, process::Command};
 use tempfile::tempdir;
 
@@ -8,7 +10,6 @@ let one = 1
 const VALID: &str = "# beginning of script comment
 let one = 1
 ";
-const TEST_BINARY: &str = "target/debug/nufmt";
 
 #[test]
 fn failure_with_invalid_config() {
@@ -16,7 +17,7 @@ fn failure_with_invalid_config() {
     let config_file = dir.path().join("nufmt.nuon");
     fs::write(&config_file, r#"{unknown: 1}"#).unwrap();
 
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg("--config")
         .arg(config_file.to_str().unwrap())
         .arg(dir.path().to_str().unwrap())
@@ -30,7 +31,7 @@ fn failure_with_invalid_config() {
 
 #[test]
 fn failure_with_invalid_config_file() {
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg("--config")
         .arg("path/that/does/not/exist/nufmt.nuon")
         .output()
@@ -43,7 +44,7 @@ fn failure_with_invalid_config_file() {
 
 #[test]
 fn failure_with_invalid_file_to_format() {
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg("path/that/does/not/exist/a.nu")
         .output()
         .unwrap();
@@ -57,7 +58,7 @@ fn failure_with_invalid_file_to_format() {
 fn warning_when_no_files_are_detected() {
     let dir = tempdir().unwrap();
 
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg("--dry-run")
         .arg(dir.path().to_str().unwrap())
         .output()
@@ -76,7 +77,7 @@ fn warning_is_displayed_when_no_files_are_detected_with_excluded_files() {
     fs::write(&config_file, r#"{exclude: ["a*"]}"#).unwrap();
     fs::write(&file_a, INVALID).unwrap();
 
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg("--config")
         .arg(config_file.to_str().unwrap())
         .arg("--dry-run")
@@ -99,7 +100,7 @@ fn files_are_reformatted() {
     fs::write(&file_a, INVALID).unwrap();
     fs::write(&file_b, INVALID).unwrap();
 
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg("--config")
         .arg(config_file.to_str().unwrap())
         .arg(dir.path().to_str().unwrap())
@@ -123,7 +124,7 @@ fn files_are_checked() {
     fs::write(&file_a, INVALID).unwrap();
     fs::write(&file_b, INVALID).unwrap();
 
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg("--config")
         .arg(config_file.to_str().unwrap())
         .arg("--dry-run")
@@ -144,7 +145,7 @@ fn format_let_statement() {
     let file = dir.path().join("test.nu");
     fs::write(&file, "let   x   =   1").unwrap();
 
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg(file.to_str().unwrap())
         .output()
         .unwrap();
@@ -160,7 +161,7 @@ fn format_def_statement() {
     let file = dir.path().join("test.nu");
     fs::write(&file, "def foo [x: int] { $x + 1 }").unwrap();
 
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg(file.to_str().unwrap())
         .output()
         .unwrap();
@@ -177,7 +178,7 @@ fn format_if_else() {
     let file = dir.path().join("test.nu");
     fs::write(&file, "if true { echo yes } else { echo no }").unwrap();
 
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg(file.to_str().unwrap())
         .output()
         .unwrap();
@@ -194,7 +195,7 @@ fn format_pipeline() {
     let file = dir.path().join("test.nu");
     fs::write(&file, "ls|get name").unwrap();
 
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg(file.to_str().unwrap())
         .output()
         .unwrap();
@@ -210,7 +211,7 @@ fn format_preserves_comments() {
     let file = dir.path().join("test.nu");
     fs::write(&file, "# comment\nlet x = 1").unwrap();
 
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg(file.to_str().unwrap())
         .output()
         .unwrap();
@@ -228,14 +229,14 @@ fn format_is_idempotent() {
     fs::write(&file, "let x = 1\nlet y = 2").unwrap();
 
     // First format
-    Command::new(TEST_BINARY)
+    Command::new(get_test_binary())
         .arg(file.to_str().unwrap())
         .output()
         .unwrap();
     let first = fs::read_to_string(&file).unwrap();
 
     // Second format
-    Command::new(TEST_BINARY)
+    Command::new(get_test_binary())
         .arg(file.to_str().unwrap())
         .output()
         .unwrap();
@@ -250,7 +251,7 @@ fn format_for_loop() {
     let file = dir.path().join("test.nu");
     fs::write(&file, "for x in [1, 2, 3] { print $x }").unwrap();
 
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg(file.to_str().unwrap())
         .output()
         .unwrap();
@@ -267,7 +268,7 @@ fn format_closure() {
     let file = dir.path().join("test.nu");
     fs::write(&file, "{|x| $x * 2 }").unwrap();
 
-    let output = Command::new(TEST_BINARY)
+    let output = Command::new(get_test_binary())
         .arg(file.to_str().unwrap())
         .output()
         .unwrap();
@@ -282,7 +283,7 @@ fn format_fixtures_basic() {
     // Test that the basic fixture can be formatted without errors
     let fixture_path = PathBuf::from("tests/fixtures/basic.nu");
     if fixture_path.exists() {
-        let output = Command::new(TEST_BINARY)
+        let output = Command::new(get_test_binary())
             .arg("--dry-run")
             .arg(fixture_path.to_str().unwrap())
             .output()
