@@ -674,8 +674,16 @@ impl<'a> Formatter<'a> {
 
     /// Format a subexpression
     fn format_subexpression(&mut self, block_id: nu_protocol::BlockId) {
-        self.write("(");
         let block = self.working_set.get_block(block_id);
+        // Special case: subexpressions containing only a string interpolation don't need parentheses
+        if block.pipelines.len() == 1 && block.pipelines[0].elements.len() == 1 {
+            if let Expr::StringInterpolation(_) = &block.pipelines[0].elements[0].expr.expr {
+                self.format_block(block);
+                return;
+            }
+        }
+
+        self.write("(");
         let is_simple = block.pipelines.len() == 1 && block.pipelines[0].elements.len() <= 3;
 
         if is_simple {
