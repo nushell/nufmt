@@ -13,16 +13,16 @@ pub fn get_test_binary() -> PathBuf {
 
     // Try CARGO_TARGET_DIR first
     if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
-        let path = PathBuf::from(target_dir).join("debug").join(&exe_name);
+        let path = PathBuf::from(target_dir).join("debug").join(exe_name);
         if path.exists() {
             return path.canonicalize().unwrap_or(path);
         }
     }
 
     // Try default target directory
-    let default_path = PathBuf::from("target").join("debug").join(&exe_name);
+    let default_path = PathBuf::from("target").join("debug").join(exe_name);
     if default_path.exists() {
-        return default_path.canonicalize().unwrap_or(default_path);
+        default_path.canonicalize().unwrap_or(default_path)
     } else {
         panic!(
             "Test binary not found. Please build the project first to create {:?}",
@@ -52,7 +52,7 @@ fn run_ground_truth_test(test_binary: &PathBuf, name: &str) {
     let input = fs::read_to_string(&input_path).expect("Failed to read input file");
 
     // Run formatter via stdin
-    let formatted = match format_via_stdin(&test_binary, &input) {
+    let formatted = match format_via_stdin(test_binary, &input) {
         Ok(output) => output,
         Err(err) => panic!("Formatter failed for {}: {}", name, err),
     };
