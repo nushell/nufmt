@@ -180,6 +180,12 @@ fn ground_truth_def_statement() {
     run_ground_truth_test(&test_binary, "def_statement");
 }
 
+#[test]
+fn ground_truth_def_with_pipeline() {
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "def_with_pipeline_double_parens_issue82");
+}
+
 // ============================================================================
 // Ground Truth Tests - Control Flow
 // ============================================================================
