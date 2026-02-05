@@ -334,7 +334,7 @@ impl<'a> Formatter<'a> {
                 self.format_closure_expression(*block_id, expr.span);
             }
             Expr::Subexpression(block_id) => {
-                self.format_subexpression(*block_id);
+                self.format_subexpression(*block_id, expr.span);
             }
 
             Expr::List(items) => self.format_list(items),
@@ -705,11 +705,29 @@ impl<'a> Formatter<'a> {
     }
 
     /// Format a subexpression
-    fn format_subexpression(&mut self, block_id: nu_protocol::BlockId) {
+    fn format_subexpression(&mut self, block_id: nu_protocol::BlockId, span: Span) {
         let block = self.working_set.get_block(block_id);
+        // Check if the subexpression has explicit parentheses in the source
+        let has_explicit_parens = self.source.get(span.start) == Some(&b'(')
+            && self.source.get(span.end - 1) == Some(&b')');
+        if !has_explicit_parens {
+            self.format_block(block);
+            return;
+        }
         // Special case: subexpressions containing only a string interpolation don't need parentheses
         if block.pipelines.len() == 1 && block.pipelines[0].elements.len() == 1 {
             if let Expr::StringInterpolation(_) = &block.pipelines[0].elements[0].expr.expr {
+                self.format_block(block);
+                return;
+            }
+        }
+        // Special case: subexpressions containing a pipeline starting with $in don't need parentheses
+        if block.pipelines.len() == 1 && !block.pipelines[0].elements.is_empty() {
+            let first_element = &block.pipelines[0].elements[0];
+            let element_text = String::from_utf8_lossy(
+                &self.source[first_element.expr.span.start..first_element.expr.span.end],
+            );
+            if element_text == "$in" {
                 self.format_block(block);
                 return;
             }

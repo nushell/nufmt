@@ -6,7 +6,7 @@
 # (**2**) catch classical flaws in the new changes with *clippy* and (**3**)
 # make sure all the tests pass.
 # print the pipe input inside backticks, dimmed and italic, as a pretty command
-def pretty-print-command [] { ($"`(ansi default_dimmed)(ansi default_italic)($in)(ansi reset)`") }
+def pretty-print-command [] { $"`(ansi default_dimmed)(ansi default_italic)($in)(ansi reset)`" }
 # check standard code formatting and apply the changes
 export def fmt [--check, --verbose] {
     # do not apply the format changes, only check the syntax

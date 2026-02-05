@@ -1,1 +1,1 @@
-def pretty-print-command [] { ($"`(ansi default_dimmed)(ansi default_italic)($in)(ansi reset)`") }
+def pretty-print-command [] { $"`(ansi default_dimmed)(ansi default_italic)($in)(ansi reset)`" }
