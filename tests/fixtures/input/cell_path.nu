@@ -4,3 +4,6 @@
    $list.5
   $data.users.0.name
    $table.column.0
+  foo bar.baz
+def foo [key: cell-path] {
+}
