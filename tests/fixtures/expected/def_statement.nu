@@ -12,3 +12,12 @@ def complex [
     --flag(-f)
     --value(-v): int = 5
 ] { print $"($a) ($b) $flag $value" }
+def test [body: closure] {
+    try {
+        do $body
+        true
+    } catch {|err|
+        print $err.rendered
+        false
+    }
+}

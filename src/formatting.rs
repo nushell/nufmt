@@ -8,8 +8,9 @@ use log::{debug, trace};
 use nu_parser::parse;
 use nu_protocol::{
     ast::{
-        Argument, Block, Expr, Expression, ExternalArgument, ListItem, MatchPattern, PathMember,
-        Pattern, Pipeline, PipelineElement, PipelineRedirection, RecordItem, RedirectionTarget,
+        Argument, Block, CellPath, Expr, Expression, ExternalArgument, FullCellPath, ListItem,
+        MatchPattern, PathMember, Pattern, Pipeline, PipelineElement, PipelineRedirection,
+        RecordItem, RedirectionTarget,
     },
     engine::{EngineState, StateWorkingSet},
     Signature, Span, SyntaxShape,
@@ -342,10 +343,9 @@ impl<'a> Formatter<'a> {
             Expr::Table(table) => self.format_table(&table.columns, &table.rows),
 
             Expr::Range(range) => self.format_range(range),
-            Expr::CellPath(cell_path) => self.format_cell_path_members(&cell_path.members),
+            Expr::CellPath(cell_path) => self.format_cell_path(cell_path),
             Expr::FullCellPath(full_path) => {
-                self.format_expression(&full_path.head);
-                self.format_cell_path_members(&full_path.tail);
+                self.format_full_cell_path(full_path);
             }
 
             Expr::RowCondition(block_id) => {
@@ -511,8 +511,11 @@ impl<'a> Formatter<'a> {
     /// Format an expression that could be a block or a regular expression
     fn format_block_or_expr(&mut self, expr: &Expression) {
         match &expr.expr {
-            Expr::Block(block_id) | Expr::Closure(block_id) => {
+            Expr::Block(block_id) => {
                 self.format_block_expression(*block_id, expr.span, true);
+            }
+            Expr::Closure(block_id) => {
+                self.format_closure_expression(*block_id, expr.span);
             }
             _ => self.format_expression(expr),
         }
@@ -609,7 +612,12 @@ impl<'a> Formatter<'a> {
             self.write(&param.name);
             if param.shape != SyntaxShape::Any {
                 self.write(": ");
-                self.write(&format!("{}", param.shape));
+                match &param.shape {
+                    // Fixes an issue in which closure type hints were formatted as `closure()`.
+                    // TODO: This feels hacky. Should this be addressed in the `nu-protocol` crate instead?
+                    SyntaxShape::Closure(Option::None) => self.write("closure"),
+                    _ => self.write(&format!("{}", param.shape)),
+                }
             }
         }
 
@@ -683,23 +691,40 @@ impl<'a> Formatter<'a> {
         self.write("]");
     }
 
-    /// Format cell path members (shared between `CellPath` and `FullCellPath`)
-    fn format_cell_path_members(&mut self, members: &[PathMember]) {
-        for member in members {
+    /// Format a `CellPath`
+    fn format_cell_path(&mut self, cell_path: &CellPath) {
+        for (i, member) in cell_path.members.iter().enumerate() {
+            if i > 0 {
+                self.write(".");
+            }
+            self.format_cell_path_member(member);
+        }
+    }
+
+    /// Format a `FullCellPath`
+    fn format_full_cell_path(&mut self, cell_path: &FullCellPath) {
+        self.format_expression(&cell_path.head);
+
+        for member in &cell_path.tail {
             self.write(".");
-            match member {
-                PathMember::String { val, optional, .. } => {
-                    if *optional {
-                        self.write("?");
-                    }
-                    self.write(val);
+            self.format_cell_path_member(member);
+        }
+    }
+
+    /// Format cell path member (shared between `CellPath` and `FullCellPath`)
+    fn format_cell_path_member(&mut self, member: &PathMember) {
+        match member {
+            PathMember::String { val, optional, .. } => {
+                if *optional {
+                    self.write("?");
                 }
-                PathMember::Int { val, optional, .. } => {
-                    if *optional {
-                        self.write("?");
-                    }
-                    self.write(&val.to_string());
+                self.write(val);
+            }
+            PathMember::Int { val, optional, .. } => {
+                if *optional {
+                    self.write("?");
                 }
+                self.write(&val.to_string());
             }
         }
     }
@@ -820,43 +845,55 @@ impl<'a> Formatter<'a> {
     /// Format a closure expression
     fn format_closure_expression(&mut self, block_id: nu_protocol::BlockId, span: Span) {
         let content = self.get_span_content(span);
-        let has_params = content.starts_with(b"{|") || content.starts_with(b"{ |");
+        let has_params = content
+            .iter()
+            .skip(1) // Skip '{'
+            .find(|b| !b.is_ascii_whitespace())
+            .is_some_and(|char| char.eq(&b'|'));
 
         if !has_params {
             self.format_block_expression(block_id, span, true);
             return;
         }
 
-        // Find the end of the parameter section (second |)
-        let param_end = content.iter().position(|&b| b == b'|').and_then(|first| {
-            content[first + 1..]
-                .iter()
-                .position(|&b| b == b'|')
-                .map(|p| first + 1 + p + 1)
-        });
+        // Find the start of the parameter section (first |)
+        let Some(first_pipe_index) = content.iter().position(|&b| b == b'|') else {
+            self.write_bytes(&content);
+            return;
+        };
 
-        let Some(end) = param_end else {
+        // Find the end of the parameter section (second |)
+        let Some(second_pipe_index) = content[first_pipe_index + 1..]
+            .iter()
+            .position(|&b| b == b'|')
+            .map(|p| first_pipe_index + 1 + p)
+        else {
             self.write_bytes(&content);
             return;
         };
 
         self.write("{|");
         // Extract and trim parameter content
-        let params = &content[2..end - 1];
-        let trimmed: Vec<u8> = params
-            .iter()
-            .copied()
-            .skip_while(|b| b.is_ascii_whitespace())
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .skip_while(|b| b.is_ascii_whitespace())
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
-        self.write_bytes(&trimmed);
-        self.write("| ");
+        let params = &content[first_pipe_index + 1..second_pipe_index];
+        let mut params_iter = params.split(|&b| b == b',').peekable();
+
+        while let Some(param) = params_iter.next() {
+            let mut sub_parts = param.splitn(2, |&b| b == b':');
+
+            if let (Some(param_name), Some(type_hint)) = (sub_parts.next(), sub_parts.next()) {
+                self.write_bytes(param_name.trim_ascii());
+                self.write_bytes(b": ");
+                self.write_bytes(type_hint.trim_ascii());
+            } else {
+                self.write_bytes(param.trim_ascii());
+            }
+
+            if params_iter.peek().is_some() {
+                self.write_bytes(b", ");
+            }
+        }
+
+        self.write("|");
 
         let block = self.working_set.get_block(block_id);
         let is_simple = block.pipelines.len() == 1
@@ -864,6 +901,7 @@ impl<'a> Formatter<'a> {
             && !self.block_has_nested_structures(block);
 
         if is_simple {
+            self.space();
             self.format_block(block);
             self.write(" }");
         } else {

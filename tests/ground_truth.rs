@@ -307,6 +307,12 @@ fn ground_truth_range() {
 }
 
 #[test]
+fn ground_truth_cell_path_literals() {
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "cell_path_literals");
+}
+
+#[test]
 fn ground_truth_cell_path() {
     let test_binary = get_test_binary();
     run_ground_truth_test(&test_binary, "cell_path");
@@ -592,6 +598,12 @@ fn idempotency_binary_ops() {
 fn idempotency_range() {
     let test_binary = get_test_binary();
     run_idempotency_test(&test_binary, "range");
+}
+
+#[test]
+fn idempotency_cell_path_literals() {
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "cell_path_literals");
 }
 
 #[test]
