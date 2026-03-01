@@ -28,6 +28,7 @@ const TEST_CONSTRUCTS = {
         "subexpression"
         "binary_ops"
         "range"
+        "cell_path_literals"
         "cell_path"
         "spread"
     ]
