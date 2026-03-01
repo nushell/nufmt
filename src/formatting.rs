@@ -511,8 +511,11 @@ impl<'a> Formatter<'a> {
     /// Format an expression that could be a block or a regular expression
     fn format_block_or_expr(&mut self, expr: &Expression) {
         match &expr.expr {
-            Expr::Block(block_id) | Expr::Closure(block_id) => {
+            Expr::Block(block_id) => {
                 self.format_block_expression(*block_id, expr.span, true);
+            }
+            Expr::Closure(block_id) => {
+                self.format_closure_expression(*block_id, expr.span);
             }
             _ => self.format_expression(expr),
         }
