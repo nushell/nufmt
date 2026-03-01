@@ -69,7 +69,7 @@
     }
 }
 # Nested closures in data
-let transform = {|data| 
+let transform = {|data|
     $data | each {|item| {|x| $x * $item } }
 }
 # Nested control flow

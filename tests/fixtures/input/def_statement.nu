@@ -16,7 +16,7 @@ def test [body: closure] {
   try {
     do $body
     true
-  } catch { |err|
+  } catch {  |err|
     print $err.rendered
     false
   }

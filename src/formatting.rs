@@ -845,43 +845,55 @@ impl<'a> Formatter<'a> {
     /// Format a closure expression
     fn format_closure_expression(&mut self, block_id: nu_protocol::BlockId, span: Span) {
         let content = self.get_span_content(span);
-        let has_params = content.starts_with(b"{|") || content.starts_with(b"{ |");
+        let has_params = content
+            .iter()
+            .skip(1) // Skip '{'
+            .find(|b| !b.is_ascii_whitespace())
+            .is_some_and(|char| char.eq(&b'|'));
 
         if !has_params {
             self.format_block_expression(block_id, span, true);
             return;
         }
 
-        // Find the end of the parameter section (second |)
-        let param_end = content.iter().position(|&b| b == b'|').and_then(|first| {
-            content[first + 1..]
-                .iter()
-                .position(|&b| b == b'|')
-                .map(|p| first + 1 + p + 1)
-        });
+        // Find the start of the parameter section (first |)
+        let Some(first_pipe_index) = content.iter().position(|&b| b == b'|') else {
+            self.write_bytes(&content);
+            return;
+        };
 
-        let Some(end) = param_end else {
+        // Find the end of the parameter section (second |)
+        let Some(second_pipe_index) = content[first_pipe_index + 1..]
+            .iter()
+            .position(|&b| b == b'|')
+            .map(|p| first_pipe_index + 1 + p)
+        else {
             self.write_bytes(&content);
             return;
         };
 
         self.write("{|");
         // Extract and trim parameter content
-        let params = &content[2..end - 1];
-        let trimmed: Vec<u8> = params
-            .iter()
-            .copied()
-            .skip_while(|b| b.is_ascii_whitespace())
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .skip_while(|b| b.is_ascii_whitespace())
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
-        self.write_bytes(&trimmed);
-        self.write("| ");
+        let params = &content[first_pipe_index + 1..second_pipe_index];
+        let mut params_iter = params.split(|&b| b == b',').peekable();
+
+        while let Some(param) = params_iter.next() {
+            let mut sub_parts = param.splitn(2, |&b| b == b':');
+
+            if let (Some(k), Some(v)) = (sub_parts.next(), sub_parts.next()) {
+                self.write_bytes(k.trim_ascii());
+                self.write_bytes(b": ");
+                self.write_bytes(v.trim_ascii());
+            } else {
+                self.write_bytes(param.trim_ascii());
+            }
+
+            if params_iter.peek().is_some() {
+                self.write_bytes(b", ");
+            }
+        }
+
+        self.write("|");
 
         let block = self.working_set.get_block(block_id);
         let is_simple = block.pipelines.len() == 1
@@ -889,6 +901,7 @@ impl<'a> Formatter<'a> {
             && !self.block_has_nested_structures(block);
 
         if is_simple {
+            self.space();
             self.format_block(block);
             self.write(" }");
         } else {
