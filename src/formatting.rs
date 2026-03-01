@@ -8,8 +8,9 @@ use log::{debug, trace};
 use nu_parser::parse;
 use nu_protocol::{
     ast::{
-        Argument, Block, Expr, Expression, ExternalArgument, ListItem, MatchPattern, PathMember,
-        Pattern, Pipeline, PipelineElement, PipelineRedirection, RecordItem, RedirectionTarget,
+        Argument, Block, CellPath, Expr, Expression, ExternalArgument, FullCellPath, ListItem,
+        MatchPattern, PathMember, Pattern, Pipeline, PipelineElement, PipelineRedirection,
+        RecordItem, RedirectionTarget,
     },
     engine::{EngineState, StateWorkingSet},
     Signature, Span, SyntaxShape,
@@ -342,10 +343,9 @@ impl<'a> Formatter<'a> {
             Expr::Table(table) => self.format_table(&table.columns, &table.rows),
 
             Expr::Range(range) => self.format_range(range),
-            Expr::CellPath(cell_path) => self.format_cell_path_members(&cell_path.members),
+            Expr::CellPath(cell_path) => self.format_cell_path(cell_path),
             Expr::FullCellPath(full_path) => {
-                self.format_expression(&full_path.head);
-                self.format_cell_path_members(&full_path.tail);
+                self.format_full_cell_path(full_path);
             }
 
             Expr::RowCondition(block_id) => {
@@ -683,23 +683,40 @@ impl<'a> Formatter<'a> {
         self.write("]");
     }
 
-    /// Format cell path members (shared between `CellPath` and `FullCellPath`)
-    fn format_cell_path_members(&mut self, members: &[PathMember]) {
-        for member in members {
+    /// Format a `CellPath`
+    fn format_cell_path(&mut self, cell_path: &CellPath) {
+        for (i, member) in cell_path.members.iter().enumerate() {
+            if i > 0 {
+                self.write(".");
+            }
+            self.format_cell_path_member(member);
+        }
+    }
+
+    /// Format a `FullCellPath`
+    fn format_full_cell_path(&mut self, cell_path: &FullCellPath) {
+        self.format_expression(&cell_path.head);
+
+        for member in &cell_path.tail {
             self.write(".");
-            match member {
-                PathMember::String { val, optional, .. } => {
-                    if *optional {
-                        self.write("?");
-                    }
-                    self.write(val);
+            self.format_cell_path_member(member);
+        }
+    }
+
+    /// Format cell path member (shared between `CellPath` and `FullCellPath`)
+    fn format_cell_path_member(&mut self, member: &PathMember) {
+        match member {
+            PathMember::String { val, optional, .. } => {
+                if *optional {
+                    self.write("?");
                 }
-                PathMember::Int { val, optional, .. } => {
-                    if *optional {
-                        self.write("?");
-                    }
-                    self.write(&val.to_string());
+                self.write(val);
+            }
+            PathMember::Int { val, optional, .. } => {
+                if *optional {
+                    self.write("?");
                 }
+                self.write(&val.to_string());
             }
         }
     }
