@@ -880,10 +880,10 @@ impl<'a> Formatter<'a> {
         while let Some(param) = params_iter.next() {
             let mut sub_parts = param.splitn(2, |&b| b == b':');
 
-            if let (Some(k), Some(v)) = (sub_parts.next(), sub_parts.next()) {
-                self.write_bytes(k.trim_ascii());
+            if let (Some(param_name), Some(type_hint)) = (sub_parts.next(), sub_parts.next()) {
+                self.write_bytes(param_name.trim_ascii());
                 self.write_bytes(b": ");
-                self.write_bytes(v.trim_ascii());
+                self.write_bytes(type_hint.trim_ascii());
             } else {
                 self.write_bytes(param.trim_ascii());
             }
