@@ -609,7 +609,12 @@ impl<'a> Formatter<'a> {
             self.write(&param.name);
             if param.shape != SyntaxShape::Any {
                 self.write(": ");
-                self.write(&format!("{}", param.shape));
+                match &param.shape {
+                    // Fixes an issue in which closure type hints were formatted as `closure()`.
+                    // TODO: This feels hacky. Should this be addressed in the `nu-protocol` crate instead?
+                    SyntaxShape::Closure(Option::None) => self.write("closure"),
+                    _ => self.write(&format!("{}", param.shape)),
+                }
             }
         }
 
