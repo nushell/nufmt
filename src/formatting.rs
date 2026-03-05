@@ -12,7 +12,7 @@ use nu_protocol::{
         Pattern, Pipeline, PipelineElement, PipelineRedirection, RecordItem, RedirectionTarget,
     },
     engine::{EngineState, StateWorkingSet},
-    Signature, Span, SyntaxShape,
+    Completion, Signature, Span, SyntaxShape,
 };
 
 /// Commands that format their block arguments in a special way
@@ -573,6 +573,15 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Write custom completion if present (e.g., @completion_name)
+    fn write_custom_completion(&mut self, completion: &Option<Completion>) {
+        if let Some(Completion::Command(decl_id)) = completion {
+            let decl = self.working_set.get_decl(*decl_id);
+            self.write("@");
+            self.write(decl.name());
+        }
+    }
+
     /// Format a signature (for def commands)
     fn format_signature(&mut self, sig: &Signature) {
         self.write("[");
@@ -610,6 +619,7 @@ impl<'a> Formatter<'a> {
             if param.shape != SyntaxShape::Any {
                 self.write(": ");
                 self.write(&format!("{}", param.shape));
+                self.write_custom_completion(&param.completion);
             }
         }
 
@@ -624,6 +634,7 @@ impl<'a> Formatter<'a> {
             if param.shape != SyntaxShape::Any {
                 self.write(": ");
                 self.write(&format!("{}", param.shape));
+                self.write_custom_completion(&param.completion);
             }
             if let Some(default) = &param.default_value {
                 self.write(" = ");
@@ -657,6 +668,7 @@ impl<'a> Formatter<'a> {
             if let Some(shape) = &flag.arg {
                 self.write(": ");
                 self.write(&format!("{}", shape));
+                self.write_custom_completion(&flag.completion);
             }
             if let Some(default) = &flag.default_value {
                 self.write(" = ");
@@ -672,6 +684,7 @@ impl<'a> Formatter<'a> {
             if rest.shape != SyntaxShape::Any {
                 self.write(": ");
                 self.write(&format!("{}", rest.shape));
+                self.write_custom_completion(&rest.completion);
             }
         }
 
