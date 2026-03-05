@@ -576,7 +576,7 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    /// Write custom completion if present (e.g., @completion_name)
+    /// Write custom completion if present (e.g., @`completion_name`)
     fn write_custom_completion(&mut self, completion: &Option<Completion>) {
         if let Some(Completion::Command(decl_id)) = completion {
             let decl = self.working_set.get_decl(*decl_id);
