@@ -1301,6 +1301,7 @@ dependencies = [
  "nu-cmd-lang",
  "nu-parser",
  "nu-protocol",
+ "nu-utils",
  "nuon",
  "rayon",
  "rstest",

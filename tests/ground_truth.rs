@@ -756,6 +756,18 @@ fn issue76_test() {
 }
 
 #[test]
+fn issue81_test() {
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "issue81");
+}
+
+#[test]
+fn idempotency_issue81_test() {
+    let test_binary = get_test_binary();
+    run_idempotency_test(&test_binary, "issue81");
+}
+
+#[test]
 fn ground_truth_inline_param_comment_issue77() {
     let test_binary = get_test_binary();
     run_ground_truth_test(&test_binary, "inline_param_comment");
