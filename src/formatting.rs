@@ -15,6 +15,7 @@ use nu_protocol::{
     engine::{EngineState, StateWorkingSet},
     Completion, Signature, Span, SyntaxShape,
 };
+use nu_utils::NuCow;
 
 /// Commands that format their block arguments in a special way
 const BLOCK_COMMANDS: &[&str] = &["for", "while", "loop", "module"];
@@ -576,12 +577,57 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    /// Write custom completion if present (e.g., @`completion_name`)
+    /// Write custom completion if present (e.g., @`completion_name` or @[list items])
     fn write_custom_completion(&mut self, completion: &Option<Completion>) {
-        if let Some(Completion::Command(decl_id)) = completion {
-            let decl = self.working_set.get_decl(*decl_id);
-            self.write("@");
-            self.write(decl.name());
+        match completion {
+            Some(Completion::Command(decl_id)) => {
+                let decl = self.working_set.get_decl(*decl_id);
+                let name = decl.name();
+                self.write("@");
+                // Quote command names that contain special characters (like spaces)
+                if name.contains(' ')
+                    || name.contains('-')
+                    || name.contains('[')
+                    || name.contains(']')
+                {
+                    self.write("\"");
+                    self.write(name);
+                    self.write("\"");
+                } else {
+                    self.write(name);
+                }
+            }
+            Some(Completion::List(list)) => {
+                self.write("@[");
+                match list {
+                    NuCow::Borrowed(items) => {
+                        for (i, item) in items.iter().enumerate() {
+                            if i > 0 {
+                                self.write(" ");
+                            }
+                            self.write(item);
+                        }
+                    }
+                    NuCow::Owned(items) => {
+                        for (i, item) in items.iter().enumerate() {
+                            if i > 0 {
+                                self.write(" ");
+                            }
+                            self.write(item);
+                        }
+                    }
+                }
+                self.write("]");
+            }
+            None => {}
+        }
+    }
+
+    /// Write a `SyntaxShape` with any necessary prettifying
+    fn write_shape(&mut self, shape: &SyntaxShape) {
+        match shape {
+            SyntaxShape::Closure(Option::None) => self.write("closure"),
+            _ => self.write(&format!("{}", shape)),
         }
     }
 
@@ -621,12 +667,7 @@ impl<'a> Formatter<'a> {
             self.write(&param.name);
             if param.shape != SyntaxShape::Any {
                 self.write(": ");
-                match &param.shape {
-                    // Fixes an issue in which closure type hints were formatted as `closure()`.
-                    // TODO: This feels hacky. Should this be addressed in the `nu-protocol` crate instead?
-                    SyntaxShape::Closure(Option::None) => self.write("closure"),
-                    _ => self.write(&format!("{}", param.shape)),
-                }
+                self.write_shape(&param.shape);
                 self.write_custom_completion(&param.completion);
             }
         }
@@ -641,10 +682,7 @@ impl<'a> Formatter<'a> {
             }
             if param.shape != SyntaxShape::Any {
                 self.write(": ");
-                match &param.shape {
-                    SyntaxShape::Closure(Option::None) => self.write("closure"),
-                    _ => self.write(&format!("{}", param.shape)),
-                }
+                self.write_shape(&param.shape);
                 self.write_custom_completion(&param.completion);
             }
             if let Some(default) = &param.default_value {
@@ -678,10 +716,7 @@ impl<'a> Formatter<'a> {
             }
             if let Some(shape) = &flag.arg {
                 self.write(": ");
-                match shape {
-                    SyntaxShape::Closure(Option::None) => self.write("closure"),
-                    _ => self.write(&format!("{}", shape)),
-                }
+                self.write_shape(shape);
                 self.write_custom_completion(&flag.completion);
             }
             if let Some(default) = &flag.default_value {
@@ -697,10 +732,7 @@ impl<'a> Formatter<'a> {
             self.write(&rest.name);
             if rest.shape != SyntaxShape::Any {
                 self.write(": ");
-                match &rest.shape {
-                    SyntaxShape::Closure(Option::None) => self.write("closure"),
-                    _ => self.write(&format!("{}", rest.shape)),
-                }
+                self.write_shape(&rest.shape);
                 self.write_custom_completion(&rest.completion);
             }
         }
