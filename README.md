@@ -50,12 +50,6 @@
 cargo install --git https://github.com/nushell/nufmt
 ```
 
-### Using Cargo
-
-```bash
-cargo install nufmt
-```
-
 ### Using Nix
 
 ```bash
