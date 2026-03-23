@@ -563,14 +563,15 @@ impl<'a> Formatter<'a> {
 
     /// Format a range expression
     fn format_range(&mut self, range: &nu_protocol::ast::Range) {
+        let op = range.operator.to_string();
         if let Some(from) = &range.from {
             self.format_expression(from);
         }
-        self.write("..");
+        self.write(&op);
         if let Some(next) = &range.next {
             self.format_expression(next);
             // For step ranges (start..step..end), write the operator again before end
-            self.write("..");
+            self.write(&op);
         }
         if let Some(to) = &range.to {
             self.format_expression(to);
