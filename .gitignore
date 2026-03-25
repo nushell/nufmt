@@ -15,3 +15,6 @@ result
 tmp/
 tests/.DS_Store
 .DS_Store
+
+# skills
+.github/skills/*

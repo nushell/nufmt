@@ -133,6 +133,20 @@ impl<'a> Formatter<'a> {
         self.write_span(expr.span);
     }
 
+    /// Write an attribute expression while preserving a leading '@' sigil.
+    fn write_attribute_span(&mut self, expr: &Expression) {
+        let mut start = expr.span.start;
+
+        if start > 0 && self.source[start - 1] == b'@' {
+            start -= 1;
+        }
+
+        self.write_span(Span {
+            start,
+            end: expr.span.end,
+        });
+    }
+
     // ─────────────────────────────────────────────────────────────────────────────
     // Comment handling
     // ─────────────────────────────────────────────────────────────────────────────
@@ -383,7 +397,7 @@ impl<'a> Formatter<'a> {
 
             Expr::AttributeBlock(attr_block) => {
                 for attr in &attr_block.attributes {
-                    self.write_span(attr.expr.span);
+                    self.write_attribute_span(&attr.expr);
                     self.newline();
                 }
                 self.format_expression(&attr_block.item);
