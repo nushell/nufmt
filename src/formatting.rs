@@ -12,8 +12,8 @@ use nu_protocol::{
         MatchPattern, PathMember, Pattern, Pipeline, PipelineElement, PipelineRedirection,
         RecordItem, RedirectionTarget,
     },
-    engine::{EngineState, StateWorkingSet},
-    Completion, Signature, Span, SyntaxShape,
+    engine::{Call, Command, CommandType as NuCommandType, EngineState, Stack, StateWorkingSet},
+    Category, Completion, PipelineData, ShellError, Signature, Span, SyntaxShape,
 };
 use nu_utils::NuCow;
 
@@ -24,9 +24,57 @@ const DEF_COMMANDS: &[&str] = &["def", "def-env", "export def"];
 const EXTERN_COMMANDS: &[&str] = &["extern", "export extern"];
 const LET_COMMANDS: &[&str] = &["let", "let-env", "mut", "const"];
 
+#[derive(Clone)]
+struct WhereKeyword;
+
+impl Command for WhereKeyword {
+    fn name(&self) -> &str {
+        "where"
+    }
+
+    fn signature(&self) -> Signature {
+        Signature::build("where")
+            .required(
+                "condition",
+                SyntaxShape::RowCondition,
+                "filter row condition or closure",
+            )
+            .category(Category::Filters)
+    }
+
+    fn description(&self) -> &str {
+        "filter values of an input list based on a condition"
+    }
+
+    fn command_type(&self) -> NuCommandType {
+        NuCommandType::Keyword
+    }
+
+    fn run(
+        &self,
+        _engine_state: &EngineState,
+        _stack: &mut Stack,
+        _call: &Call,
+        input: PipelineData,
+    ) -> Result<PipelineData, ShellError> {
+        Ok(input)
+    }
+}
+
 /// Get the default engine state with built-in commands
 fn get_engine_state() -> EngineState {
-    nu_cmd_lang::create_default_context()
+    let mut engine_state = nu_cmd_lang::create_default_context();
+    let delta = {
+        let mut working_set = StateWorkingSet::new(&engine_state);
+        working_set.add_decl(Box::new(WhereKeyword));
+        working_set.render()
+    };
+
+    if let Err(err) = engine_state.merge_delta(delta) {
+        debug!("failed to merge formatter context: {err:?}");
+    }
+
+    engine_state
 }
 
 /// The main formatter context that tracks indentation and other state
@@ -374,10 +422,7 @@ impl<'a> Formatter<'a> {
                 self.format_full_cell_path(full_path);
             }
 
-            Expr::RowCondition(block_id) => {
-                let block = self.working_set.get_block(*block_id);
-                self.format_block(block);
-            }
+            Expr::RowCondition(_) => self.write_expr_span(expr),
 
             Expr::Keyword(keyword) => {
                 self.write_span(keyword.span);
