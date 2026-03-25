@@ -21,7 +21,7 @@ use nu_utils::NuCow;
 const BLOCK_COMMANDS: &[&str] = &["for", "while", "loop", "module"];
 const CONDITIONAL_COMMANDS: &[&str] = &["if", "try"];
 const DEF_COMMANDS: &[&str] = &["def", "def-env", "export def"];
-const EXTERN_COMMANDS: &[&str] = &["extern"];
+const EXTERN_COMMANDS: &[&str] = &["extern", "export extern"];
 const LET_COMMANDS: &[&str] = &["let", "let-env", "mut", "const"];
 
 /// Get the default engine state with built-in commands
@@ -49,6 +49,8 @@ struct Formatter<'a> {
     written_comments: Vec<bool>,
     /// Current position in source being processed
     last_pos: usize,
+    /// Track nested conditional argument formatting to preserve explicit parens
+    conditional_context_depth: usize,
 }
 
 impl<'a> Formatter<'a> {
@@ -65,6 +67,7 @@ impl<'a> Formatter<'a> {
             comments,
             written_comments,
             last_pos: 0,
+            conditional_context_depth: 0,
         }
     }
 
@@ -208,7 +211,15 @@ impl<'a> Formatter<'a> {
             }
 
             if i < num_pipelines - 1 {
-                self.newline();
+                let separator_newlines = if self.indent_level == 0 && self.config.margin > 1 {
+                    self.config.margin.saturating_add(1)
+                } else {
+                    1
+                };
+
+                for _ in 0..separator_newlines {
+                    self.newline();
+                }
             }
         }
     }
@@ -393,9 +404,76 @@ impl<'a> Formatter<'a> {
             self.write_span(call.head);
         }
 
+        if matches!(cmd_type, CommandType::Let) {
+            self.format_let_call(call);
+            return;
+        }
+
         // Format arguments based on command type
         for arg in &call.arguments {
             self.format_call_argument(arg, &cmd_type);
+        }
+    }
+
+    /// Format let/mut/const calls while preserving explicit type annotations.
+    fn format_let_call(&mut self, call: &nu_protocol::ast::Call) {
+        let positional: Vec<&Expression> = call
+            .arguments
+            .iter()
+            .filter_map(|arg| match arg {
+                Argument::Positional(expr) | Argument::Unknown(expr) => Some(expr),
+                _ => None,
+            })
+            .collect();
+
+        if positional.is_empty() {
+            for arg in &call.arguments {
+                self.format_call_argument(arg, &CommandType::Let);
+            }
+            return;
+        }
+
+        self.space();
+        self.format_expression(positional[0]);
+
+        if let Some(rhs) = positional.get(1) {
+            let lhs = positional[0];
+            let between = if lhs.span.end <= rhs.span.start {
+                &self.source[lhs.span.end..rhs.span.start]
+            } else {
+                &[]
+            };
+
+            if let Some(eq_pos) = between.iter().position(|b| *b == b'=') {
+                let annotation = between[..eq_pos].trim_ascii();
+                if !annotation.is_empty() {
+                    if !annotation.starts_with(b":") {
+                        self.space();
+                    }
+                    self.write_bytes(annotation);
+                }
+            }
+
+            self.write(" = ");
+
+            match &rhs.expr {
+                Expr::Block(block_id) | Expr::Subexpression(block_id) => {
+                    let block = self.working_set.get_block(*block_id);
+                    self.format_block(block);
+                }
+                _ => self.format_expression(rhs),
+            }
+
+            for extra in positional.iter().skip(2) {
+                self.space();
+                self.format_expression(extra);
+            }
+        }
+
+        for arg in &call.arguments {
+            if !matches!(arg, Argument::Positional(_) | Argument::Unknown(_)) {
+                self.format_call_argument(arg, &CommandType::Let);
+            }
         }
     }
 
@@ -431,7 +509,18 @@ impl<'a> Formatter<'a> {
                     self.write_span(short.span);
                 }
                 if let Some(value) = &named.2 {
-                    self.space();
+                    let separator_start = named
+                        .1
+                        .as_ref()
+                        .map_or(named.0.span.end, |short| short.span.end);
+                    let has_equals = separator_start <= value.span.start
+                        && self.source[separator_start..value.span.start].contains(&b'=');
+
+                    if has_equals {
+                        self.write("=");
+                    } else {
+                        self.space();
+                    }
                     self.format_expression(value);
                 }
             }
@@ -449,7 +538,12 @@ impl<'a> Formatter<'a> {
         match cmd_type {
             CommandType::Def => self.format_def_argument(positional),
             CommandType::Extern => self.format_extern_argument(positional),
-            CommandType::Conditional | CommandType::Block => {
+            CommandType::Conditional => {
+                self.conditional_context_depth += 1;
+                self.format_block_or_expr(positional);
+                self.conditional_context_depth -= 1;
+            }
+            CommandType::Block => {
                 self.format_block_or_expr(positional);
             }
             CommandType::Let => self.format_let_argument(positional),
@@ -628,6 +722,14 @@ impl<'a> Formatter<'a> {
     fn write_shape(&mut self, shape: &SyntaxShape) {
         match shape {
             SyntaxShape::Closure(Option::None) => self.write("closure"),
+            SyntaxShape::Closure(_) => {
+                let rendered = shape.to_string();
+                if rendered == "closure()" {
+                    self.write("closure");
+                } else {
+                    self.write(&rendered);
+                }
+            }
             _ => self.write(&format!("{}", shape)),
         }
     }
@@ -744,6 +846,18 @@ impl<'a> Formatter<'a> {
             self.write_indent();
         }
         self.write("]");
+
+        if !sig.input_output_types.is_empty() {
+            self.write(": ");
+            for (i, (input, output)) in sig.input_output_types.iter().enumerate() {
+                if i > 0 {
+                    self.write(", ");
+                }
+                self.write(&input.to_string());
+                self.write(" -> ");
+                self.write(&output.to_string());
+            }
+        }
     }
 
     /// Format a `CellPath`
@@ -770,16 +884,16 @@ impl<'a> Formatter<'a> {
     fn format_cell_path_member(&mut self, member: &PathMember) {
         match member {
             PathMember::String { val, optional, .. } => {
+                self.write(val);
                 if *optional {
                     self.write("?");
                 }
-                self.write(val);
             }
             PathMember::Int { val, optional, .. } => {
+                self.write(&val.to_string());
                 if *optional {
                     self.write("?");
                 }
-                self.write(&val.to_string());
             }
         }
     }
@@ -794,6 +908,14 @@ impl<'a> Formatter<'a> {
             self.format_block(block);
             return;
         }
+
+        if self.conditional_context_depth > 0 {
+            self.write("(");
+            self.format_block(block);
+            self.write(")");
+            return;
+        }
+
         // Special case: subexpressions containing only a string interpolation don't need parentheses
         if block.pipelines.len() == 1 && block.pipelines[0].elements.len() == 1 {
             if let Expr::StringInterpolation(_) = &block.pipelines[0].elements[0].expr.expr {
@@ -837,10 +959,15 @@ impl<'a> Formatter<'a> {
     fn format_block_expression(
         &mut self,
         block_id: nu_protocol::BlockId,
-        _span: Span,
+        span: Span,
         with_braces: bool,
     ) {
         let block = self.working_set.get_block(block_id);
+
+        let source_has_newline = with_braces
+            && self.conditional_context_depth > 0
+            && span.end > span.start
+            && self.source[span.start..span.end].contains(&b'\n');
 
         if with_braces {
             self.write("{");
@@ -848,7 +975,8 @@ impl<'a> Formatter<'a> {
 
         let is_simple = block.pipelines.len() == 1
             && block.pipelines[0].elements.len() == 1
-            && !self.block_has_nested_structures(block);
+            && !self.block_has_nested_structures(block)
+            && !source_has_newline;
 
         if is_simple && with_braces {
             self.write(" ");
@@ -1485,5 +1613,16 @@ mod tests {
         let first = format(input);
         let second = format(&first);
         assert_eq!(first, second, "Formatting should be idempotent");
+    }
+
+    #[test]
+    fn issue98_margin_has_effect() {
+        let input = "def foo [] {\n    let out = 1\n    out\n}\n\ndef bar [] {\n    let out = 1\n    out\n}";
+        let config = Config::new(4, 80, 2);
+        let result = format_inner(input.as_bytes(), &config).expect("formatting failed");
+        let output = String::from_utf8(result).expect("invalid utf8");
+
+        let expected = "def foo [] {\n    let out = 1\n    out\n}\n\n\ndef bar [] {\n    let out = 1\n    out\n}";
+        assert_eq!(output, expected);
     }
 }
