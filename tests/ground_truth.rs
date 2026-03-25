@@ -778,3 +778,32 @@ fn idempotency_inline_param_comment_issue77() {
     let test_binary = get_test_binary();
     run_idempotency_test(&test_binary, "inline_param_comment");
 }
+
+macro_rules! issue_fixture_tests {
+    ($(($fixture:literal, $ground_truth_test:ident, $idempotency_test:ident)),+ $(,)?) => {
+        $(
+            #[test]
+            fn $ground_truth_test() {
+                let test_binary = get_test_binary();
+                run_ground_truth_test(&test_binary, $fixture);
+            }
+
+            #[test]
+            fn $idempotency_test() {
+                let test_binary = get_test_binary();
+                run_idempotency_test(&test_binary, $fixture);
+            }
+        )+
+    };
+}
+
+issue_fixture_tests!(
+    ("issue85", issue85_test, idempotency_issue85_test),
+    ("issue86", issue86_test, idempotency_issue86_test),
+    ("issue87", issue87_test, idempotency_issue87_test),
+    ("issue92", issue92_test, idempotency_issue92_test),
+    ("issue93", issue93_test, idempotency_issue93_test),
+    ("issue94", issue94_test, idempotency_issue94_test),
+    ("issue95", issue95_test, idempotency_issue95_test),
+    ("issue97", issue97_test, idempotency_issue97_test),
+);
