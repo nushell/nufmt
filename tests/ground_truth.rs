@@ -806,4 +806,5 @@ issue_fixture_tests!(
     ("issue94", issue94_test, idempotency_issue94_test),
     ("issue95", issue95_test, idempotency_issue95_test),
     ("issue97", issue97_test, idempotency_issue97_test),
+    ("issue100", issue100_test, idempotency_issue100_test),
 );
