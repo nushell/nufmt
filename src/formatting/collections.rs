@@ -113,8 +113,8 @@ impl<'a> Formatter<'a> {
                     | Expr::List(_)
                     | Expr::Closure(_)
                     | Expr::Block(_)
-                    | Expr::Var(_)
-                    | Expr::FullCellPath(_)
+                    | Expr::StringInterpolation(_)
+                    | Expr::Subexpression(_)
             ),
             RecordItem::Spread(_, _) => false,
         });
@@ -153,6 +153,12 @@ impl<'a> Formatter<'a> {
             for item in items {
                 self.write_indent();
                 self.format_record_item(item, preserve_compact);
+                // Capture inline comments on the same line as the record item.
+                let item_end = match item {
+                    RecordItem::Pair(_, v) => v.span.end,
+                    RecordItem::Spread(_, expr) => expr.span.end,
+                };
+                self.write_inline_comment_bounded(item_end, None);
                 self.newline();
             }
             self.indent_level -= 1;

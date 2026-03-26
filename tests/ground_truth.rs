@@ -369,4 +369,11 @@ fixture_tests!(
     ("issue120", issue120_test, idempotency_issue120_test),
     ("issue121", issue121_test, idempotency_issue121_test),
     ("issue122", issue122_test, idempotency_issue122_test),
+    ("issue128", issue128_test, idempotency_issue128_test),
+    ("issue129", issue129_test, idempotency_issue129_test),
+    ("issue130", issue130_test, idempotency_issue130_test),
+    ("issue131", issue131_test, idempotency_issue131_test),
+    ("issue132", issue132_test, idempotency_issue132_test),
+    ("issue133", issue133_test, idempotency_issue133_test),
+    ("issue134", issue134_test, idempotency_issue134_test),
 );

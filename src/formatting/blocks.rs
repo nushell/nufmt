@@ -24,11 +24,17 @@ impl<'a> Formatter<'a> {
                 self.write_comments_before(first_elem.expr.span.start);
             }
 
+            // Pipelines inside indented blocks (e.g. def bodies) need
+            // explicit indentation when they start on a fresh line.
+            if self.at_line_start {
+                self.write_indent();
+            }
+
             self.format_pipeline(pipeline);
 
             if let Some(last_elem) = pipeline.elements.last() {
                 let end_pos = self.get_element_end_pos(last_elem);
-                self.write_inline_comment(end_pos);
+                self.write_inline_comment_bounded(end_pos, self.inline_comment_upper_bound);
                 self.last_pos = end_pos;
             }
 
@@ -58,10 +64,34 @@ impl<'a> Formatter<'a> {
     }
 
     /// Format a pipeline (elements joined by `|`).
+    ///
+    /// Preserves multi-line pipeline layout: if the original source has line
+    /// breaks between pipeline elements, the formatted output keeps each
+    /// stage on its own line with `| ` prefix.
     pub(super) fn format_pipeline(&mut self, pipeline: &nu_protocol::ast::Pipeline) {
+        if pipeline.elements.len() <= 1 {
+            if let Some(element) = pipeline.elements.first() {
+                self.format_pipeline_element(element);
+            }
+            return;
+        }
+
+        // Detect whether the source places pipeline elements on separate lines.
+        let is_multiline = pipeline.elements.windows(2).any(|pair| {
+            let prev_end = self.get_element_end_pos(&pair[0]);
+            let next_start = pair[1].expr.span.start;
+            prev_end < next_start && self.source[prev_end..next_start].contains(&b'\n')
+        });
+
         for (i, element) in pipeline.elements.iter().enumerate() {
             if i > 0 {
-                self.write(" | ");
+                if is_multiline {
+                    self.newline();
+                    self.write_indent();
+                    self.write("| ");
+                } else {
+                    self.write(" | ");
+                }
             }
             self.format_pipeline_element(element);
         }
@@ -133,6 +163,12 @@ impl<'a> Formatter<'a> {
             self.write("{");
         }
 
+        // Reset conditional_context_depth inside block bodies so that
+        // subexpressions nested inside `if` / `try` blocks keep their
+        // explicit parentheses (fixes issue #131).
+        let saved_conditional_depth = self.conditional_context_depth;
+        self.conditional_context_depth = 0;
+
         let is_simple = block.pipelines.len() == 1
             && block.pipelines[0].elements.len() == 1
             && !self.block_has_nested_structures(block)
@@ -164,6 +200,8 @@ impl<'a> Formatter<'a> {
         if with_braces {
             self.write("}");
         }
+
+        self.conditional_context_depth = saved_conditional_depth;
     }
 
     /// Detect whether a braced block looks like a compact record literal

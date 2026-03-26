@@ -42,6 +42,11 @@ impl<'a> Formatter<'a> {
             return;
         }
 
+        if decl_name == "for" {
+            self.format_for_call(call);
+            return;
+        }
+
         for arg in &call.arguments {
             self.format_call_argument(arg, &cmd_type);
         }
@@ -106,6 +111,69 @@ impl<'a> Formatter<'a> {
         for arg in &call.arguments {
             if !matches!(arg, Argument::Positional(_) | Argument::Unknown(_)) {
                 self.format_call_argument(arg, &CommandType::Let);
+            }
+        }
+    }
+
+    /// Format `for` loop calls, preserving explicit type annotations on the
+    /// loop variable (e.g. `for h: int in [1 2 3] { ... }`).
+    pub(super) fn format_for_call(&mut self, call: &nu_protocol::ast::Call) {
+        // Find the VarDecl positional and the Keyword("in") argument.
+        let var_decl = call.arguments.iter().find_map(|arg| match arg {
+            Argument::Positional(expr) | Argument::Unknown(expr)
+                if matches!(expr.expr, Expr::VarDecl(_)) =>
+            {
+                Some(expr)
+            }
+            _ => None,
+        });
+
+        let keyword_in = call.arguments.iter().find_map(|arg| match arg {
+            Argument::Positional(expr) | Argument::Unknown(expr)
+                if matches!(expr.expr, Expr::Keyword(_)) =>
+            {
+                Some(expr)
+            }
+            _ => None,
+        });
+
+        if let (Some(var_decl), Some(kw_in)) = (var_decl, keyword_in) {
+            self.space();
+            self.format_expression(var_decl);
+
+            // Preserve a type annotation (e.g. `: int`) between the loop
+            // variable and the `in` keyword.
+            if var_decl.span.end < kw_in.span.start {
+                let between = &self.source[var_decl.span.end..kw_in.span.start];
+                let annotation = between.trim_ascii();
+                if annotation.starts_with(b":") {
+                    self.write_bytes(annotation);
+                }
+            }
+
+            self.space();
+            self.format_expression(kw_in);
+        } else {
+            // Fallback — format all arguments normally
+            for arg in &call.arguments {
+                self.format_call_argument(arg, &CommandType::Block);
+            }
+            return;
+        }
+
+        // Format remaining arguments (the body block)
+        for arg in &call.arguments {
+            match arg {
+                Argument::Positional(expr) | Argument::Unknown(expr) => {
+                    if matches!(expr.expr, Expr::VarDecl(_) | Expr::Keyword(_)) {
+                        continue;
+                    }
+                    self.space();
+                    self.format_block_or_expr(expr);
+                }
+                _ => {
+                    self.format_call_argument(arg, &CommandType::Block);
+                }
             }
         }
     }
