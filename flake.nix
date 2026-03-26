@@ -30,19 +30,23 @@
           text =
             # patch
             ''
-              diff --git a/tests/main.rs b/tests/main.rs
-              index c3a2b64..173aea0 100644
-              --- a/tests/main.rs
-              +++ b/tests/main.rs
-              @@ -8,7 +8,7 @@ let one = 1
-               const VALID: &str = "# beginning of script comment
-               let one = 1
-               ";
-              -const TEST_BINARY: &str = "target/debug/nufmt";
-              +const TEST_BINARY: &str = "target/@target_triple@/release/nufmt";
+              diff --git a/tests/ground_truth.rs b/tests/ground_truth.rs
+              --- a/tests/ground_truth.rs
+              +++ b/tests/ground_truth.rs
+              @@ -14,11 +14,11 @@ pub fn get_test_binary() -> PathBuf {
+                   // Try CARGO_TARGET_DIR first
+                   if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
+              -        let path = PathBuf::from(target_dir).join("debug").join(exe_name);
+              +        let path = PathBuf::from(target_dir).join("@target_triple@/release").join(exe_name);
+                       if path.exists() {
+                           return path.canonicalize().unwrap_or(path);
+                       }
+                   }
 
-               #[test]
-               fn failure_with_invalid_config() {
+                   // Try default target directory
+              -    let default_path = PathBuf::from("target").join("debug").join(exe_name);
+              +    let default_path = PathBuf::from("target").join("@target_triple@/release").join(exe_name);
+                   if default_path.exists() {
             '';
         };
       in
