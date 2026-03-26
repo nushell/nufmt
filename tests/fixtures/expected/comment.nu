@@ -7,6 +7,7 @@ let z = 3 # inline comment
 # consecutive
 # comments
 def foo [] { 1 }
-def bar [] { 
-# comment inside block
-print "hello" }
+def bar [] {
+    # comment inside block
+    print "hello"
+}

@@ -13,7 +13,7 @@ use nu_protocol::{
         RecordItem, RedirectionTarget,
     },
     engine::{Call, Command, CommandType as NuCommandType, EngineState, Stack, StateWorkingSet},
-    Category, Completion, PipelineData, ShellError, Signature, Span, SyntaxShape,
+    Category, Completion, ParseError, PipelineData, ShellError, Signature, Span, SyntaxShape,
 };
 use nu_utils::NuCow;
 
@@ -99,10 +99,19 @@ struct Formatter<'a> {
     last_pos: usize,
     /// Track nested conditional argument formatting to preserve explicit parens
     conditional_context_depth: usize,
+    /// Force preserving explicit parens for subexpressions inside precedence-sensitive contexts
+    preserve_subexpr_parens_depth: usize,
+    /// Allow compact inline record style used for repaired malformed records
+    allow_compact_recovered_record_style: bool,
 }
 
 impl<'a> Formatter<'a> {
-    fn new(source: &'a [u8], working_set: &'a StateWorkingSet<'a>, config: &'a Config) -> Self {
+    fn new(
+        source: &'a [u8],
+        working_set: &'a StateWorkingSet<'a>,
+        config: &'a Config,
+        allow_compact_recovered_record_style: bool,
+    ) -> Self {
         let comments = extract_comments(source);
         let written_comments = vec![false; comments.len()];
         Self {
@@ -116,6 +125,8 @@ impl<'a> Formatter<'a> {
             written_comments,
             last_pos: 0,
             conditional_context_depth: 0,
+            preserve_subexpr_parens_depth: 0,
+            allow_compact_recovered_record_style,
         }
     }
 
@@ -413,7 +424,7 @@ impl<'a> Formatter<'a> {
             }
 
             Expr::List(items) => self.format_list(items),
-            Expr::Record(items) => self.format_record(items),
+            Expr::Record(items) => self.format_record(items, expr.span),
             Expr::Table(table) => self.format_table(&table.columns, &table.rows),
 
             Expr::Range(range) => self.format_range(range),
@@ -650,7 +661,11 @@ impl<'a> Formatter<'a> {
     fn format_let_argument(&mut self, positional: &Expression) {
         match &positional.expr {
             Expr::VarDecl(_) => self.format_expression(positional),
-            Expr::Block(block_id) | Expr::Subexpression(block_id) => {
+            Expr::Subexpression(block_id) => {
+                self.write("= ");
+                self.format_subexpression(*block_id, positional.span);
+            }
+            Expr::Block(block_id) => {
                 self.write("= ");
                 let block = self.working_set.get_block(*block_id);
                 self.format_block(block);
@@ -697,7 +712,9 @@ impl<'a> Formatter<'a> {
 
     /// Format a binary operation
     fn format_binary_op(&mut self, lhs: &Expression, op: &Expression, rhs: &Expression) {
+        self.preserve_subexpr_parens_depth += 1;
         self.format_expression(lhs);
+        self.preserve_subexpr_parens_depth -= 1;
         // Always add space around binary operators for valid nushell syntax
         self.write(" ");
         self.format_expression(op);
@@ -711,7 +728,9 @@ impl<'a> Formatter<'a> {
                 return;
             }
         }
+        self.preserve_subexpr_parens_depth += 1;
         self.format_expression(rhs);
+        self.preserve_subexpr_parens_depth -= 1;
     }
 
     /// Format a range expression
@@ -960,6 +979,8 @@ impl<'a> Formatter<'a> {
     /// Format a subexpression
     fn format_subexpression(&mut self, block_id: nu_protocol::BlockId, span: Span) {
         let block = self.working_set.get_block(block_id);
+        let source_has_newline =
+            span.end > span.start && self.source[span.start..span.end].contains(&b'\n');
         // Check if the subexpression has explicit parentheses in the source
         let has_explicit_parens = self.source.get(span.start) == Some(&b'(')
             && self.source.get(span.end - 1) == Some(&b')');
@@ -968,7 +989,20 @@ impl<'a> Formatter<'a> {
             return;
         }
 
+        // Preserve explicit multiline parenthesized expressions to avoid collapsing
+        // author-intended layout (for example multiline call arguments).
+        if source_has_newline {
+            self.write_span(span);
+            return;
+        }
+
         if self.conditional_context_depth > 0 {
+            let can_drop_parens =
+                block.pipelines.len() == 1 && block.pipelines[0].elements.len() == 1;
+            if can_drop_parens {
+                self.format_block(block);
+                return;
+            }
             self.write("(");
             self.format_block(block);
             self.write(")");
@@ -982,8 +1016,11 @@ impl<'a> Formatter<'a> {
                 return;
             }
         }
-        // Special case: subexpressions containing a pipeline starting with $in don't need parentheses
-        if block.pipelines.len() == 1 && !block.pipelines[0].elements.is_empty() {
+        // Preserve explicit parens when formatting subexpressions in precedence-sensitive contexts.
+        if self.preserve_subexpr_parens_depth == 0
+            && block.pipelines.len() == 1
+            && !block.pipelines[0].elements.is_empty()
+        {
             let first_element = &block.pipelines[0].elements[0];
             let element_text = String::from_utf8_lossy(
                 &self.source[first_element.expr.span.start..first_element.expr.span.end],
@@ -995,7 +1032,9 @@ impl<'a> Formatter<'a> {
         }
 
         self.write("(");
-        let is_simple = block.pipelines.len() == 1 && block.pipelines[0].elements.len() <= 3;
+        let is_simple = !source_has_newline
+            && block.pipelines.len() == 1
+            && block.pipelines[0].elements.len() <= 3;
 
         if is_simple {
             self.format_block(block);
@@ -1024,7 +1063,6 @@ impl<'a> Formatter<'a> {
         let block = self.working_set.get_block(block_id);
 
         let source_has_newline = with_braces
-            && self.conditional_context_depth > 0
             && span.end > span.start
             && self.source[span.start..span.end].contains(&b'\n');
 
@@ -1036,11 +1074,17 @@ impl<'a> Formatter<'a> {
             && block.pipelines[0].elements.len() == 1
             && !self.block_has_nested_structures(block)
             && !source_has_newline;
+        let preserve_compact_record_like =
+            with_braces && is_simple && self.block_expression_looks_like_compact_record(span);
 
         if is_simple && with_braces {
-            self.write(" ");
+            if !preserve_compact_record_like {
+                self.write(" ");
+            }
             self.format_block(block);
-            self.write(" ");
+            if !preserve_compact_record_like {
+                self.write(" ");
+            }
         } else if block.pipelines.is_empty() {
             if with_braces {
                 self.write(" ");
@@ -1057,6 +1101,23 @@ impl<'a> Formatter<'a> {
         if with_braces {
             self.write("}");
         }
+    }
+
+    fn block_expression_looks_like_compact_record(&self, span: Span) -> bool {
+        if span.end <= span.start + 1 || span.end > self.source.len() {
+            return false;
+        }
+
+        let slice = &self.source[span.start..span.end];
+        if !slice.starts_with(b"{") || !slice.ends_with(b"}") {
+            return false;
+        }
+
+        if slice.starts_with(b"{ ") || slice.ends_with(b" }") {
+            return false;
+        }
+
+        slice[1..slice.len() - 1].contains(&b':')
     }
 
     /// Check if a block has nested structures that require multiline formatting
@@ -1168,6 +1229,8 @@ impl<'a> Formatter<'a> {
             return;
         }
 
+        let uses_commas = self.list_uses_commas(items);
+
         // Check if all items are simple (primitives)
         let all_simple = items.iter().all(|item| match item {
             ListItem::Item(expr) => self.is_simple_expr(expr),
@@ -1179,7 +1242,11 @@ impl<'a> Formatter<'a> {
             self.write("[");
             for (i, item) in items.iter().enumerate() {
                 if i > 0 {
-                    self.write(", ");
+                    if uses_commas {
+                        self.write(", ");
+                    } else {
+                        self.write(" ");
+                    }
                 }
                 self.format_list_item(item);
             }
@@ -1200,6 +1267,28 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Detect whether list items are separated with commas in the source.
+    fn list_uses_commas(&self, items: &[ListItem]) -> bool {
+        if items.len() < 2 {
+            return false;
+        }
+
+        let item_bounds = |item: &ListItem| match item {
+            ListItem::Item(expr) | ListItem::Spread(_, expr) => (expr.span.start, expr.span.end),
+        };
+
+        let (_, mut prev_end) = item_bounds(&items[0]);
+        for item in items.iter().skip(1) {
+            let (start, end) = item_bounds(item);
+            if start > prev_end && self.source[prev_end..start].contains(&b',') {
+                return true;
+            }
+            prev_end = end;
+        }
+
+        false
+    }
+
     /// Format a single list item
     fn format_list_item(&mut self, item: &ListItem) {
         match item {
@@ -1212,11 +1301,13 @@ impl<'a> Formatter<'a> {
     }
 
     /// Format a record
-    fn format_record(&mut self, items: &[RecordItem]) {
+    fn format_record(&mut self, items: &[RecordItem], span: Span) {
         if items.is_empty() {
             self.write("{}");
             return;
         }
+
+        let preserve_compact_issue122_style = self.record_preserve_compact_style(span);
 
         // Check if all items are simple
         let all_simple = items.iter().all(|item| match item {
@@ -1243,12 +1334,25 @@ impl<'a> Formatter<'a> {
 
         if all_simple && items.len() <= 3 && !nested_multiline {
             // Inline format
+            let record_start = self.output.len();
             self.write("{");
+            if preserve_compact_issue122_style {
+                self.write(" ");
+            }
             for (i, item) in items.iter().enumerate() {
                 if i > 0 {
                     self.write(", ");
                 }
-                self.format_record_item(item);
+                self.format_record_item(item, preserve_compact_issue122_style);
+            }
+            if !preserve_compact_issue122_style
+                && self.output.len() > record_start + 1
+                && self.output[record_start + 1] == b' '
+            {
+                self.output.remove(record_start + 1);
+            }
+            if preserve_compact_issue122_style {
+                self.write(" ");
             }
             self.write("}");
         } else {
@@ -1258,7 +1362,7 @@ impl<'a> Formatter<'a> {
             self.indent_level += 1;
             for item in items {
                 self.write_indent();
-                self.format_record_item(item);
+                self.format_record_item(item, preserve_compact_issue122_style);
                 self.newline();
             }
             self.indent_level -= 1;
@@ -1267,18 +1371,58 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    fn record_preserve_compact_style(&self, span: Span) -> bool {
+        if !self.allow_compact_recovered_record_style {
+            return false;
+        }
+
+        if span.end <= span.start || span.end > self.source.len() {
+            return false;
+        }
+
+        let slice = &self.source[span.start..span.end];
+        slice.starts_with(b"{ ")
+            && slice.ends_with(b" }")
+            && slice.contains(&b',')
+            && !slice.windows(2).any(|window| window == b": ")
+    }
+
     /// Format a single record item
-    fn format_record_item(&mut self, item: &RecordItem) {
+    fn format_record_item(&mut self, item: &RecordItem, compact_colon: bool) {
         match item {
             RecordItem::Pair(key, value) => {
-                self.format_expression(key);
-                self.write(": ");
+                self.format_record_key(key);
+                if compact_colon {
+                    self.write(":");
+                } else {
+                    self.write(": ");
+                }
                 self.format_expression(value);
             }
             RecordItem::Spread(_, expr) => {
                 self.write("...");
                 self.format_expression(expr);
             }
+        }
+    }
+
+    fn format_record_key(&mut self, key: &Expression) {
+        let span_contents = self.get_span_content(key.span);
+
+        let start = span_contents
+            .iter()
+            .position(|byte| !byte.is_ascii_whitespace())
+            .unwrap_or(span_contents.len());
+        let end = span_contents
+            .iter()
+            .rposition(|byte| !byte.is_ascii_whitespace())
+            .map(|idx| idx + 1)
+            .unwrap_or(0);
+
+        if start < end {
+            self.write_bytes(&span_contents[start..end]);
+        } else {
+            self.format_expression(key);
         }
     }
 
@@ -1473,15 +1617,631 @@ fn extract_comments(source: &[u8]) -> Vec<(Span, Vec<u8>)> {
     comments
 }
 
+fn is_fatal_parse_error(error: &ParseError) -> bool {
+    matches!(
+        error,
+        ParseError::ExtraTokens(_)
+            | ParseError::ExtraTokensAfterClosingDelimiter(_)
+            | ParseError::UnexpectedEof(_, _)
+            | ParseError::Unclosed(_, _)
+            | ParseError::Unbalanced(_, _, _)
+            | ParseError::IncompleteMathExpression(_)
+            | ParseError::UnknownCommand(_)
+            | ParseError::Expected(_, _)
+            | ParseError::ExpectedWithStringMsg(_, _)
+            | ParseError::ExpectedWithDidYouMean(_, _, _)
+    )
+}
+
+enum ParseRepairOutcome {
+    Reformat(Vec<u8>),
+}
+
+fn try_repair_compact_if_else(source: &str) -> (String, bool) {
+    transform_outside_string_literals(source, repair_compact_if_else_segment)
+}
+
+fn find_string_literal_ranges(source: &str) -> Vec<(usize, usize)> {
+    let bytes = source.as_bytes();
+    let mut ranges = Vec::new();
+    let mut in_string: Option<u8> = None;
+    let mut escaped = false;
+    let mut start = 0;
+
+    for (idx, byte) in bytes.iter().copied().enumerate() {
+        if let Some(quote) = in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+
+            if byte == b'\\' {
+                escaped = true;
+                continue;
+            }
+
+            if byte == quote {
+                ranges.push((start, idx + 1));
+                in_string = None;
+            }
+
+            continue;
+        }
+
+        if byte == b'"' || byte == b'\'' {
+            start = idx;
+            in_string = Some(byte);
+            escaped = false;
+        }
+    }
+
+    if in_string.is_some() {
+        ranges.push((start, source.len()));
+    }
+
+    ranges
+}
+
+fn transform_outside_string_literals(
+    source: &str,
+    mut transform: impl FnMut(&str) -> (String, bool),
+) -> (String, bool) {
+    let string_ranges = find_string_literal_ranges(source);
+
+    if string_ranges.is_empty() {
+        return transform(source);
+    }
+
+    let mut output = String::with_capacity(source.len());
+    let mut changed = false;
+    let mut cursor = 0;
+
+    for (start, end) in string_ranges {
+        if cursor < start {
+            let (transformed, seg_changed) = transform(&source[cursor..start]);
+            output.push_str(&transformed);
+            changed |= seg_changed;
+        }
+
+        output.push_str(&source[start..end]);
+        cursor = end;
+    }
+
+    if cursor < source.len() {
+        let (transformed, seg_changed) = transform(&source[cursor..]);
+        output.push_str(&transformed);
+        changed |= seg_changed;
+    }
+
+    (output, changed)
+}
+
+fn non_string_ranges(source: &str) -> Vec<(usize, usize)> {
+    let string_ranges = find_string_literal_ranges(source);
+
+    if string_ranges.is_empty() {
+        return vec![(0, source.len())];
+    }
+
+    let mut ranges = Vec::new();
+    let mut cursor = 0;
+
+    for (start, end) in string_ranges {
+        if cursor < start {
+            ranges.push((cursor, start));
+        }
+        cursor = end;
+    }
+
+    if cursor < source.len() {
+        ranges.push((cursor, source.len()));
+    }
+
+    ranges
+}
+
+fn detect_compact_if_else_spans(source: &str) -> Vec<Span> {
+    let mut spans = Vec::new();
+    let patterns = ["if(", "}else{", "} else{", "}else {"];
+
+    for (range_start, range_end) in non_string_ranges(source) {
+        let segment = &source[range_start..range_end];
+        for pattern in patterns {
+            for (offset, _) in segment.match_indices(pattern) {
+                let idx = range_start + offset;
+                spans.push(Span {
+                    start: idx.saturating_sub(32),
+                    end: (idx + pattern.len() + 32).min(source.len()),
+                });
+            }
+        }
+    }
+
+    spans
+}
+
+fn detect_missing_record_comma_positions(source: &str) -> Vec<usize> {
+    let bytes = source.as_bytes();
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut insert_positions: Vec<usize> = Vec::new();
+
+    for (idx, byte) in bytes.iter().copied().enumerate() {
+        if in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+
+            if byte == b'\\' {
+                escaped = true;
+                continue;
+            }
+
+            if byte == b'"' {
+                in_string = false;
+
+                let mut lookahead = idx + 1;
+                while lookahead < bytes.len() && bytes[lookahead].is_ascii_whitespace() {
+                    lookahead += 1;
+                }
+
+                if lookahead < bytes.len()
+                    && (bytes[lookahead].is_ascii_alphabetic() || bytes[lookahead] == b'_')
+                {
+                    let mut key_end = lookahead;
+                    while key_end < bytes.len()
+                        && (bytes[key_end].is_ascii_alphanumeric()
+                            || bytes[key_end] == b'_'
+                            || bytes[key_end] == b'-')
+                    {
+                        key_end += 1;
+                    }
+
+                    if key_end < bytes.len() && bytes[key_end] == b':' {
+                        let between = &bytes[idx + 1..lookahead];
+                        if !between.contains(&b',') {
+                            insert_positions.push(idx + 1);
+                        }
+                    }
+                }
+            }
+
+            continue;
+        }
+
+        if byte == b'"' {
+            in_string = true;
+            escaped = false;
+        }
+    }
+
+    insert_positions
+}
+
+fn detect_missing_record_comma_spans(source: &str) -> Vec<Span> {
+    detect_missing_record_comma_positions(source)
+        .into_iter()
+        .map(|idx| Span {
+            start: idx.saturating_sub(32),
+            end: (idx + 32).min(source.len()),
+        })
+        .collect()
+}
+
+fn repair_compact_if_else_segment(segment: &str) -> (String, bool) {
+    let mut repaired = segment.to_string();
+    let mut changed = false;
+    let replacements = [
+        ("if(", "if ("),
+        ("){", ") {"),
+        ("}else{", "} else {"),
+        ("} else{", "} else {"),
+        ("}else {", "} else {"),
+    ];
+
+    for (from, to) in replacements {
+        if repaired.contains(from) {
+            repaired = repaired.replace(from, to);
+            changed = true;
+        }
+    }
+
+    (repaired, changed)
+}
+
+fn add_brace_padding_segment(segment: &str) -> (String, bool) {
+    let bytes = segment.as_bytes();
+    let mut output: Vec<u8> = Vec::with_capacity(bytes.len() + 8);
+    let mut changed = false;
+
+    for (idx, byte) in bytes.iter().copied().enumerate() {
+        if byte == b'{' {
+            output.push(byte);
+            if let Some(next) = bytes.get(idx + 1) {
+                if !next.is_ascii_whitespace() && *next != b'}' {
+                    output.push(b' ');
+                    changed = true;
+                }
+            }
+            continue;
+        }
+
+        if byte == b'}' {
+            if let Some(last) = output.last() {
+                if !last.is_ascii_whitespace() && *last != b'{' {
+                    output.push(b' ');
+                    changed = true;
+                }
+            }
+
+            output.push(byte);
+            continue;
+        }
+
+        output.push(byte);
+    }
+
+    let output = String::from_utf8(output).unwrap_or_else(|_| segment.to_string());
+    (output, changed)
+}
+
+fn add_brace_padding_outside_strings(source: &str) -> (String, bool) {
+    transform_outside_string_literals(source, add_brace_padding_segment)
+}
+
+fn try_repair_missing_record_commas(source: &str) -> (String, bool) {
+    let insert_positions = detect_missing_record_comma_positions(source);
+
+    if insert_positions.is_empty() {
+        return (source.to_string(), false);
+    }
+
+    let mut repaired = String::with_capacity(source.len() + insert_positions.len() * 2);
+    let mut next_insert_idx = 0;
+
+    for (idx, ch) in source.char_indices() {
+        while next_insert_idx < insert_positions.len() && insert_positions[next_insert_idx] == idx {
+            repaired.push(',');
+            repaired.push(' ');
+            next_insert_idx += 1;
+        }
+        repaired.push(ch);
+    }
+
+    (repaired, true)
+}
+
+fn merge_spans(spans: &[Span], len: usize) -> Vec<Span> {
+    let mut normalized: Vec<Span> = spans
+        .iter()
+        .filter_map(|span| {
+            if span.start >= len || span.end <= span.start {
+                return None;
+            }
+
+            Some(Span {
+                start: span.start,
+                end: span.end.min(len),
+            })
+        })
+        .collect();
+
+    normalized.sort_by_key(|span| (span.start, span.end));
+
+    let mut merged: Vec<Span> = Vec::new();
+    for span in normalized {
+        if let Some(last) = merged.last_mut() {
+            if span.start <= last.end {
+                last.end = last.end.max(span.end);
+                continue;
+            }
+        }
+
+        merged.push(span);
+    }
+
+    merged
+}
+
+fn align_to_char_boundary(source: &str, index: usize, forward: bool) -> usize {
+    let mut adjusted = index.min(source.len());
+
+    if forward {
+        while adjusted < source.len() && !source.is_char_boundary(adjusted) {
+            adjusted += 1;
+        }
+    } else {
+        while adjusted > 0 && !source.is_char_boundary(adjusted) {
+            adjusted -= 1;
+        }
+    }
+
+    adjusted
+}
+
+fn repair_region(source: &str) -> (String, bool) {
+    let (repaired_if_else, if_else_changed) = try_repair_compact_if_else(source);
+    let (mut repaired_record, record_changed) = try_repair_missing_record_commas(&repaired_if_else);
+
+    let mut brace_spacing_changed = false;
+    if record_changed {
+        let (padded, padded_changed) = add_brace_padding_outside_strings(&repaired_record);
+        repaired_record = padded;
+        brace_spacing_changed = padded_changed;
+    }
+
+    (
+        repaired_record,
+        if_else_changed || record_changed || brace_spacing_changed,
+    )
+}
+
+fn try_repair_parse_errors(
+    contents: &[u8],
+    malformed_spans: &[Span],
+) -> Option<ParseRepairOutcome> {
+    if malformed_spans.is_empty() {
+        return None;
+    }
+
+    let source = String::from_utf8_lossy(contents).into_owned();
+    let spans = merge_spans(malformed_spans, source.len());
+
+    if spans.is_empty() {
+        return None;
+    }
+
+    let mut cursor = 0;
+    let mut output = String::with_capacity(source.len());
+    let mut changed = false;
+
+    for span in spans {
+        let start = align_to_char_boundary(&source, span.start, false);
+        let end = align_to_char_boundary(&source, span.end, true);
+
+        if start >= end || start < cursor {
+            continue;
+        }
+
+        output.push_str(&source[cursor..start]);
+
+        let (repaired_region, region_changed) = repair_region(&source[start..end]);
+        output.push_str(&repaired_region);
+        changed |= region_changed;
+
+        cursor = end;
+    }
+
+    output.push_str(&source[cursor..]);
+
+    if changed {
+        Some(ParseRepairOutcome::Reformat(output.into_bytes()))
+    } else {
+        None
+    }
+}
+
+fn block_contains_garbage(working_set: &StateWorkingSet<'_>, block: &Block) -> bool {
+    block
+        .pipelines
+        .iter()
+        .any(|pipeline| pipeline_contains_garbage(working_set, pipeline))
+}
+
+fn pipeline_contains_garbage(working_set: &StateWorkingSet<'_>, pipeline: &Pipeline) -> bool {
+    pipeline.elements.iter().any(|element| {
+        expr_contains_garbage(working_set, &element.expr)
+            || element
+                .redirection
+                .as_ref()
+                .is_some_and(|redir| redirection_contains_garbage(working_set, redir))
+    })
+}
+
+fn redirection_contains_garbage(
+    working_set: &StateWorkingSet<'_>,
+    redirection: &PipelineRedirection,
+) -> bool {
+    match redirection {
+        PipelineRedirection::Single { target, .. } => {
+            redirection_target_contains_garbage(working_set, target)
+        }
+        PipelineRedirection::Separate { out, err } => {
+            redirection_target_contains_garbage(working_set, out)
+                || redirection_target_contains_garbage(working_set, err)
+        }
+    }
+}
+
+fn redirection_target_contains_garbage(
+    working_set: &StateWorkingSet<'_>,
+    target: &RedirectionTarget,
+) -> bool {
+    match target {
+        RedirectionTarget::File { expr, .. } => expr_contains_garbage(working_set, expr),
+        RedirectionTarget::Pipe { .. } => false,
+    }
+}
+
+fn argument_contains_garbage(working_set: &StateWorkingSet<'_>, arg: &Argument) -> bool {
+    match arg {
+        Argument::Positional(expr) | Argument::Unknown(expr) | Argument::Spread(expr) => {
+            expr_contains_garbage(working_set, expr)
+        }
+        Argument::Named(named) => named
+            .2
+            .as_ref()
+            .is_some_and(|expr| expr_contains_garbage(working_set, expr)),
+    }
+}
+
+fn expr_contains_garbage(working_set: &StateWorkingSet<'_>, expr: &Expression) -> bool {
+    match &expr.expr {
+        Expr::Garbage => true,
+        Expr::Call(call) => call
+            .arguments
+            .iter()
+            .any(|arg| argument_contains_garbage(working_set, arg)),
+        Expr::ExternalCall(head, args) => {
+            expr_contains_garbage(working_set, head)
+                || args.iter().any(|arg| match arg {
+                    ExternalArgument::Regular(expr) | ExternalArgument::Spread(expr) => {
+                        expr_contains_garbage(working_set, expr)
+                    }
+                })
+        }
+        Expr::BinaryOp(lhs, op, rhs) => {
+            expr_contains_garbage(working_set, lhs)
+                || expr_contains_garbage(working_set, op)
+                || expr_contains_garbage(working_set, rhs)
+        }
+        Expr::UnaryNot(inner) => expr_contains_garbage(working_set, inner),
+        Expr::Block(block_id) | Expr::Closure(block_id) | Expr::Subexpression(block_id) => {
+            block_contains_garbage(working_set, working_set.get_block(*block_id))
+        }
+        Expr::List(items) => items.iter().any(|item| match item {
+            ListItem::Item(expr) | ListItem::Spread(_, expr) => {
+                expr_contains_garbage(working_set, expr)
+            }
+        }),
+        Expr::Record(items) => items.iter().any(|item| match item {
+            RecordItem::Pair(key, value) => {
+                expr_contains_garbage(working_set, key) || expr_contains_garbage(working_set, value)
+            }
+            RecordItem::Spread(_, expr) => expr_contains_garbage(working_set, expr),
+        }),
+        Expr::Table(table) => {
+            table
+                .columns
+                .iter()
+                .any(|col| expr_contains_garbage(working_set, col))
+                || table
+                    .rows
+                    .iter()
+                    .flat_map(|row| row.iter())
+                    .any(|cell| expr_contains_garbage(working_set, cell))
+        }
+        Expr::Range(range) => {
+            range
+                .from
+                .as_ref()
+                .is_some_and(|expr| expr_contains_garbage(working_set, expr))
+                || range
+                    .next
+                    .as_ref()
+                    .is_some_and(|expr| expr_contains_garbage(working_set, expr))
+                || range
+                    .to
+                    .as_ref()
+                    .is_some_and(|expr| expr_contains_garbage(working_set, expr))
+        }
+        Expr::CellPath(_) => false,
+        Expr::FullCellPath(full_path) => expr_contains_garbage(working_set, &full_path.head),
+        Expr::RowCondition(block_id) => {
+            block_contains_garbage(working_set, working_set.get_block(*block_id))
+        }
+        Expr::Keyword(keyword) => expr_contains_garbage(working_set, &keyword.expr),
+        Expr::MatchBlock(matches) => matches.iter().any(|(pattern, arm_expr)| {
+            pattern_contains_garbage(working_set, pattern)
+                || expr_contains_garbage(working_set, arm_expr)
+        }),
+        Expr::Collect(_, inner) => expr_contains_garbage(working_set, inner),
+        Expr::AttributeBlock(attr_block) => {
+            attr_block
+                .attributes
+                .iter()
+                .any(|attr| expr_contains_garbage(working_set, &attr.expr))
+                || expr_contains_garbage(working_set, &attr_block.item)
+        }
+        Expr::Int(_)
+        | Expr::Float(_)
+        | Expr::Bool(_)
+        | Expr::Nothing
+        | Expr::DateTime(_)
+        | Expr::String(_)
+        | Expr::RawString(_)
+        | Expr::Binary(_)
+        | Expr::Filepath(_, _)
+        | Expr::Directory(_, _)
+        | Expr::GlobPattern(_, _)
+        | Expr::Var(_)
+        | Expr::VarDecl(_)
+        | Expr::Operator(_)
+        | Expr::StringInterpolation(_)
+        | Expr::GlobInterpolation(_, _)
+        | Expr::ImportPattern(_)
+        | Expr::Overlay(_)
+        | Expr::Signature(_)
+        | Expr::ValueWithUnit(_) => false,
+    }
+}
+
+fn pattern_contains_garbage(working_set: &StateWorkingSet<'_>, pattern: &MatchPattern) -> bool {
+    match &pattern.pattern {
+        Pattern::Garbage => true,
+        Pattern::Expression(expr) => expr_contains_garbage(working_set, expr),
+        Pattern::Or(patterns) | Pattern::List(patterns) => patterns
+            .iter()
+            .any(|pattern| pattern_contains_garbage(working_set, pattern)),
+        Pattern::Record(entries) => entries
+            .iter()
+            .any(|(_, pattern)| pattern_contains_garbage(working_set, pattern)),
+        Pattern::Value(_)
+        | Pattern::Variable(_)
+        | Pattern::Rest(_)
+        | Pattern::IgnoreRest
+        | Pattern::IgnoreValue => false,
+    }
+}
+
 /// Format an array of bytes
 ///
 /// Reading the file gives you a list of bytes
 pub(crate) fn format_inner(contents: &[u8], config: &Config) -> Result<Vec<u8>, FormatError> {
+    format_inner_with_options(contents, config)
+}
+
+fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>, FormatError> {
     let engine_state = get_engine_state();
     let mut working_set = StateWorkingSet::new(&engine_state);
 
     let parsed_block = parse(&mut working_set, None, contents, false);
     trace!("parsed block:\n{:?}", &parsed_block);
+
+    let source_text = String::from_utf8_lossy(contents);
+    let mut malformed_spans: Vec<Span> = working_set
+        .parse_errors
+        .iter()
+        .map(ParseError::span)
+        .collect();
+    malformed_spans.extend(detect_compact_if_else_spans(&source_text));
+    malformed_spans.extend(detect_missing_record_comma_spans(&source_text));
+
+    let has_garbage = block_contains_garbage(&working_set, &parsed_block);
+    let has_fatal_parse_error = working_set.parse_errors.iter().any(is_fatal_parse_error);
+    if !malformed_spans.is_empty() || has_garbage {
+        if let Some(repaired) = try_repair_parse_errors(contents, &malformed_spans) {
+            debug!(
+                "retrying formatting after targeted parse-error repair ({} parse errors)",
+                working_set.parse_errors.len()
+            );
+
+            return match repaired {
+                ParseRepairOutcome::Reformat(repaired_source) => {
+                    format_inner_with_options(&repaired_source, config)
+                }
+            };
+        }
+    }
+
+    if has_fatal_parse_error && has_garbage {
+        debug!(
+            "skipping formatting due to fatal parse errors with garbage AST nodes ({} found)",
+            working_set.parse_errors.len()
+        );
+        return Ok(contents.to_vec());
+    }
 
     // Note: We don't reject files with "garbage" nodes because the parser
     // produces garbage for commands it doesn't know about (e.g., `where`, `each`)
@@ -1497,7 +2257,7 @@ pub(crate) fn format_inner(contents: &[u8], config: &Config) -> Result<Vec<u8>, 
         }
     }
 
-    let mut formatter = Formatter::new(contents, &working_set, config);
+    let mut formatter = Formatter::new(contents, &working_set, config, true);
 
     // Write leading comments
     if let Some(first_pipeline) = parsed_block.pipelines.first() {
@@ -1543,6 +2303,20 @@ mod tests {
         let config = Config::default();
         let result = format_inner(input.as_bytes(), &config).expect("formatting failed");
         String::from_utf8(result).expect("invalid utf8")
+    }
+
+    #[test]
+    fn repair_patterns_do_not_mutate_double_quoted_strings() {
+        let input = "let s = \"if(true){1}else{2}\"";
+        let output = format(input);
+        assert!(output.contains("\"if(true){1}else{2}\""));
+    }
+
+    #[test]
+    fn repair_patterns_do_not_mutate_record_like_strings() {
+        let input = "let s = \"{ name: Alice }\"";
+        let output = format(input);
+        assert!(output.contains("\"{ name: Alice }\""));
     }
 
     #[test]

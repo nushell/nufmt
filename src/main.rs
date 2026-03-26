@@ -19,6 +19,7 @@ use nu_formatter::Mode;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::convert::TryFrom;
 use std::{
+    collections::BTreeMap,
     io::{self, Write},
     path::{Path, PathBuf},
 };
@@ -334,7 +335,20 @@ fn discover_nu_files(
         })
         .collect();
 
+    let nu_files = deduplicate_discovered_files(nu_files);
+
     Ok((nu_files, invalid_paths))
+}
+
+fn deduplicate_discovered_files(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut unique: BTreeMap<PathBuf, PathBuf> = BTreeMap::new();
+
+    for path in paths {
+        let key = path.canonicalize().unwrap_or_else(|_| path.clone());
+        unique.entry(key).or_insert(path);
+    }
+
+    unique.into_values().collect()
 }
 
 /// Build override rules for excluded patterns
@@ -465,5 +479,30 @@ mod tests {
     ) {
         let exit_code = display_diagnostic_and_compute_exit_code(&results, check_mode);
         assert_eq!(exit_code, expected);
+    }
+
+    #[test]
+    fn discover_nu_files_deduplicates_overlapping_paths() {
+        let dir = tempdir().unwrap();
+        let nested = dir.path().join("nested");
+        fs::create_dir_all(&nested).unwrap();
+
+        let target = nested.join("a.nu");
+        fs::write(&target, "let x = 1").unwrap();
+
+        let (files, invalid) =
+            discover_nu_files(vec![dir.path().to_path_buf(), nested.clone()], &[])
+                .expect("discovery should succeed");
+
+        assert!(invalid.is_empty());
+
+        let canonical_target = target.canonicalize().unwrap();
+        let matches = files
+            .iter()
+            .filter_map(|path| path.canonicalize().ok())
+            .filter(|path| *path == canonical_target)
+            .count();
+
+        assert_eq!(matches, 1, "file should be discovered exactly once");
     }
 }

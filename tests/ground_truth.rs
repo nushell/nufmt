@@ -808,4 +808,12 @@ issue_fixture_tests!(
     ("issue97", issue97_test, idempotency_issue97_test),
     ("issue100", issue100_test, idempotency_issue100_test),
     ("issue101", issue101_test, idempotency_issue101_test),
+    ("issue108", issue108_test, idempotency_issue108_test),
+    ("issue109", issue109_test, idempotency_issue109_test),
+    ("issue110", issue110_test, idempotency_issue110_test),
+    ("issue116", issue116_test, idempotency_issue116_test),
+    ("issue119", issue119_test, idempotency_issue119_test),
+    ("issue120", issue120_test, idempotency_issue120_test),
+    ("issue121", issue121_test, idempotency_issue121_test),
+    ("issue122", issue122_test, idempotency_issue122_test),
 );

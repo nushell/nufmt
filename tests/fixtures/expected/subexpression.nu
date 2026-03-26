@@ -9,4 +9,4 @@ let result = (1 + 2) * 3
 let value = ($x + (($y * 2)))
 print (echo "hello")
 let msg = $"Hello ($name)"
-if (true) { print "yes" }
+if true { print "yes" }
