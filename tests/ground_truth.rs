@@ -177,74 +177,162 @@ macro_rules! fixture_tests {
 
 // Core language constructs
 fixture_tests!(
-    ("let_statement",      ground_truth_let_statement,      idempotency_let_statement),
-    ("mut_statement",      ground_truth_mut_statement,      idempotency_mut_statement),
-    ("const_statement",    ground_truth_const_statement,    idempotency_const_statement),
-    ("def_statement",      ground_truth_def_statement,      idempotency_def_statement),
+    (
+        "let_statement",
+        ground_truth_let_statement,
+        idempotency_let_statement
+    ),
+    (
+        "mut_statement",
+        ground_truth_mut_statement,
+        idempotency_mut_statement
+    ),
+    (
+        "const_statement",
+        ground_truth_const_statement,
+        idempotency_const_statement
+    ),
+    (
+        "def_statement",
+        ground_truth_def_statement,
+        idempotency_def_statement
+    ),
 );
 
 // Control flow
 fixture_tests!(
-    ("if_else",            ground_truth_if_else,            idempotency_if_else),
-    ("for_loop",           ground_truth_for_loop,           idempotency_for_loop),
-    ("while_loop",         ground_truth_while_loop,         idempotency_while_loop),
-    ("loop_statement",     ground_truth_loop_statement,     idempotency_loop_statement),
-    ("match_expr",         ground_truth_match_expr,         idempotency_match_expr),
-    ("try_catch",          ground_truth_try_catch,          idempotency_try_catch),
-    ("break_continue",     ground_truth_break_continue,     idempotency_break_continue),
-    ("return_statement",   ground_truth_return_statement,   idempotency_return_statement),
+    ("if_else", ground_truth_if_else, idempotency_if_else),
+    ("for_loop", ground_truth_for_loop, idempotency_for_loop),
+    (
+        "while_loop",
+        ground_truth_while_loop,
+        idempotency_while_loop
+    ),
+    (
+        "loop_statement",
+        ground_truth_loop_statement,
+        idempotency_loop_statement
+    ),
+    (
+        "match_expr",
+        ground_truth_match_expr,
+        idempotency_match_expr
+    ),
+    ("try_catch", ground_truth_try_catch, idempotency_try_catch),
+    (
+        "break_continue",
+        ground_truth_break_continue,
+        idempotency_break_continue
+    ),
+    (
+        "return_statement",
+        ground_truth_return_statement,
+        idempotency_return_statement
+    ),
 );
 
 // Data structures
 fixture_tests!(
-    ("list",               ground_truth_list,               idempotency_list),
-    ("record",             ground_truth_record,             idempotency_record),
-    ("table",              ground_truth_table,              idempotency_table),
-    ("nested_structures",  ground_truth_nested_structures,  idempotency_nested_structures),
+    ("list", ground_truth_list, idempotency_list),
+    ("record", ground_truth_record, idempotency_record),
+    ("table", ground_truth_table, idempotency_table),
+    (
+        "nested_structures",
+        ground_truth_nested_structures,
+        idempotency_nested_structures
+    ),
 );
 
 // Pipelines, expressions, and operators
 fixture_tests!(
-    ("pipeline",           ground_truth_pipeline,           idempotency_pipeline),
-    ("multiline_pipeline", ground_truth_multiline_pipeline, idempotency_multiline_pipeline),
-    ("closure",            ground_truth_closure,            idempotency_closure),
-    ("subexpression",      ground_truth_subexpression,      idempotency_subexpression),
-    ("binary_ops",         ground_truth_binary_ops,         idempotency_binary_ops),
-    ("range",              ground_truth_range,              idempotency_range),
-    ("cell_path_literals", ground_truth_cell_path_literals, idempotency_cell_path_literals),
-    ("cell_path",          ground_truth_cell_path,          idempotency_cell_path),
-    ("spread",             ground_truth_spread,             idempotency_spread),
+    ("pipeline", ground_truth_pipeline, idempotency_pipeline),
+    (
+        "multiline_pipeline",
+        ground_truth_multiline_pipeline,
+        idempotency_multiline_pipeline
+    ),
+    ("closure", ground_truth_closure, idempotency_closure),
+    (
+        "subexpression",
+        ground_truth_subexpression,
+        idempotency_subexpression
+    ),
+    (
+        "binary_ops",
+        ground_truth_binary_ops,
+        idempotency_binary_ops
+    ),
+    ("range", ground_truth_range, idempotency_range),
+    (
+        "cell_path_literals",
+        ground_truth_cell_path_literals,
+        idempotency_cell_path_literals
+    ),
+    ("cell_path", ground_truth_cell_path, idempotency_cell_path),
+    ("spread", ground_truth_spread, idempotency_spread),
 );
 
 // Strings, comments, types, and values
 fixture_tests!(
-    ("string_interpolation", ground_truth_string_interpolation, idempotency_string_interpolation),
-    ("comment",            ground_truth_comment,            idempotency_comment),
-    ("value_with_unit",    ground_truth_value_with_unit,    idempotency_value_with_unit),
-    ("datetime",           ground_truth_datetime,           idempotency_datetime),
-    ("nothing",            ground_truth_nothing,            idempotency_nothing),
-    ("glob_pattern",       ground_truth_glob_pattern,       idempotency_glob_pattern),
+    (
+        "string_interpolation",
+        ground_truth_string_interpolation,
+        idempotency_string_interpolation
+    ),
+    ("comment", ground_truth_comment, idempotency_comment),
+    (
+        "value_with_unit",
+        ground_truth_value_with_unit,
+        idempotency_value_with_unit
+    ),
+    ("datetime", ground_truth_datetime, idempotency_datetime),
+    ("nothing", ground_truth_nothing, idempotency_nothing),
+    (
+        "glob_pattern",
+        ground_truth_glob_pattern,
+        idempotency_glob_pattern
+    ),
 );
 
 // Modules and imports
 fixture_tests!(
-    ("module",             ground_truth_module,             idempotency_module),
-    ("use_statement",      ground_truth_use_statement,      idempotency_use_statement),
-    ("export",             ground_truth_export,             idempotency_export),
-    ("source",             ground_truth_source,             idempotency_source),
-    ("hide",               ground_truth_hide,               idempotency_hide),
-    ("overlay",            ground_truth_overlay,            idempotency_overlay),
+    ("module", ground_truth_module, idempotency_module),
+    (
+        "use_statement",
+        ground_truth_use_statement,
+        idempotency_use_statement
+    ),
+    ("export", ground_truth_export, idempotency_export),
+    ("source", ground_truth_source, idempotency_source),
+    ("hide", ground_truth_hide, idempotency_hide),
+    ("overlay", ground_truth_overlay, idempotency_overlay),
 );
 
 // Commands, definitions, and special constructs
 fixture_tests!(
-    ("alias",              ground_truth_alias,              idempotency_alias),
-    ("extern",             ground_truth_extern,             idempotency_extern),
-    ("external_call",      ground_truth_external_call,      idempotency_external_call),
-    ("do_block",           ground_truth_do_block,           idempotency_do_block),
-    ("where_clause",       ground_truth_where_clause,       idempotency_where_clause),
-    ("error_make",         ground_truth_error_make,         idempotency_error_make),
-    ("inline_param_comment", ground_truth_inline_param_comment_issue77, idempotency_inline_param_comment_issue77),
+    ("alias", ground_truth_alias, idempotency_alias),
+    ("extern", ground_truth_extern, idempotency_extern),
+    (
+        "external_call",
+        ground_truth_external_call,
+        idempotency_external_call
+    ),
+    ("do_block", ground_truth_do_block, idempotency_do_block),
+    (
+        "where_clause",
+        ground_truth_where_clause,
+        idempotency_where_clause
+    ),
+    (
+        "error_make",
+        ground_truth_error_make,
+        idempotency_error_make
+    ),
+    (
+        "inline_param_comment",
+        ground_truth_inline_param_comment_issue77,
+        idempotency_inline_param_comment_issue77
+    ),
 );
 
 // Ground-truth-only tests (no idempotency pair)
@@ -262,15 +350,15 @@ fn issue76_test() {
 
 // Issue regression tests
 fixture_tests!(
-    ("issue81",  issue81_test,  idempotency_issue81_test),
-    ("issue85",  issue85_test,  idempotency_issue85_test),
-    ("issue86",  issue86_test,  idempotency_issue86_test),
-    ("issue87",  issue87_test,  idempotency_issue87_test),
-    ("issue92",  issue92_test,  idempotency_issue92_test),
-    ("issue93",  issue93_test,  idempotency_issue93_test),
-    ("issue94",  issue94_test,  idempotency_issue94_test),
-    ("issue95",  issue95_test,  idempotency_issue95_test),
-    ("issue97",  issue97_test,  idempotency_issue97_test),
+    ("issue81", issue81_test, idempotency_issue81_test),
+    ("issue85", issue85_test, idempotency_issue85_test),
+    ("issue86", issue86_test, idempotency_issue86_test),
+    ("issue87", issue87_test, idempotency_issue87_test),
+    ("issue92", issue92_test, idempotency_issue92_test),
+    ("issue93", issue93_test, idempotency_issue93_test),
+    ("issue94", issue94_test, idempotency_issue94_test),
+    ("issue95", issue95_test, idempotency_issue95_test),
+    ("issue97", issue97_test, idempotency_issue97_test),
     ("issue100", issue100_test, idempotency_issue100_test),
     ("issue101", issue101_test, idempotency_issue101_test),
     ("issue108", issue108_test, idempotency_issue108_test),

@@ -225,11 +225,7 @@ impl<'a> Formatter<'a> {
     // ─────────────────────────────────────────────────────────────────────────
 
     /// Format a table expression (`[[col1, col2]; [val1, val2]]`).
-    pub(super) fn format_table(
-        &mut self,
-        columns: &[Expression],
-        rows: &[Box<[Expression]>],
-    ) {
+    pub(super) fn format_table(&mut self, columns: &[Expression], rows: &[Box<[Expression]>]) {
         self.write("[");
 
         // Header row

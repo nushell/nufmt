@@ -216,11 +216,7 @@ impl<'a> Formatter<'a> {
 
     /// Format a closure expression (`{|params| body}`), extracting and
     /// normalising parameters from the raw source.
-    pub(super) fn format_closure_expression(
-        &mut self,
-        block_id: nu_protocol::BlockId,
-        span: Span,
-    ) {
+    pub(super) fn format_closure_expression(&mut self, block_id: nu_protocol::BlockId, span: Span) {
         let content = self.get_span_content(span);
         let has_params = content
             .iter()
