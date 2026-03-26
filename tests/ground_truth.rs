@@ -153,633 +153,11 @@ fn format_via_stdin(test_binary: &PathBuf, input: &str) -> Result<String, String
 }
 
 // ============================================================================
-// Ground Truth Tests - Core Language Constructs
+// Fixture test macros — generate paired ground truth + idempotency tests
 // ============================================================================
 
-#[test]
-fn ground_truth_let_statement() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "let_statement");
-}
-
-#[test]
-fn ground_truth_mut_statement() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "mut_statement");
-}
-
-#[test]
-fn ground_truth_const_statement() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "const_statement");
-}
-
-#[test]
-fn ground_truth_def_statement() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "def_statement");
-}
-
-#[test]
-fn ground_truth_def_with_pipeline() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "def_with_pipeline_double_parens_issue82");
-}
-
-// ============================================================================
-// Ground Truth Tests - Control Flow
-// ============================================================================
-
-#[test]
-fn ground_truth_if_else() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "if_else");
-}
-
-#[test]
-fn ground_truth_for_loop() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "for_loop");
-}
-
-#[test]
-fn ground_truth_while_loop() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "while_loop");
-}
-
-#[test]
-fn ground_truth_loop_statement() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "loop_statement");
-}
-
-#[test]
-fn ground_truth_match_expr() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "match_expr");
-}
-
-#[test]
-fn ground_truth_try_catch() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "try_catch");
-}
-
-#[test]
-fn ground_truth_break_continue() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "break_continue");
-}
-
-#[test]
-fn ground_truth_return_statement() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "return_statement");
-}
-
-// ============================================================================
-// Ground Truth Tests - Data Structures
-// ============================================================================
-
-#[test]
-fn ground_truth_list() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "list");
-}
-
-#[test]
-fn ground_truth_record() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "record");
-}
-
-#[test]
-fn ground_truth_table() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "table");
-}
-
-#[test]
-fn ground_truth_nested_structures() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "nested_structures");
-}
-
-// ============================================================================
-// Ground Truth Tests - Pipelines and Expressions
-// ============================================================================
-
-#[test]
-fn ground_truth_pipeline() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "pipeline");
-}
-
-#[test]
-fn ground_truth_multiline_pipeline() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "multiline_pipeline");
-}
-
-#[test]
-fn ground_truth_closure() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "closure");
-}
-
-#[test]
-fn ground_truth_subexpression() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "subexpression");
-}
-
-#[test]
-fn ground_truth_binary_ops() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "binary_ops");
-}
-
-#[test]
-fn ground_truth_range() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "range");
-}
-
-#[test]
-fn ground_truth_cell_path_literals() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "cell_path_literals");
-}
-
-#[test]
-fn ground_truth_cell_path() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "cell_path");
-}
-
-#[test]
-fn ground_truth_spread() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "spread");
-}
-
-// ============================================================================
-// Ground Truth Tests - Strings and Interpolation
-// ============================================================================
-
-#[test]
-fn ground_truth_string_interpolation() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "string_interpolation");
-}
-
-#[test]
-fn ground_truth_comment() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "comment");
-}
-
-// ============================================================================
-// Ground Truth Tests - Types and Values
-// ============================================================================
-
-#[test]
-fn ground_truth_value_with_unit() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "value_with_unit");
-}
-
-#[test]
-fn ground_truth_datetime() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "datetime");
-}
-
-#[test]
-fn ground_truth_nothing() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "nothing");
-}
-
-#[test]
-fn ground_truth_glob_pattern() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "glob_pattern");
-}
-
-// ============================================================================
-// Ground Truth Tests - Modules and Imports
-// ============================================================================
-
-#[test]
-fn ground_truth_module() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "module");
-}
-
-#[test]
-fn ground_truth_use_statement() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "use_statement");
-}
-
-#[test]
-fn ground_truth_export() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "export");
-}
-
-#[test]
-fn ground_truth_source() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "source");
-}
-
-#[test]
-fn ground_truth_hide() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "hide");
-}
-
-#[test]
-fn ground_truth_overlay() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "overlay");
-}
-
-// ============================================================================
-// Ground Truth Tests - Commands and Definitions
-// ============================================================================
-
-#[test]
-fn ground_truth_alias() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "alias");
-}
-
-#[test]
-fn ground_truth_extern() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "extern");
-}
-
-#[test]
-fn ground_truth_external_call() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "external_call");
-}
-
-// ============================================================================
-// Ground Truth Tests - Special Constructs
-// ============================================================================
-
-#[test]
-fn ground_truth_do_block() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "do_block");
-}
-
-#[test]
-fn ground_truth_where_clause() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "where_clause");
-}
-
-#[test]
-fn ground_truth_error_make() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "error_make");
-}
-
-// ============================================================================
-// Idempotency Tests - Core Language Constructs
-// ============================================================================
-
-#[test]
-fn idempotency_let_statement() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "let_statement");
-}
-
-#[test]
-fn idempotency_mut_statement() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "mut_statement");
-}
-
-#[test]
-fn idempotency_const_statement() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "const_statement");
-}
-
-#[test]
-fn idempotency_def_statement() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "def_statement");
-}
-
-// ============================================================================
-// Idempotency Tests - Control Flow
-// ============================================================================
-
-#[test]
-fn idempotency_if_else() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "if_else");
-}
-
-#[test]
-fn idempotency_for_loop() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "for_loop");
-}
-
-#[test]
-fn idempotency_while_loop() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "while_loop");
-}
-
-#[test]
-fn idempotency_loop_statement() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "loop_statement");
-}
-
-#[test]
-fn idempotency_match_expr() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "match_expr");
-}
-
-#[test]
-fn idempotency_try_catch() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "try_catch");
-}
-
-#[test]
-fn idempotency_break_continue() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "break_continue");
-}
-
-#[test]
-fn idempotency_return_statement() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "return_statement");
-}
-
-// ============================================================================
-// Idempotency Tests - Data Structures
-// ============================================================================
-
-#[test]
-fn idempotency_list() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "list");
-}
-
-#[test]
-fn idempotency_record() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "record");
-}
-
-#[test]
-fn idempotency_table() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "table");
-}
-
-#[test]
-fn idempotency_nested_structures() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "nested_structures");
-}
-
-// ============================================================================
-// Idempotency Tests - Pipelines and Expressions
-// ============================================================================
-
-#[test]
-fn idempotency_pipeline() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "pipeline");
-}
-
-#[test]
-fn idempotency_multiline_pipeline() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "multiline_pipeline");
-}
-
-#[test]
-fn idempotency_closure() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "closure");
-}
-
-#[test]
-fn idempotency_subexpression() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "subexpression");
-}
-
-#[test]
-fn idempotency_binary_ops() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "binary_ops");
-}
-
-#[test]
-fn idempotency_range() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "range");
-}
-
-#[test]
-fn idempotency_cell_path_literals() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "cell_path_literals");
-}
-
-#[test]
-fn idempotency_cell_path() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "cell_path");
-}
-
-#[test]
-fn idempotency_spread() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "spread");
-}
-
-// ============================================================================
-// Idempotency Tests - Strings and Interpolation
-// ============================================================================
-
-#[test]
-fn idempotency_string_interpolation() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "string_interpolation");
-}
-
-#[test]
-fn idempotency_comment() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "comment");
-}
-
-// ============================================================================
-// Idempotency Tests - Types and Values
-// ============================================================================
-
-#[test]
-fn idempotency_value_with_unit() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "value_with_unit");
-}
-
-#[test]
-fn idempotency_datetime() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "datetime");
-}
-
-#[test]
-fn idempotency_nothing() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "nothing");
-}
-
-#[test]
-fn idempotency_glob_pattern() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "glob_pattern");
-}
-
-// ============================================================================
-// Idempotency Tests - Modules and Imports
-// ============================================================================
-
-#[test]
-fn idempotency_module() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "module");
-}
-
-#[test]
-fn idempotency_use_statement() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "use_statement");
-}
-
-#[test]
-fn idempotency_export() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "export");
-}
-
-#[test]
-fn idempotency_source() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "source");
-}
-
-#[test]
-fn idempotency_hide() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "hide");
-}
-
-#[test]
-fn idempotency_overlay() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "overlay");
-}
-
-// ============================================================================
-// Idempotency Tests - Commands and Definitions
-// ============================================================================
-
-#[test]
-fn idempotency_alias() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "alias");
-}
-
-#[test]
-fn idempotency_extern() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "extern");
-}
-
-#[test]
-fn idempotency_external_call() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "external_call");
-}
-
-// ============================================================================
-// Idempotency Tests - Special Constructs
-// ============================================================================
-
-#[test]
-fn idempotency_do_block() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "do_block");
-}
-
-#[test]
-fn idempotency_where_clause() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "where_clause");
-}
-
-#[test]
-fn idempotency_error_make() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "error_make");
-}
-
-// ============================================================================
-// Issue Tests -
-// ============================================================================
-#[test]
-fn issue76_test() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "issue76");
-}
-
-#[test]
-fn issue81_test() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "issue81");
-}
-
-#[test]
-fn idempotency_issue81_test() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "issue81");
-}
-
-#[test]
-fn ground_truth_inline_param_comment_issue77() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "inline_param_comment");
-}
-
-#[test]
-fn idempotency_inline_param_comment_issue77() {
-    let test_binary = get_test_binary();
-    run_idempotency_test(&test_binary, "inline_param_comment");
-}
-
-macro_rules! issue_fixture_tests {
+/// Generate a ground-truth test and an idempotency test for each fixture.
+macro_rules! fixture_tests {
     ($(($fixture:literal, $ground_truth_test:ident, $idempotency_test:ident)),+ $(,)?) => {
         $(
             #[test]
@@ -797,15 +175,102 @@ macro_rules! issue_fixture_tests {
     };
 }
 
-issue_fixture_tests!(
-    ("issue85", issue85_test, idempotency_issue85_test),
-    ("issue86", issue86_test, idempotency_issue86_test),
-    ("issue87", issue87_test, idempotency_issue87_test),
-    ("issue92", issue92_test, idempotency_issue92_test),
-    ("issue93", issue93_test, idempotency_issue93_test),
-    ("issue94", issue94_test, idempotency_issue94_test),
-    ("issue95", issue95_test, idempotency_issue95_test),
-    ("issue97", issue97_test, idempotency_issue97_test),
+// Core language constructs
+fixture_tests!(
+    ("let_statement",      ground_truth_let_statement,      idempotency_let_statement),
+    ("mut_statement",      ground_truth_mut_statement,      idempotency_mut_statement),
+    ("const_statement",    ground_truth_const_statement,    idempotency_const_statement),
+    ("def_statement",      ground_truth_def_statement,      idempotency_def_statement),
+);
+
+// Control flow
+fixture_tests!(
+    ("if_else",            ground_truth_if_else,            idempotency_if_else),
+    ("for_loop",           ground_truth_for_loop,           idempotency_for_loop),
+    ("while_loop",         ground_truth_while_loop,         idempotency_while_loop),
+    ("loop_statement",     ground_truth_loop_statement,     idempotency_loop_statement),
+    ("match_expr",         ground_truth_match_expr,         idempotency_match_expr),
+    ("try_catch",          ground_truth_try_catch,          idempotency_try_catch),
+    ("break_continue",     ground_truth_break_continue,     idempotency_break_continue),
+    ("return_statement",   ground_truth_return_statement,   idempotency_return_statement),
+);
+
+// Data structures
+fixture_tests!(
+    ("list",               ground_truth_list,               idempotency_list),
+    ("record",             ground_truth_record,             idempotency_record),
+    ("table",              ground_truth_table,              idempotency_table),
+    ("nested_structures",  ground_truth_nested_structures,  idempotency_nested_structures),
+);
+
+// Pipelines, expressions, and operators
+fixture_tests!(
+    ("pipeline",           ground_truth_pipeline,           idempotency_pipeline),
+    ("multiline_pipeline", ground_truth_multiline_pipeline, idempotency_multiline_pipeline),
+    ("closure",            ground_truth_closure,            idempotency_closure),
+    ("subexpression",      ground_truth_subexpression,      idempotency_subexpression),
+    ("binary_ops",         ground_truth_binary_ops,         idempotency_binary_ops),
+    ("range",              ground_truth_range,              idempotency_range),
+    ("cell_path_literals", ground_truth_cell_path_literals, idempotency_cell_path_literals),
+    ("cell_path",          ground_truth_cell_path,          idempotency_cell_path),
+    ("spread",             ground_truth_spread,             idempotency_spread),
+);
+
+// Strings, comments, types, and values
+fixture_tests!(
+    ("string_interpolation", ground_truth_string_interpolation, idempotency_string_interpolation),
+    ("comment",            ground_truth_comment,            idempotency_comment),
+    ("value_with_unit",    ground_truth_value_with_unit,    idempotency_value_with_unit),
+    ("datetime",           ground_truth_datetime,           idempotency_datetime),
+    ("nothing",            ground_truth_nothing,            idempotency_nothing),
+    ("glob_pattern",       ground_truth_glob_pattern,       idempotency_glob_pattern),
+);
+
+// Modules and imports
+fixture_tests!(
+    ("module",             ground_truth_module,             idempotency_module),
+    ("use_statement",      ground_truth_use_statement,      idempotency_use_statement),
+    ("export",             ground_truth_export,             idempotency_export),
+    ("source",             ground_truth_source,             idempotency_source),
+    ("hide",               ground_truth_hide,               idempotency_hide),
+    ("overlay",            ground_truth_overlay,            idempotency_overlay),
+);
+
+// Commands, definitions, and special constructs
+fixture_tests!(
+    ("alias",              ground_truth_alias,              idempotency_alias),
+    ("extern",             ground_truth_extern,             idempotency_extern),
+    ("external_call",      ground_truth_external_call,      idempotency_external_call),
+    ("do_block",           ground_truth_do_block,           idempotency_do_block),
+    ("where_clause",       ground_truth_where_clause,       idempotency_where_clause),
+    ("error_make",         ground_truth_error_make,         idempotency_error_make),
+    ("inline_param_comment", ground_truth_inline_param_comment_issue77, idempotency_inline_param_comment_issue77),
+);
+
+// Ground-truth-only tests (no idempotency pair)
+#[test]
+fn ground_truth_def_with_pipeline() {
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "def_with_pipeline_double_parens_issue82");
+}
+
+#[test]
+fn issue76_test() {
+    let test_binary = get_test_binary();
+    run_ground_truth_test(&test_binary, "issue76");
+}
+
+// Issue regression tests
+fixture_tests!(
+    ("issue81",  issue81_test,  idempotency_issue81_test),
+    ("issue85",  issue85_test,  idempotency_issue85_test),
+    ("issue86",  issue86_test,  idempotency_issue86_test),
+    ("issue87",  issue87_test,  idempotency_issue87_test),
+    ("issue92",  issue92_test,  idempotency_issue92_test),
+    ("issue93",  issue93_test,  idempotency_issue93_test),
+    ("issue94",  issue94_test,  idempotency_issue94_test),
+    ("issue95",  issue95_test,  idempotency_issue95_test),
+    ("issue97",  issue97_test,  idempotency_issue97_test),
     ("issue100", issue100_test, idempotency_issue100_test),
     ("issue101", issue101_test, idempotency_issue101_test),
     ("issue108", issue108_test, idempotency_issue108_test),
