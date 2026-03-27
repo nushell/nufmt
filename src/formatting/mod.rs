@@ -66,6 +66,9 @@ pub(crate) struct Formatter<'a> {
     pub(crate) preserve_subexpr_parens_depth: usize,
     /// Allow compact inline record style used for repaired malformed records.
     pub(crate) allow_compact_recovered_record_style: bool,
+    /// Optional upper boundary for inline comment capture inside
+    /// delimited contexts (e.g. subexpressions).
+    pub(crate) inline_comment_upper_bound: Option<usize>,
 }
 
 /// Command types for formatting purposes.
@@ -101,6 +104,7 @@ impl<'a> Formatter<'a> {
             conditional_context_depth: 0,
             preserve_subexpr_parens_depth: 0,
             allow_compact_recovered_record_style,
+            inline_comment_upper_bound: None,
         }
     }
 
@@ -151,15 +155,20 @@ impl<'a> Formatter<'a> {
     // Span and source helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// Get the source content for a span.
+    /// Copy the source bytes for a span into a new `Vec`.
+    ///
+    /// Returns owned data so that callers can slice into it while still
+    /// holding `&mut self` for output writes (splitting borrows on `self`
+    /// through a method return is not possible with a `&[u8]` reference).
     pub(crate) fn get_span_content(&self, span: Span) -> Vec<u8> {
         self.source[span.start..span.end].to_vec()
     }
 
     /// Write the original source content for a span.
     pub(crate) fn write_span(&mut self, span: Span) {
-        let content = self.source[span.start..span.end].to_vec();
-        self.write_bytes(&content);
+        self.write_indent();
+        self.output
+            .extend_from_slice(&self.source[span.start..span.end]);
     }
 
     /// Write the original source content for an expression's span.

@@ -24,7 +24,6 @@ impl<'a> Formatter<'a> {
             | Expr::Binary(_)
             | Expr::Filepath(_, _)
             | Expr::Directory(_, _)
-            | Expr::GlobPattern(_, _)
             | Expr::Var(_)
             | Expr::VarDecl(_)
             | Expr::Operator(_)
@@ -34,6 +33,22 @@ impl<'a> Formatter<'a> {
             | Expr::Overlay(_)
             | Expr::Garbage => {
                 self.write_expr_span(expr);
+            }
+
+            // Glob patterns — normalise empty-brace globs like `{ }` to `{}`
+            // (the parser treats `{ }` in unknown-command args as a glob).
+            Expr::GlobPattern(_, _) => {
+                let content = &self.source[expr.span.start..expr.span.end];
+                if content.starts_with(b"{")
+                    && content.ends_with(b"}")
+                    && content[1..content.len() - 1]
+                        .iter()
+                        .all(|b| b.is_ascii_whitespace())
+                {
+                    self.write("{}");
+                } else {
+                    self.write_expr_span(expr);
+                }
             }
 
             Expr::Signature(sig) => {
@@ -253,6 +268,12 @@ impl<'a> Formatter<'a> {
             }
         }
 
+        // Set inline comment boundary at the closing paren so that comments
+        // appearing after `)` on the same line are not captured inside (issue #133).
+        let saved_bound = self.inline_comment_upper_bound;
+        let closing_paren_pos = span.end.saturating_sub(1);
+        self.inline_comment_upper_bound = Some(closing_paren_pos);
+
         self.write("(");
         let is_simple = !source_has_newline
             && block.pipelines.len() == 1
@@ -269,6 +290,8 @@ impl<'a> Formatter<'a> {
             self.write_indent();
         }
         self.write(")");
+
+        self.inline_comment_upper_bound = saved_bound;
     }
 
     /// Format an expression that could be a block or a regular expression.

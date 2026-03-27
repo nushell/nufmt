@@ -6,10 +6,7 @@ error make {
 }
 error make {
     msg: "error"
-    label: {
-        text: "here"
-        span: $span
-    }
+    label: {text: "here", span: $span}
 }
 error make {msg: "test error"}
 error make {

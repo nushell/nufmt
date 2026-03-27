@@ -75,8 +75,26 @@ impl<'a> Formatter<'a> {
 
         comments_to_write.sort_by_key(|(_, start, _)| *start);
 
-        for (idx, _, content) in comments_to_write {
-            self.written_comments[idx] = true;
+        let mut prev_comment_end: Option<usize> = None;
+        for (idx, start, content) in &comments_to_write {
+            self.written_comments[*idx] = true;
+
+            // Preserve blank lines between comment groups by checking
+            // whether the original source has a blank line between the
+            // previous comment and this one.
+            if let Some(prev_end) = prev_comment_end {
+                let between = &self.source[prev_end..*start];
+                let newline_count = between.iter().filter(|&&b| b == b'\n').count();
+                if newline_count >= 2 {
+                    // There was at least one blank line in the source
+                    // between the two comments — emit one now.
+                    if !self.at_line_start {
+                        self.newline();
+                    }
+                    self.newline();
+                }
+            }
+
             if !self.at_line_start {
                 if let Some(&last) = self.output.last() {
                     if last != b'\n' {
@@ -85,24 +103,33 @@ impl<'a> Formatter<'a> {
                 }
             }
             self.write_indent();
-            self.output.extend(&content);
+            self.output.extend(content);
             self.newline();
+
+            prev_comment_end = Some(start + content.len());
         }
     }
 
-    /// Emit an inline comment (on the same line) that appears after `after_pos`.
-    pub(super) fn write_inline_comment(&mut self, after_pos: usize) {
+    /// Emit an inline comment (on the same line) that appears after `after_pos`,
+    /// optionally bounded by an upper position limit.
+    ///
+    /// When `upper` is `Some(pos)`, comments starting at or after `pos` are
+    /// ignored. This prevents capturing comments that belong outside a
+    /// surrounding delimiter (e.g. after a closing parenthesis).
+    pub(super) fn write_inline_comment_bounded(&mut self, after_pos: usize, upper: Option<usize>) {
         let line_end = self.source[after_pos..]
             .iter()
             .position(|&b| b == b'\n')
             .map_or(self.source.len(), |p| after_pos + p);
+
+        let effective_end = upper.map_or(line_end, |u| u.min(line_end));
 
         let found = self
             .comments
             .iter()
             .enumerate()
             .find(|(i, (span, _))| {
-                !self.written_comments[*i] && span.start >= after_pos && span.start < line_end
+                !self.written_comments[*i] && span.start >= after_pos && span.start < effective_end
             })
             .map(|(i, (span, content))| (i, *span, content.clone()));
 
