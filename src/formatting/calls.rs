@@ -67,11 +67,12 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        if !call
-            .arguments
-            .iter()
-            .all(|arg| matches!(arg, Argument::Positional(_) | Argument::Unknown(_) | Argument::Spread(_)))
-        {
+        if !call.arguments.iter().all(|arg| {
+            matches!(
+                arg,
+                Argument::Positional(_) | Argument::Unknown(_) | Argument::Spread(_)
+            )
+        }) {
             return false;
         }
 
