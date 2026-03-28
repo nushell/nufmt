@@ -389,9 +389,8 @@ fn issue127_margin_one_preserves_vertical_spacing_groups() {
 
 #[test]
 fn issue145_mixed_line_string_literal_and_pipeline_repair_are_safe() {
-    let output = run_stdin(
-        "let x = \"((pwd) | where true)\"; let search_path = ((pwd) | where true)\n",
-    );
+    let output =
+        run_stdin("let x = \"((pwd) | where true)\"; let search_path = ((pwd) | where true)\n");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert_eq!(output.status.code(), Some(0));
