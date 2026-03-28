@@ -343,50 +343,206 @@ fn ground_truth_def_with_pipeline() {
 }
 
 #[test]
-fn issue76_test() {
+fn ground_truth_double_parentheses_for_subexpression_issue76() {
     let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "issue76");
+    run_ground_truth_test(&test_binary, "double_parentheses_for_subexpression_issue76");
 }
 
 // Issue regression tests
 fixture_tests!(
-    ("issue81", issue81_test, idempotency_issue81_test),
-    ("issue85", issue85_test, idempotency_issue85_test),
-    ("issue86", issue86_test, idempotency_issue86_test),
-    ("issue87", issue87_test, idempotency_issue87_test),
-    ("issue92", issue92_test, idempotency_issue92_test),
-    ("issue93", issue93_test, idempotency_issue93_test),
-    ("issue94", issue94_test, idempotency_issue94_test),
-    ("issue95", issue95_test, idempotency_issue95_test),
-    ("issue97", issue97_test, idempotency_issue97_test),
-    ("issue100", issue100_test, idempotency_issue100_test),
-    ("issue101", issue101_test, idempotency_issue101_test),
-    ("issue108", issue108_test, idempotency_issue108_test),
-    ("issue109", issue109_test, idempotency_issue109_test),
-    ("issue110", issue110_test, idempotency_issue110_test),
-    ("issue116", issue116_test, idempotency_issue116_test),
-    ("issue119", issue119_test, idempotency_issue119_test),
-    ("issue120", issue120_test, idempotency_issue120_test),
-    ("issue121", issue121_test, idempotency_issue121_test),
-    ("issue122", issue122_test, idempotency_issue122_test),
-    ("issue126", issue126_test, idempotency_issue126_test),
-    ("issue127", issue127_test, idempotency_issue127_test),
-    ("issue128", issue128_test, idempotency_issue128_test),
-    ("issue129", issue129_test, idempotency_issue129_test),
-    ("issue130", issue130_test, idempotency_issue130_test),
-    ("issue131", issue131_test, idempotency_issue131_test),
-    ("issue132", issue132_test, idempotency_issue132_test),
-    ("issue133", issue133_test, idempotency_issue133_test),
-    ("issue134", issue134_test, idempotency_issue134_test),
-    ("issue136", issue136_test, idempotency_issue136_test),
-    ("issue137", issue137_test, idempotency_issue137_test),
-    ("issue138", issue138_test, idempotency_issue138_test),
-    ("issue139", issue139_test, idempotency_issue139_test),
-    ("issue140", issue140_test, idempotency_issue140_test),
-    ("issue141", issue141_test, idempotency_issue141_test),
-    ("issue142", issue142_test, idempotency_issue142_test),
-    ("issue143", issue143_test, idempotency_issue143_test),
-    ("issue144", issue144_test, idempotency_issue144_test),
-    ("issue145", issue145_test, idempotency_issue145_test),
-    ("issue146", issue146_test, idempotency_issue146_test),
+    (
+        "custom_completion_signature_preserved_issue81",
+        ground_truth_custom_completion_signature_preserved_issue81,
+        idempotency_custom_completion_signature_preserved_issue81
+    ),
+    (
+        "optional_access_question_mark_position_preserved_issue85",
+        ground_truth_optional_access_question_mark_position_preserved_issue85,
+        idempotency_optional_access_question_mark_position_preserved_issue85
+    ),
+    (
+        "closure_type_hint_not_rewritten_as_call_issue86",
+        ground_truth_closure_type_hint_not_rewritten_as_call_issue86,
+        idempotency_closure_type_hint_not_rewritten_as_call_issue86
+    ),
+    (
+        "extern_completion_annotations_preserved_issue87",
+        ground_truth_extern_completion_annotations_preserved_issue87,
+        idempotency_extern_completion_annotations_preserved_issue87
+    ),
+    (
+        "pipeline_io_signature_preserved_issue92",
+        ground_truth_pipeline_io_signature_preserved_issue92,
+        idempotency_pipeline_io_signature_preserved_issue92
+    ),
+    (
+        "if_pipeline_condition_parentheses_preserved_issue93",
+        ground_truth_if_pipeline_condition_parentheses_preserved_issue93,
+        idempotency_if_pipeline_condition_parentheses_preserved_issue93
+    ),
+    (
+        "variable_type_annotations_preserved_issue94",
+        ground_truth_variable_type_annotations_preserved_issue94,
+        idempotency_variable_type_annotations_preserved_issue94
+    ),
+    (
+        "flag_equals_subexpression_syntax_preserved_issue95",
+        ground_truth_flag_equals_subexpression_syntax_preserved_issue95,
+        idempotency_flag_equals_subexpression_syntax_preserved_issue95
+    ),
+    (
+        "optional_access_order_preserved_issue97",
+        ground_truth_optional_access_order_preserved_issue97,
+        idempotency_optional_access_order_preserved_issue97
+    ),
+    (
+        "at_category_attribute_preserved_issue100",
+        ground_truth_at_category_attribute_preserved_issue100,
+        idempotency_at_category_attribute_preserved_issue100
+    ),
+    (
+        "where_in_def_does_not_emit_parser_errors_issue101",
+        ground_truth_where_in_def_does_not_emit_parser_errors_issue101,
+        idempotency_where_in_def_does_not_emit_parser_errors_issue101
+    ),
+    (
+        "space_separated_list_literals_preserved_issue108",
+        ground_truth_space_separated_list_literals_preserved_issue108,
+        idempotency_space_separated_list_literals_preserved_issue108
+    ),
+    (
+        "for_loop_multiline_block_body_preserved_issue109",
+        ground_truth_for_loop_multiline_block_body_preserved_issue109,
+        idempotency_for_loop_multiline_block_body_preserved_issue109
+    ),
+    (
+        "multiline_call_arguments_preserved_issue110",
+        ground_truth_multiline_call_arguments_preserved_issue110,
+        idempotency_multiline_call_arguments_preserved_issue110
+    ),
+    (
+        "let_rhs_pipeline_parentheses_preserved_issue116",
+        ground_truth_let_rhs_pipeline_parentheses_preserved_issue116,
+        idempotency_let_rhs_pipeline_parentheses_preserved_issue116
+    ),
+    (
+        "if_pipeline_condition_avoids_parser_noise_issue119",
+        ground_truth_if_pipeline_condition_avoids_parser_noise_issue119,
+        idempotency_if_pipeline_condition_avoids_parser_noise_issue119
+    ),
+    (
+        "tightly_packed_if_else_spacing_normalized_issue120",
+        ground_truth_tightly_packed_if_else_spacing_normalized_issue120,
+        idempotency_tightly_packed_if_else_spacing_normalized_issue120
+    ),
+    (
+        "invalid_if_else_parse_recovery_is_safe_issue121",
+        ground_truth_invalid_if_else_parse_recovery_is_safe_issue121,
+        idempotency_invalid_if_else_parse_recovery_is_safe_issue121
+    ),
+    (
+        "parse_recovery_preserves_record_strings_issue122",
+        ground_truth_parse_recovery_preserves_record_strings_issue122,
+        idempotency_parse_recovery_preserves_record_strings_issue122
+    ),
+    (
+        "margin_two_keeps_adjacent_use_statements_tight_issue126",
+        ground_truth_margin_two_keeps_adjacent_use_statements_tight_issue126,
+        idempotency_margin_two_keeps_adjacent_use_statements_tight_issue126
+    ),
+    (
+        "margin_one_preserves_vertical_spacing_groups_issue127",
+        ground_truth_margin_one_preserves_vertical_spacing_groups_issue127,
+        idempotency_margin_one_preserves_vertical_spacing_groups_issue127
+    ),
+    (
+        "module_doc_comment_spacing_preserved_issue128",
+        ground_truth_module_doc_comment_spacing_preserved_issue128,
+        idempotency_module_doc_comment_spacing_preserved_issue128
+    ),
+    (
+        "single_line_record_literals_preserved_issue129",
+        ground_truth_single_line_record_literals_preserved_issue129,
+        idempotency_single_line_record_literals_preserved_issue129
+    ),
+    (
+        "empty_record_literals_normalized_issue130",
+        ground_truth_empty_record_literals_normalized_issue130,
+        idempotency_empty_record_literals_normalized_issue130
+    ),
+    (
+        "return_subexpression_parentheses_preserved_issue131",
+        ground_truth_return_subexpression_parentheses_preserved_issue131,
+        idempotency_return_subexpression_parentheses_preserved_issue131
+    ),
+    (
+        "for_loop_type_annotation_preserved_issue132",
+        ground_truth_for_loop_type_annotation_preserved_issue132,
+        idempotency_for_loop_type_annotation_preserved_issue132
+    ),
+    (
+        "inline_comment_after_subexpression_preserved_issue133",
+        ground_truth_inline_comment_after_subexpression_preserved_issue133,
+        idempotency_inline_comment_after_subexpression_preserved_issue133
+    ),
+    (
+        "pipeline_subexpression_parentheses_and_layout_preserved_issue134",
+        ground_truth_pipeline_subexpression_parentheses_and_layout_preserved_issue134,
+        idempotency_pipeline_subexpression_parentheses_and_layout_preserved_issue134
+    ),
+    (
+        "mixed_use_and_def_does_not_emit_parser_errors_issue136",
+        ground_truth_mixed_use_and_def_does_not_emit_parser_errors_issue136,
+        idempotency_mixed_use_and_def_does_not_emit_parser_errors_issue136
+    ),
+    (
+        "export_const_type_annotation_preserved_issue137",
+        ground_truth_export_const_type_annotation_preserved_issue137,
+        idempotency_export_const_type_annotation_preserved_issue137
+    ),
+    (
+        "compact_function_parameter_list_preserved_issue138",
+        ground_truth_compact_function_parameter_list_preserved_issue138,
+        idempotency_compact_function_parameter_list_preserved_issue138
+    ),
+    (
+        "match_guards_preserved_issue139",
+        ground_truth_match_guards_preserved_issue139,
+        idempotency_match_guards_preserved_issue139
+    ),
+    (
+        "catch_block_indentation_and_closing_brace_preserved_issue140",
+        ground_truth_catch_block_indentation_and_closing_brace_preserved_issue140,
+        idempotency_catch_block_indentation_and_closing_brace_preserved_issue140
+    ),
+    (
+        "cell_path_in_def_block_does_not_emit_parser_errors_issue141",
+        ground_truth_cell_path_in_def_block_does_not_emit_parser_errors_issue141,
+        idempotency_cell_path_in_def_block_does_not_emit_parser_errors_issue141
+    ),
+    (
+        "compact_cell_path_lists_preserved_issue142",
+        ground_truth_compact_cell_path_lists_preserved_issue142,
+        idempotency_compact_cell_path_lists_preserved_issue142
+    ),
+    (
+        "if_condition_call_parentheses_preserved_issue143",
+        ground_truth_if_condition_call_parentheses_preserved_issue143,
+        idempotency_if_condition_call_parentheses_preserved_issue143
+    ),
+    (
+        "long_command_calls_wrap_to_line_length_issue144",
+        ground_truth_long_command_calls_wrap_to_line_length_issue144,
+        idempotency_long_command_calls_wrap_to_line_length_issue144
+    ),
+    (
+        "redundant_pipeline_parentheses_simplified_issue145",
+        ground_truth_redundant_pipeline_parentheses_simplified_issue145,
+        idempotency_redundant_pipeline_parentheses_simplified_issue145
+    ),
+    (
+        "if_else_comment_and_statement_placement_preserved_issue146",
+        ground_truth_if_else_comment_and_statement_placement_preserved_issue146,
+        idempotency_if_else_comment_and_statement_placement_preserved_issue146
+    ),
 );

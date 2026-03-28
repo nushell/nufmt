@@ -454,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn issue98_margin_has_effect() {
+    fn margin_setting_inserts_expected_toplevel_spacing_issue98() {
         let input = "def foo [] {\n    let out = 1\n    out\n}\n\ndef bar [] {\n    let out = 1\n    out\n}";
         let config = Config::new(4, 80, 2);
         let result = format_inner(input.as_bytes(), &config).expect("formatting failed");

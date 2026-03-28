@@ -314,7 +314,7 @@ fn format_fixtures_basic() {
 }
 
 #[test]
-fn issue136_mixed_use_and_def_does_not_emit_parser_errors() {
+fn mixed_use_and_def_does_not_emit_parser_errors_issue136() {
     let output = run_stdin("use a.nu\ndef abc [] { }\ndef xyz [] { }\n");
     let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -326,7 +326,7 @@ fn issue136_mixed_use_and_def_does_not_emit_parser_errors() {
 }
 
 #[test]
-fn issue141_cell_path_in_def_block_does_not_emit_parser_errors() {
+fn cell_path_in_def_block_does_not_emit_parser_errors_issue141() {
     let output = run_stdin("def main [] {\n$var.state\n}\n");
     let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -338,10 +338,12 @@ fn issue141_cell_path_in_def_block_does_not_emit_parser_errors() {
 }
 
 #[test]
-fn issue126_margin_two_keeps_adjacent_use_statements_tight() {
+fn margin_two_keeps_adjacent_use_statements_tight_issue126() {
     let dir = tempdir().unwrap();
     let config_file = dir.path().join("nufmt.nuon");
-    let file = dir.path().join("issue126.nu");
+    let file = dir
+        .path()
+        .join("margin_two_keeps_adjacent_use_statements_tight_issue126.nu");
 
     fs::write(
         &config_file,
@@ -363,10 +365,12 @@ fn issue126_margin_two_keeps_adjacent_use_statements_tight() {
 }
 
 #[test]
-fn issue127_margin_one_preserves_vertical_spacing_groups() {
+fn margin_one_preserves_vertical_spacing_groups_issue127() {
     let dir = tempdir().unwrap();
     let config_file = dir.path().join("nufmt.nuon");
-    let file = dir.path().join("issue127.nu");
+    let file = dir
+        .path()
+        .join("margin_one_preserves_vertical_spacing_groups_issue127.nu");
 
     fs::write(
         &config_file,
@@ -388,7 +392,7 @@ fn issue127_margin_one_preserves_vertical_spacing_groups() {
 }
 
 #[test]
-fn issue145_mixed_line_string_literal_and_pipeline_repair_are_safe() {
+fn mixed_line_string_literal_and_pipeline_repair_are_safe_issue145() {
     let output =
         run_stdin("let x = \"((pwd) | where true)\"; let search_path = ((pwd) | where true)\n");
     let stdout = String::from_utf8_lossy(&output.stdout);
