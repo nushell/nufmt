@@ -39,17 +39,91 @@ impl<'a> Formatter<'a> {
             }
 
             if i < num_pipelines - 1 {
-                let separator_newlines = if self.indent_level == 0 && self.config.margin > 1 {
-                    self.config.margin.saturating_add(1)
-                } else {
-                    1
-                };
+                let separator_newlines = self.separator_newlines_between_top_level_pipelines(
+                    pipeline,
+                    &block.pipelines[i + 1],
+                );
 
                 for _ in 0..separator_newlines {
                     self.newline();
                 }
             }
         }
+    }
+
+    /// Decide how many newline characters to emit between adjacent pipelines.
+    ///
+    /// At top-level this respects `margin` while preserving author-intent groups
+    /// for `margin = 1`, and keeps adjacent `use` statements compact.
+    fn separator_newlines_between_top_level_pipelines(
+        &self,
+        current: &nu_protocol::ast::Pipeline,
+        next: &nu_protocol::ast::Pipeline,
+    ) -> usize {
+        if self.indent_level != 0 {
+            return 1;
+        }
+
+        if self.is_use_pipeline(current) && self.is_use_pipeline(next) {
+            return 1;
+        }
+
+        if self.config.margin == 1 {
+            let current_end = current
+                .elements
+                .last()
+                .map_or(0, |element| self.get_element_end_pos(element));
+            let next_start = next
+                .elements
+                .first()
+                .map_or(current_end, |element| element.expr.span.start);
+
+            if current_end < next_start {
+                let between = &self.source[current_end..next_start];
+                if between.contains(&b'#') {
+                    return 1;
+                }
+
+                let mut previous_newline: Option<usize> = None;
+                let mut has_blank_line = false;
+                for (idx, byte) in between.iter().enumerate() {
+                    if *byte == b'\n' {
+                        if let Some(prev) = previous_newline {
+                            if between[prev + 1..idx]
+                                .iter()
+                                .all(|b| b.is_ascii_whitespace())
+                            {
+                                has_blank_line = true;
+                                break;
+                            }
+                        }
+                        previous_newline = Some(idx);
+                    }
+                }
+
+                if has_blank_line {
+                    return 2;
+                }
+            }
+
+            return 1;
+        }
+
+        self.config.margin.saturating_add(1)
+    }
+
+    /// Whether a pipeline is a top-level `use` command.
+    fn is_use_pipeline(&self, pipeline: &nu_protocol::ast::Pipeline) -> bool {
+        let Some(first) = pipeline.elements.first() else {
+            return false;
+        };
+
+        let Expr::Call(call) = &first.expr.expr else {
+            return false;
+        };
+
+        let decl = self.working_set.get_decl(call.decl_id);
+        matches!(decl.name(), "use" | "export use")
     }
 
     /// Get the end position of a pipeline element, including redirections.
@@ -98,7 +172,7 @@ impl<'a> Formatter<'a> {
     }
 
     /// Format a single pipeline element (expression + optional redirection).
-    fn format_pipeline_element(&mut self, element: &PipelineElement) {
+    pub(super) fn format_pipeline_element(&mut self, element: &PipelineElement) {
         self.format_expression(&element.expr);
         if let Some(ref redirection) = element.redirection {
             self.format_redirection(redirection);
@@ -173,6 +247,7 @@ impl<'a> Formatter<'a> {
             && block.pipelines[0].elements.len() == 1
             && !self.block_has_nested_structures(block)
             && !source_has_newline;
+        let has_comments_in_block_span = self.has_comments_in_span(span.start, span.end);
         let preserve_compact_record_like =
             with_braces && is_simple && self.block_expression_looks_like_compact_record(span);
 
@@ -185,7 +260,13 @@ impl<'a> Formatter<'a> {
                 self.write(" ");
             }
         } else if block.pipelines.is_empty() {
-            if with_braces {
+            if with_braces && has_comments_in_block_span {
+                self.newline();
+                self.indent_level += 1;
+                self.write_comments_before(span.end.saturating_sub(1));
+                self.indent_level -= 1;
+                self.write_indent();
+            } else if with_braces {
                 self.write(" ");
             }
         } else {
@@ -306,9 +387,11 @@ impl<'a> Formatter<'a> {
         self.write("|");
 
         let block = self.working_set.get_block(block_id);
+        let has_comments = self.has_comments_in_span(span.start, span.end);
         let is_simple = block.pipelines.len() == 1
             && block.pipelines[0].elements.len() == 1
-            && !self.block_has_nested_structures(block);
+            && !self.block_has_nested_structures(block)
+            && !has_comments;
 
         if is_simple {
             self.space();

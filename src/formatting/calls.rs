@@ -19,7 +19,7 @@ pub(super) const BLOCK_COMMANDS: &[&str] = &["for", "while", "loop", "module"];
 pub(super) const CONDITIONAL_COMMANDS: &[&str] = &["if", "try"];
 pub(super) const DEF_COMMANDS: &[&str] = &["def", "def-env", "export def"];
 pub(super) const EXTERN_COMMANDS: &[&str] = &["extern", "export extern"];
-pub(super) const LET_COMMANDS: &[&str] = &["let", "let-env", "mut", "const"];
+pub(super) const LET_COMMANDS: &[&str] = &["let", "let-env", "mut", "const", "export const"];
 
 impl<'a> Formatter<'a> {
     // ─────────────────────────────────────────────────────────────────────────
@@ -31,6 +31,11 @@ impl<'a> Formatter<'a> {
         let decl = self.working_set.get_decl(call.decl_id);
         let decl_name = decl.name();
         let cmd_type = Self::classify_command(decl_name);
+
+        if self.should_wrap_call_multiline(call, &cmd_type) {
+            self.format_wrapped_call(call);
+            return;
+        }
 
         // Write command name
         if call.head.end != 0 {
@@ -50,6 +55,86 @@ impl<'a> Formatter<'a> {
         for arg in &call.arguments {
             self.format_call_argument(arg, &cmd_type);
         }
+    }
+
+    /// Decide if a call should be emitted as a parenthesized multiline call.
+    fn should_wrap_call_multiline(
+        &self,
+        call: &nu_protocol::ast::Call,
+        cmd_type: &CommandType,
+    ) -> bool {
+        if !matches!(cmd_type, CommandType::Regular) || call.arguments.len() < 3 {
+            return false;
+        }
+
+        if !call.arguments.iter().all(|arg| {
+            matches!(
+                arg,
+                Argument::Positional(_) | Argument::Unknown(_) | Argument::Spread(_)
+            )
+        }) {
+            return false;
+        }
+
+        let end = call
+            .arguments
+            .iter()
+            .map(|arg| match arg {
+                Argument::Positional(expr) | Argument::Unknown(expr) | Argument::Spread(expr) => {
+                    expr.span.end
+                }
+                Argument::Named(named) => named
+                    .2
+                    .as_ref()
+                    .map_or(named.0.span.end, |value| value.span.end),
+            })
+            .max()
+            .unwrap_or(call.head.end);
+
+        if call.head.start >= end || end > self.source.len() {
+            return false;
+        }
+
+        let source_span = &self.source[call.head.start..end];
+        if source_span.contains(&b'\n') {
+            return false;
+        }
+
+        source_span.len() > self.config.line_length
+    }
+
+    /// Format a long regular call as:
+    ///
+    /// `(cmd\n  arg1\n  arg2\n)`
+    fn format_wrapped_call(&mut self, call: &nu_protocol::ast::Call) {
+        self.write("(");
+        if call.head.end != 0 {
+            self.write_span(call.head);
+        }
+        self.newline();
+        self.indent_level += 1;
+
+        for arg in &call.arguments {
+            self.write_indent();
+            match arg {
+                Argument::Positional(expr) | Argument::Unknown(expr) => {
+                    self.format_expression(expr);
+                }
+                Argument::Spread(expr) => {
+                    self.write("...");
+                    self.format_expression(expr);
+                }
+                Argument::Named(_) => {
+                    // Guarded out by should_wrap_call_multiline.
+                    self.format_call_argument(arg, &CommandType::Regular);
+                }
+            }
+            self.newline();
+        }
+
+        self.indent_level -= 1;
+        self.write_indent();
+        self.write(")");
     }
 
     /// Format `let`/`mut`/`const` calls while preserving explicit type annotations.
@@ -290,7 +375,7 @@ impl<'a> Formatter<'a> {
             Expr::VarDecl(_) => self.format_expression(positional),
             Expr::Subexpression(block_id) => {
                 self.write("= ");
-                self.format_subexpression(*block_id, positional.span);
+                self.format_assignment_subexpression(*block_id, positional.span);
             }
             Expr::Block(block_id) => {
                 self.write("= ");
@@ -302,6 +387,37 @@ impl<'a> Formatter<'a> {
                 self.format_expression(positional);
             }
         }
+    }
+
+    /// Format let-assignment subexpressions, flattening redundant outer
+    /// parentheses around pipeline-leading subexpressions such as
+    /// `((pwd) | path join ...)`.
+    fn format_assignment_subexpression(
+        &mut self,
+        block_id: nu_protocol::BlockId,
+        span: nu_protocol::Span,
+    ) {
+        let block = self.working_set.get_block(block_id);
+        if block.pipelines.len() == 1 {
+            let pipeline = &block.pipelines[0];
+            if pipeline.elements.len() > 1
+                && matches!(pipeline.elements[0].expr.expr, Expr::Subexpression(_))
+            {
+                if let Expr::Subexpression(inner_id) = &pipeline.elements[0].expr.expr {
+                    let inner = self.working_set.get_block(*inner_id);
+                    if inner.pipelines.len() == 1 && inner.pipelines[0].elements.len() == 1 {
+                        self.format_pipeline_element(&inner.pipelines[0].elements[0]);
+                        for element in pipeline.elements.iter().skip(1) {
+                            self.write(" | ");
+                            self.format_pipeline_element(element);
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+
+        self.format_subexpression(block_id, span);
     }
 
     /// Format an external call (e.g. `^git status`).
@@ -335,7 +451,11 @@ impl<'a> Formatter<'a> {
             + sig.optional_positional.len()
             + sig.named.iter().filter(|f| f.long != "help").count()
             + usize::from(sig.rest_positional.is_some());
-        let has_multiline = param_count > 3;
+        let has_multiline = if self.should_keep_simple_signature_inline(sig) {
+            false
+        } else {
+            param_count > 3
+        };
 
         if has_multiline {
             self.newline();
@@ -449,6 +569,37 @@ impl<'a> Formatter<'a> {
                 self.write(&output.to_string());
             }
         }
+    }
+
+    /// Keep simple required-positional signatures inline when they fit the
+    /// configured line length.
+    fn should_keep_simple_signature_inline(&self, sig: &Signature) -> bool {
+        if sig.required_positional.is_empty()
+            || !sig.optional_positional.is_empty()
+            || sig.rest_positional.is_some()
+            || !sig.input_output_types.is_empty()
+            || sig.named.iter().any(|flag| flag.long != "help")
+        {
+            return false;
+        }
+
+        if sig
+            .required_positional
+            .iter()
+            .any(|param| param.shape != SyntaxShape::Any || param.completion.is_some())
+        {
+            return false;
+        }
+
+        let inline_len = 2
+            + sig
+                .required_positional
+                .iter()
+                .map(|param| param.name.len())
+                .sum::<usize>()
+            + sig.required_positional.len().saturating_sub(1) * 2;
+
+        inline_len <= self.config.line_length
     }
 
     // ─────────────────────────────────────────────────────────────────────────

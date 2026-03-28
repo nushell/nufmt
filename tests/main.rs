@@ -1,6 +1,6 @@
 mod ground_truth;
 use ground_truth::get_test_binary;
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, io::Write, path::PathBuf, process::Command};
 use tempfile::tempdir;
 
 const INVALID: &str = "# beginning of script comment
@@ -10,6 +10,25 @@ let one = 1
 const VALID: &str = "# beginning of script comment
 let one = 1
 ";
+
+fn run_stdin(input: &str) -> std::process::Output {
+    let mut child = Command::new(get_test_binary())
+        .arg("--stdin")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn nufmt");
+
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin should be piped")
+        .write_all(input.as_bytes())
+        .expect("Failed to write stdin");
+
+    child.wait_with_output().expect("Failed to wait for nufmt")
+}
 
 #[test]
 fn failure_with_invalid_config() {
@@ -292,4 +311,95 @@ fn format_fixtures_basic() {
         // Should either succeed or report would-reformat
         assert!(output.status.code() == Some(0) || output.status.code() == Some(1));
     }
+}
+
+#[test]
+fn issue136_mixed_use_and_def_does_not_emit_parser_errors() {
+    let output = run_stdin("use a.nu\ndef abc [] { }\ndef xyz [] { }\n");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        !stderr.contains("compile_block_with_id called with parse errors"),
+        "unexpected parser error noise on stderr: {stderr}"
+    );
+}
+
+#[test]
+fn issue141_cell_path_in_def_block_does_not_emit_parser_errors() {
+    let output = run_stdin("def main [] {\n$var.state\n}\n");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        !stderr.contains("compile_block_with_id called with parse errors"),
+        "unexpected parser error noise on stderr: {stderr}"
+    );
+}
+
+#[test]
+fn issue126_margin_two_keeps_adjacent_use_statements_tight() {
+    let dir = tempdir().unwrap();
+    let config_file = dir.path().join("nufmt.nuon");
+    let file = dir.path().join("issue126.nu");
+
+    fs::write(
+        &config_file,
+        "{\n    indent: 2\n    line_length: 80\n    margin: 2\n}\n",
+    )
+    .unwrap();
+    fs::write(&file, "use a.nu\nuse b.nu\n").unwrap();
+
+    let output = Command::new(get_test_binary())
+        .arg("--config")
+        .arg(config_file.to_str().unwrap())
+        .arg(file.to_str().unwrap())
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+    let content = fs::read_to_string(&file).unwrap();
+    assert_eq!(content, "use a.nu\nuse b.nu\n");
+}
+
+#[test]
+fn issue127_margin_one_preserves_vertical_spacing_groups() {
+    let dir = tempdir().unwrap();
+    let config_file = dir.path().join("nufmt.nuon");
+    let file = dir.path().join("issue127.nu");
+
+    fs::write(
+        &config_file,
+        "{\n    indent: 2\n    line_length: 80\n    margin: 1\n}\n",
+    )
+    .unwrap();
+    fs::write(&file, "use a.nu\n\ndef foo[] {1}\n\n\ndef boo[] {2}\n").unwrap();
+
+    let output = Command::new(get_test_binary())
+        .arg("--config")
+        .arg(config_file.to_str().unwrap())
+        .arg(file.to_str().unwrap())
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+    let content = fs::read_to_string(&file).unwrap();
+    assert_eq!(content, "use a.nu\n\ndef foo[] {1}\n\ndef boo[] {2}\n");
+}
+
+#[test]
+fn issue145_mixed_line_string_literal_and_pipeline_repair_are_safe() {
+    let output =
+        run_stdin("let x = \"((pwd) | where true)\"; let search_path = ((pwd) | where true)\n");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        stdout.contains("let x = \"((pwd) | where true)\""),
+        "string literal content should be preserved: {stdout}"
+    );
+    assert!(
+        stdout.contains("let search_path = pwd | where true"),
+        "pipeline repair should still apply to executable code: {stdout}"
+    );
 }

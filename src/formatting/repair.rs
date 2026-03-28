@@ -260,6 +260,31 @@ pub(super) fn detect_missing_record_comma_spans(source: &str) -> Vec<Span> {
         .collect()
 }
 
+/// Detect spans that likely contain redundant outer parentheses around
+/// pipeline-leading subexpressions, such as `((pwd) | where true)`.
+pub(super) fn detect_redundant_pipeline_subexpr_spans(source: &str) -> Vec<Span> {
+    let mut spans = Vec::new();
+
+    for (range_start, range_end) in non_string_ranges(source) {
+        let segment = &source[range_start..range_end];
+        for (offset, _) in segment.match_indices("((") {
+            let idx = range_start + offset;
+            let line_end = source[idx..]
+                .find('\n')
+                .map_or(source.len(), |rel| idx + rel);
+            let line = &source[idx..line_end];
+            if line.contains('|') && line.trim_end().ends_with(')') {
+                spans.push(Span {
+                    start: idx.saturating_sub(32),
+                    end: (line_end + 32).min(source.len()),
+                });
+            }
+        }
+    }
+
+    spans
+}
+
 /// Attempt to insert missing commas between record fields.
 fn try_repair_missing_record_commas(source: &str) -> (String, bool) {
     let insert_positions = detect_missing_record_comma_positions(source);
@@ -281,6 +306,65 @@ fn try_repair_missing_record_commas(source: &str) -> (String, bool) {
     }
 
     (repaired, true)
+}
+
+/// Attempt to simplify redundant `((head) | tail)` wrappers line by line.
+fn try_repair_redundant_pipeline_subexpr(source: &str) -> (String, bool) {
+    let mut output = String::with_capacity(source.len());
+    let mut changed = false;
+
+    for line in source.split_inclusive('\n') {
+        let (body, newline) = match line.strip_suffix('\n') {
+            Some(body) => (body, "\n"),
+            None => (line, ""),
+        };
+
+        let Some(start) = body.find("((") else {
+            output.push_str(line);
+            continue;
+        };
+
+        let candidate = &body[start..];
+        let candidate_trimmed = candidate.trim_end();
+        if !(candidate_trimmed.contains('|') && candidate_trimmed.ends_with(')')) {
+            output.push_str(line);
+            continue;
+        }
+
+        let Some(inner) = candidate_trimmed.get(1..candidate_trimmed.len() - 1) else {
+            output.push_str(line);
+            continue;
+        };
+        let Some(pipe_idx) = inner.find('|') else {
+            output.push_str(line);
+            continue;
+        };
+
+        let left = inner[..pipe_idx].trim();
+        let right = inner[pipe_idx + 1..].trim();
+        if !(left.starts_with('(') && left.ends_with(')')) {
+            output.push_str(line);
+            continue;
+        }
+
+        let Some(unwrapped_left) = left.get(1..left.len() - 1) else {
+            output.push_str(line);
+            continue;
+        };
+        if unwrapped_left.trim().is_empty() || right.is_empty() {
+            output.push_str(line);
+            continue;
+        }
+
+        output.push_str(&body[..start]);
+        output.push_str(unwrapped_left.trim());
+        output.push_str(" | ");
+        output.push_str(right);
+        output.push_str(newline);
+        changed = true;
+    }
+
+    (output, changed)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -385,6 +469,9 @@ fn align_to_char_boundary(source: &str, index: usize, forward: bool) -> usize {
 fn repair_region(source: &str) -> (String, bool) {
     let (repaired_if_else, if_else_changed) = try_repair_compact_if_else(source);
     let (mut repaired_record, record_changed) = try_repair_missing_record_commas(&repaired_if_else);
+    let (repaired_pipeline, pipeline_changed) =
+        try_repair_redundant_pipeline_subexpr(&repaired_record);
+    repaired_record = repaired_pipeline;
 
     let mut brace_spacing_changed = false;
     if record_changed {
@@ -395,7 +482,7 @@ fn repair_region(source: &str) -> (String, bool) {
 
     (
         repaired_record,
-        if_else_changed || record_changed || brace_spacing_changed,
+        if_else_changed || record_changed || pipeline_changed || brace_spacing_changed,
     )
 }
 

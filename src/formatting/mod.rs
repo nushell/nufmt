@@ -31,8 +31,9 @@ use comments::extract_comments;
 use engine::get_engine_state;
 use garbage::block_contains_garbage;
 use repair::{
-    detect_compact_if_else_spans, detect_missing_record_comma_spans, is_fatal_parse_error,
-    try_repair_parse_errors, ParseRepairOutcome,
+    detect_compact_if_else_spans, detect_missing_record_comma_spans,
+    detect_redundant_pipeline_subexpr_spans, is_fatal_parse_error, try_repair_parse_errors,
+    ParseRepairOutcome,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -220,6 +221,7 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
         .collect();
     malformed_spans.extend(detect_compact_if_else_spans(&source_text));
     malformed_spans.extend(detect_missing_record_comma_spans(&source_text));
+    malformed_spans.extend(detect_redundant_pipeline_subexpr_spans(&source_text));
 
     let has_garbage = block_contains_garbage(&working_set, &parsed_block);
     let has_fatal_parse_error = working_set.parse_errors.iter().any(is_fatal_parse_error);
