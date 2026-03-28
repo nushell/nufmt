@@ -30,9 +30,14 @@ impl<'a> Formatter<'a> {
             | Expr::StringInterpolation(_)
             | Expr::GlobInterpolation(_, _)
             | Expr::ImportPattern(_)
-            | Expr::Overlay(_)
-            | Expr::Garbage => {
+            | Expr::Overlay(_) => {
                 self.write_expr_span(expr);
+            }
+
+            Expr::Garbage => {
+                if !self.try_write_redundant_pipeline_subexpr_without_outer_parens(expr) {
+                    self.write_expr_span(expr);
+                }
             }
 
             // Glob patterns — normalise empty-brace globs like `{ }` to `{}`
@@ -233,6 +238,13 @@ impl<'a> Formatter<'a> {
         }
 
         if self.conditional_context_depth > 0 {
+            if self.preserve_subexpr_parens_depth > 0 {
+                self.write("(");
+                self.format_block(block);
+                self.write(")");
+                return;
+            }
+
             let can_drop_parens =
                 block.pipelines.len() == 1 && block.pipelines[0].elements.len() == 1;
             if can_drop_parens {
@@ -311,6 +323,49 @@ impl<'a> Formatter<'a> {
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// Best-effort normalisation for a narrow garbage case:
+    /// `((head) | tail)` -> `head | tail`.
+    fn try_write_redundant_pipeline_subexpr_without_outer_parens(
+        &mut self,
+        expr: &Expression,
+    ) -> bool {
+        let raw = &self.source[expr.span.start..expr.span.end];
+        if raw.contains(&b'\n') || raw.len() < 5 {
+            return false;
+        }
+
+        if !(raw.starts_with(b"((") && raw.ends_with(b")") && raw.contains(&b'|')) {
+            return false;
+        }
+
+        let Some(inner) = raw.get(1..raw.len() - 1) else {
+            return false;
+        };
+        let Some(pipe_idx) = inner.iter().position(|b| *b == b'|') else {
+            return false;
+        };
+
+        let left = &inner[..pipe_idx];
+        let right = &inner[pipe_idx + 1..];
+        let left_trimmed = left.trim_ascii();
+
+        if !(left_trimmed.starts_with(b"(") && left_trimmed.ends_with(b")")) {
+            return false;
+        }
+
+        let Some(unwrapped_left) = left_trimmed.get(1..left_trimmed.len() - 1) else {
+            return false;
+        };
+        if unwrapped_left.is_empty() {
+            return false;
+        }
+
+        self.write_bytes(unwrapped_left);
+        self.write(" | ");
+        self.write_bytes(right.trim_ascii());
+        true
+    }
+
     /// Check if an expression is a simple primitive (used by collection
     /// formatting to decide inline vs. multiline layout).
     pub(super) fn is_simple_expr(&self, expr: &Expression) -> bool {
@@ -327,11 +382,12 @@ impl<'a> Formatter<'a> {
             | Expr::GlobPattern(_, _)
             | Expr::DateTime(_) => true,
             Expr::FullCellPath(full_path) => {
-                full_path.tail.is_empty()
-                    && matches!(
-                        &full_path.head.expr,
-                        Expr::Var(_) | Expr::Garbage | Expr::Int(_) | Expr::String(_)
-                    )
+                matches!(
+                    &full_path.head.expr,
+                    Expr::Var(_) | Expr::Garbage | Expr::Int(_) | Expr::String(_)
+                ) && full_path.tail.iter().all(|member| {
+                    matches!(member, PathMember::String { .. } | PathMember::Int { .. })
+                })
             }
             _ => false,
         }

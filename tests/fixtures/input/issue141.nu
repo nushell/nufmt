@@ -1,0 +1,3 @@
+def main [] {
+$var.state
+}

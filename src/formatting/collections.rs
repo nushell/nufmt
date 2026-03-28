@@ -99,6 +99,9 @@ impl<'a> Formatter<'a> {
             return;
         }
 
+        let source_has_newline =
+            span.end > span.start && self.source[span.start..span.end].contains(&b'\n');
+
         let preserve_compact = self.record_preserve_compact_style(span);
 
         let all_simple = items.iter().all(|item| match item {
@@ -122,7 +125,9 @@ impl<'a> Formatter<'a> {
         // Records with 2+ items and complex values should be multiline when nested
         let nested_multiline = self.indent_level > 0 && items.len() >= 2 && has_nested_complex;
 
-        if all_simple && items.len() <= 3 && !nested_multiline {
+        let preserve_multiline_top_level = source_has_newline && self.indent_level == 0;
+
+        if all_simple && items.len() <= 3 && !nested_multiline && !preserve_multiline_top_level {
             // Inline format
             let record_start = self.output.len();
             self.write("{");
@@ -278,6 +283,10 @@ impl<'a> Formatter<'a> {
         for (pattern, expr) in matches {
             self.write_indent();
             self.format_match_pattern(pattern);
+            if let Some(guard) = &pattern.guard {
+                self.write(" if ");
+                self.format_expression(guard);
+            }
             self.write(" => ");
             self.format_block_or_expr(expr);
             self.newline();

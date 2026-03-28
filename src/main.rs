@@ -84,7 +84,9 @@ fn exit_with_code(exit_code: ExitCode) -> ! {
 }
 
 fn main() {
-    env_logger::init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        let _ = env_logger::try_init();
+    }
 
     let cli = Cli::parse();
     trace!("received cli.files: {:?}", cli.files);
