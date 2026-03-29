@@ -493,7 +493,10 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        if trimmed.get(1).is_none_or(|byte| !byte.is_ascii_whitespace()) {
+        if trimmed
+            .get(1)
+            .is_none_or(|byte| !byte.is_ascii_whitespace())
+        {
             return false;
         }
 
