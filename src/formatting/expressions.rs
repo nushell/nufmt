@@ -35,7 +35,9 @@ impl<'a> Formatter<'a> {
             }
 
             Expr::Garbage => {
-                if !self.try_write_redundant_pipeline_subexpr_without_outer_parens(expr) {
+                if !(self.try_write_redundant_pipeline_subexpr_without_outer_parens(expr)
+                    || self.try_write_spacing_normalized_pipe_closure_garbage(expr))
+                {
                     self.write_expr_span(expr);
                 }
             }
@@ -289,14 +291,17 @@ impl<'a> Formatter<'a> {
         self.write("(");
         let is_simple = !source_has_newline
             && block.pipelines.len() == 1
-            && block.pipelines[0].elements.len() <= 3;
+            && !self.pipeline_requires_multiline(&block.pipelines[0]);
 
         if is_simple {
             self.format_block(block);
         } else {
             self.newline();
             self.indent_level += 1;
+            self.force_pipeline_multiline_depth += 1;
             self.format_block(block);
+            self.force_pipeline_multiline_depth =
+                self.force_pipeline_multiline_depth.saturating_sub(1);
             self.newline();
             self.indent_level -= 1;
             self.write_indent();
@@ -366,6 +371,62 @@ impl<'a> Formatter<'a> {
         true
     }
 
+    fn try_write_spacing_normalized_pipe_closure_garbage(&mut self, expr: &Expression) -> bool {
+        let raw = self.get_span_content(expr.span);
+        let trimmed = raw.trim_ascii();
+        if trimmed.len() < 4 || trimmed.contains(&b'\n') {
+            return false;
+        }
+
+        if !(trimmed.starts_with(b"{") && trimmed.ends_with(b"}")) {
+            return false;
+        }
+
+        let inner = trimmed[1..trimmed.len() - 1].trim_ascii();
+        if inner.first() != Some(&b'|') {
+            return false;
+        }
+
+        let Some(second_pipe) = inner[1..]
+            .iter()
+            .position(|byte| *byte == b'|')
+            .map(|pos| pos + 1)
+        else {
+            return false;
+        };
+
+        let params = &inner[1..second_pipe];
+        let body = inner[second_pipe + 1..].trim_ascii();
+
+        self.write("{|");
+        let mut params_iter = params.split(|&b| b == b',').peekable();
+        while let Some(param) = params_iter.next() {
+            let mut sub_parts = param.splitn(2, |&b| b == b':');
+
+            if let (Some(param_name), Some(type_hint)) = (sub_parts.next(), sub_parts.next()) {
+                self.write_bytes(param_name.trim_ascii());
+                self.write_bytes(b": ");
+                self.write_bytes(type_hint.trim_ascii());
+            } else {
+                self.write_bytes(param.trim_ascii());
+            }
+
+            if params_iter.peek().is_some() {
+                self.write_bytes(b", ");
+            }
+        }
+        self.write("|");
+
+        if !body.is_empty() {
+            self.space();
+            self.write_bytes(body);
+            self.write(" ");
+        }
+
+        self.write("}");
+        true
+    }
+
     /// Check if an expression is a simple primitive (used by collection
     /// formatting to decide inline vs. multiline layout).
     pub(super) fn is_simple_expr(&self, expr: &Expression) -> bool {
@@ -377,6 +438,7 @@ impl<'a> Formatter<'a> {
             | Expr::RawString(_)
             | Expr::Nothing
             | Expr::Var(_)
+            | Expr::StringInterpolation(_)
             | Expr::Filepath(_, _)
             | Expr::Directory(_, _)
             | Expr::GlobPattern(_, _)

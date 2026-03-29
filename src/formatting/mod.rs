@@ -70,6 +70,9 @@ pub(crate) struct Formatter<'a> {
     /// Optional upper boundary for inline comment capture inside
     /// delimited contexts (e.g. subexpressions).
     pub(crate) inline_comment_upper_bound: Option<usize>,
+    /// Force multiline pipeline emission in scoped contexts such as
+    /// multiline subexpressions.
+    pub(crate) force_pipeline_multiline_depth: usize,
 }
 
 /// Command types for formatting purposes.
@@ -106,6 +109,7 @@ impl<'a> Formatter<'a> {
             preserve_subexpr_parens_depth: 0,
             allow_compact_recovered_record_style,
             inline_comment_upper_bound: None,
+            force_pipeline_multiline_depth: 0,
         }
     }
 
@@ -286,7 +290,111 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
         formatter.write_comments_before(contents.len());
     }
 
-    Ok(formatter.finish())
+    Ok(postprocess_formatted_output(formatter.finish()))
+}
+
+fn postprocess_formatted_output(output: Vec<u8>) -> Vec<u8> {
+    let mut changed = false;
+    let text = String::from_utf8_lossy(&output);
+    let mut rebuilt = String::with_capacity(text.len());
+
+    for line in text.split_inclusive('\n') {
+        let (line_body, line_end) = match line.strip_suffix('\n') {
+            Some(body) => (body, "\n"),
+            None => (line, ""),
+        };
+
+        let mut normalized = normalize_redundant_assignment_pipeline_parens(line_body);
+        let closure_normalized = normalize_closure_pipe_spacing(&normalized);
+        if closure_normalized != normalized {
+            changed = true;
+            normalized = closure_normalized;
+        }
+
+        if normalized != line_body {
+            changed = true;
+        }
+
+        rebuilt.push_str(&normalized);
+        rebuilt.push_str(line_end);
+    }
+
+    if changed {
+        rebuilt.into_bytes()
+    } else {
+        output
+    }
+}
+
+fn normalize_redundant_assignment_pipeline_parens(line: &str) -> String {
+    let trimmed_start = line.trim_start();
+    let is_let_like = trimmed_start.starts_with("let ")
+        || trimmed_start.starts_with("let-env ")
+        || trimmed_start.starts_with("mut ")
+        || trimmed_start.starts_with("const ")
+        || trimmed_start.starts_with("export const ");
+    if !is_let_like {
+        return line.to_string();
+    }
+
+    let Some(eq_idx) = line.find('=') else {
+        return line.to_string();
+    };
+
+    let rhs = line[eq_idx + 1..].trim_start();
+    if !(rhs.starts_with('(') && rhs.ends_with(')') && rhs.contains('|')) {
+        return line.to_string();
+    }
+
+    let inner = rhs[1..rhs.len() - 1].trim();
+    if inner.is_empty() || inner.starts_with('^') {
+        return line.to_string();
+    }
+
+    let lhs = line[..eq_idx].trim_end();
+    format!("{lhs} = {inner}")
+}
+
+fn normalize_closure_pipe_spacing(line: &str) -> String {
+    let bytes = line.as_bytes();
+    let mut result = Vec::with_capacity(bytes.len());
+    let mut idx = 0;
+    let mut changed = false;
+
+    while idx < bytes.len() {
+        if bytes[idx] != b'{' {
+            result.push(bytes[idx]);
+            idx += 1;
+            continue;
+        }
+
+        result.push(b'{');
+        idx += 1;
+
+        let spaces_start = idx;
+        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() && bytes[idx] != b'\n' {
+            idx += 1;
+        }
+
+        if idx < bytes.len() && bytes[idx] == b'|' {
+            let has_second_pipe = bytes[idx + 1..].contains(&b'|');
+            let has_closing_brace = bytes[idx + 1..].contains(&b'}');
+            if has_second_pipe && has_closing_brace {
+                if idx > spaces_start {
+                    changed = true;
+                }
+                continue;
+            }
+        }
+
+        result.extend_from_slice(&bytes[spaces_start..idx]);
+    }
+
+    if changed {
+        String::from_utf8(result).unwrap_or_else(|_| line.to_string())
+    } else {
+        line.to_string()
+    }
 }
 
 /// Make sure there is a newline at the end of a buffer.

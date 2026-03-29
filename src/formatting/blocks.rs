@@ -11,6 +11,12 @@ use nu_protocol::{
     Span,
 };
 
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum LetFamily {
+    Variable,
+    Constant,
+}
+
 impl<'a> Formatter<'a> {
     // ─────────────────────────────────────────────────────────────────────────
     // Block and pipeline formatting
@@ -60,50 +66,41 @@ impl<'a> Formatter<'a> {
         current: &nu_protocol::ast::Pipeline,
         next: &nu_protocol::ast::Pipeline,
     ) -> usize {
-        if self.indent_level != 0 {
+        if self.indent_level != 0 && self.config.margin > 1 {
             return 1;
         }
 
-        if self.is_use_pipeline(current) && self.is_use_pipeline(next) {
+        if self.indent_level == 0 && self.is_use_pipeline(current) && self.is_use_pipeline(next) {
             return 1;
+        }
+
+        if self.indent_level == 0 {
+            if let (Some(current_family), Some(next_family)) = (
+                self.pipeline_let_family(current),
+                self.pipeline_let_family(next),
+            ) {
+                if current_family == next_family {
+                    if self.pipeline_call_span_has_newline(current)
+                        || self.pipeline_call_span_has_newline(next)
+                    {
+                        return self.config.margin.saturating_add(1);
+                    }
+
+                    if self.has_comment_between_pipelines(current, next) {
+                        // Let the margin/blank-line logic below decide spacing for
+                        // comment-delimited groups.
+                    } else {
+                        return 1;
+                    }
+                } else {
+                    return self.config.margin.saturating_add(1);
+                }
+            }
         }
 
         if self.config.margin == 1 {
-            let current_end = current
-                .elements
-                .last()
-                .map_or(0, |element| self.get_element_end_pos(element));
-            let next_start = next
-                .elements
-                .first()
-                .map_or(current_end, |element| element.expr.span.start);
-
-            if current_end < next_start {
-                let between = &self.source[current_end..next_start];
-                if between.contains(&b'#') {
-                    return 1;
-                }
-
-                let mut previous_newline: Option<usize> = None;
-                let mut has_blank_line = false;
-                for (idx, byte) in between.iter().enumerate() {
-                    if *byte == b'\n' {
-                        if let Some(prev) = previous_newline {
-                            if between[prev + 1..idx]
-                                .iter()
-                                .all(|b| b.is_ascii_whitespace())
-                            {
-                                has_blank_line = true;
-                                break;
-                            }
-                        }
-                        previous_newline = Some(idx);
-                    }
-                }
-
-                if has_blank_line {
-                    return 2;
-                }
+            if self.has_blank_line_between_pipelines(current, next) {
+                return 2;
             }
 
             return 1;
@@ -114,7 +111,91 @@ impl<'a> Formatter<'a> {
 
     /// Whether a pipeline is a top-level `use` command.
     fn is_use_pipeline(&self, pipeline: &nu_protocol::ast::Pipeline) -> bool {
+        matches!(
+            self.pipeline_decl_name(pipeline),
+            Some("use" | "export use")
+        )
+    }
+
+    fn pipeline_decl_name(&self, pipeline: &nu_protocol::ast::Pipeline) -> Option<&str> {
+        let first = pipeline.elements.first()?;
+        let Expr::Call(call) = &first.expr.expr else {
+            return None;
+        };
+
+        Some(self.working_set.get_decl(call.decl_id).name())
+    }
+
+    fn pipeline_let_family(&self, pipeline: &nu_protocol::ast::Pipeline) -> Option<LetFamily> {
+        match self.pipeline_decl_name(pipeline)? {
+            "let" | "let-env" | "mut" => Some(LetFamily::Variable),
+            "const" | "export const" => Some(LetFamily::Constant),
+            _ => None,
+        }
+    }
+
+    fn has_blank_line_between_pipelines(
+        &self,
+        current: &nu_protocol::ast::Pipeline,
+        next: &nu_protocol::ast::Pipeline,
+    ) -> bool {
+        let current_end = current
+            .elements
+            .last()
+            .map_or(0, |element| self.get_element_end_pos(element));
+        let next_start = next
+            .elements
+            .first()
+            .map_or(current_end, |element| element.expr.span.start);
+
+        if current_end >= next_start {
+            return false;
+        }
+
+        let between = &self.source[current_end..next_start];
+        let mut previous_newline: Option<usize> = None;
+        for (idx, byte) in between.iter().enumerate() {
+            if *byte != b'\n' {
+                continue;
+            }
+
+            if let Some(prev) = previous_newline {
+                if between[prev + 1..idx]
+                    .iter()
+                    .all(|b| b.is_ascii_whitespace())
+                {
+                    return true;
+                }
+            }
+
+            previous_newline = Some(idx);
+        }
+
+        false
+    }
+
+    fn has_comment_between_pipelines(
+        &self,
+        current: &nu_protocol::ast::Pipeline,
+        next: &nu_protocol::ast::Pipeline,
+    ) -> bool {
+        let current_end = current
+            .elements
+            .last()
+            .map_or(0, |element| self.get_element_end_pos(element));
+        let next_start = next
+            .elements
+            .first()
+            .map_or(current_end, |element| element.expr.span.start);
+
+        current_end < next_start && self.source[current_end..next_start].contains(&b'#')
+    }
+
+    fn pipeline_call_span_has_newline(&self, pipeline: &nu_protocol::ast::Pipeline) -> bool {
         let Some(first) = pipeline.elements.first() else {
+            return false;
+        };
+        let Some(last) = pipeline.elements.last() else {
             return false;
         };
 
@@ -122,8 +203,9 @@ impl<'a> Formatter<'a> {
             return false;
         };
 
-        let decl = self.working_set.get_decl(call.decl_id);
-        matches!(decl.name(), "use" | "export use")
+        let start = call.head.start;
+        let end = self.get_element_end_pos(last);
+        start < end && self.source[start..end].contains(&b'\n')
     }
 
     /// Get the end position of a pipeline element, including redirections.
@@ -151,11 +233,14 @@ impl<'a> Formatter<'a> {
         }
 
         // Detect whether the source places pipeline elements on separate lines.
-        let is_multiline = pipeline.elements.windows(2).any(|pair| {
+        let source_is_multiline = pipeline.elements.windows(2).any(|pair| {
             let prev_end = self.get_element_end_pos(&pair[0]);
             let next_start = pair[1].expr.span.start;
             prev_end < next_start && self.source[prev_end..next_start].contains(&b'\n')
         });
+        let is_multiline = source_is_multiline
+            || (self.force_pipeline_multiline_depth > 0
+                && self.pipeline_requires_multiline(pipeline));
 
         for (i, element) in pipeline.elements.iter().enumerate() {
             if i > 0 {
@@ -227,6 +312,10 @@ impl<'a> Formatter<'a> {
         span: Span,
         with_braces: bool,
     ) {
+        if with_braces && self.try_format_pipe_closure_block_from_span(span) {
+            return;
+        }
+
         let block = self.working_set.get_block(block_id);
 
         let source_has_newline = with_braces
@@ -313,6 +402,69 @@ impl<'a> Formatter<'a> {
             .any(|e| self.expr_is_complex(&e.expr))
     }
 
+    /// Decide whether a pipeline should be expanded across multiple lines.
+    pub(super) fn pipeline_requires_multiline(
+        &self,
+        pipeline: &nu_protocol::ast::Pipeline,
+    ) -> bool {
+        if pipeline.elements.len() > 3 {
+            return true;
+        }
+
+        if pipeline
+            .elements
+            .iter()
+            .any(|element| self.expr_contains_nested_pipeline(&element.expr))
+        {
+            return true;
+        }
+
+        let Some(first) = pipeline.elements.first() else {
+            return false;
+        };
+        let Some(last) = pipeline.elements.last() else {
+            return false;
+        };
+
+        let start = first.expr.span.start;
+        let end = self.get_element_end_pos(last);
+        if start >= end {
+            return false;
+        }
+
+        let estimated_inline_len = self.config.indent * self.indent_level + (end - start);
+        estimated_inline_len > self.config.line_length
+    }
+
+    fn expr_contains_nested_pipeline(&self, expr: &Expression) -> bool {
+        match &expr.expr {
+            Expr::Subexpression(block_id) | Expr::Block(block_id) | Expr::Closure(block_id) => {
+                let block = self.working_set.get_block(*block_id);
+                block.pipelines.iter().any(|pipeline| {
+                    pipeline.elements.len() > 1
+                        || pipeline
+                            .elements
+                            .iter()
+                            .any(|element| self.expr_contains_nested_pipeline(&element.expr))
+                })
+            }
+            Expr::Call(call) => call.arguments.iter().any(|arg| match arg {
+                Argument::Positional(inner)
+                | Argument::Unknown(inner)
+                | Argument::Spread(inner) => self.expr_contains_nested_pipeline(inner),
+                Argument::Named(named) => named
+                    .2
+                    .as_ref()
+                    .is_some_and(|inner| self.expr_contains_nested_pipeline(inner)),
+            }),
+            Expr::Keyword(keyword) => self.expr_contains_nested_pipeline(&keyword.expr),
+            Expr::BinaryOp(lhs, _, rhs) => {
+                self.expr_contains_nested_pipeline(lhs) || self.expr_contains_nested_pipeline(rhs)
+            }
+            _ => false,
+        }
+    }
+
     /// Check if an expression is complex enough to warrant multiline formatting.
     pub(super) fn expr_is_complex(&self, expr: &Expression) -> bool {
         match &expr.expr {
@@ -363,26 +515,7 @@ impl<'a> Formatter<'a> {
         };
 
         self.write("{|");
-
-        // Normalise parameter whitespace
-        let params = &content[first_pipe + 1..second_pipe];
-        let mut params_iter = params.split(|&b| b == b',').peekable();
-
-        while let Some(param) = params_iter.next() {
-            let mut sub_parts = param.splitn(2, |&b| b == b':');
-
-            if let (Some(param_name), Some(type_hint)) = (sub_parts.next(), sub_parts.next()) {
-                self.write_bytes(param_name.trim_ascii());
-                self.write_bytes(b": ");
-                self.write_bytes(type_hint.trim_ascii());
-            } else {
-                self.write_bytes(param.trim_ascii());
-            }
-
-            if params_iter.peek().is_some() {
-                self.write_bytes(b", ");
-            }
-        }
+        self.write_normalized_closure_params(&content[first_pipe + 1..second_pipe]);
 
         self.write("|");
 
@@ -406,5 +539,67 @@ impl<'a> Formatter<'a> {
             self.write_indent();
             self.write("}");
         }
+    }
+
+    fn write_normalized_closure_params(&mut self, params: &[u8]) {
+        let mut params_iter = params.split(|&b| b == b',').peekable();
+
+        while let Some(param) = params_iter.next() {
+            let mut sub_parts = param.splitn(2, |&b| b == b':');
+
+            if let (Some(param_name), Some(type_hint)) = (sub_parts.next(), sub_parts.next()) {
+                self.write_bytes(param_name.trim_ascii());
+                self.write_bytes(b": ");
+                self.write_bytes(type_hint.trim_ascii());
+            } else {
+                self.write_bytes(param.trim_ascii());
+            }
+
+            if params_iter.peek().is_some() {
+                self.write_bytes(b", ");
+            }
+        }
+    }
+
+    /// Normalise closure-like blocks parsed as regular block expressions,
+    /// such as `{ |line| $line }`.
+    fn try_format_pipe_closure_block_from_span(&mut self, span: Span) -> bool {
+        if span.end <= span.start + 2 || span.end > self.source.len() {
+            return false;
+        }
+
+        let raw = &self.source[span.start..span.end];
+        if !raw.starts_with(b"{") || !raw.ends_with(b"}") {
+            return false;
+        }
+
+        let inner = raw[1..raw.len() - 1].trim_ascii();
+        if inner.first() != Some(&b'|') || inner.contains(&b'\n') {
+            return false;
+        }
+
+        let Some(second_pipe_rel) = inner[1..]
+            .iter()
+            .position(|byte| *byte == b'|')
+            .map(|pos| pos + 1)
+        else {
+            return false;
+        };
+
+        let params = &inner[1..second_pipe_rel];
+        let body = inner[second_pipe_rel + 1..].trim_ascii();
+
+        self.write("{|");
+        self.write_normalized_closure_params(params);
+        self.write("|");
+
+        if !body.is_empty() {
+            self.space();
+            self.write_bytes(body);
+            self.write(" ");
+        }
+
+        self.write("}");
+        true
     }
 }
