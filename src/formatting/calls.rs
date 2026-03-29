@@ -179,11 +179,18 @@ impl<'a> Formatter<'a> {
             self.write(" = ");
 
             match &rhs.expr {
-                Expr::Block(block_id) | Expr::Subexpression(block_id) => {
+                Expr::Subexpression(block_id) => {
+                    self.format_assignment_subexpression(*block_id, rhs.span);
+                }
+                Expr::Block(block_id) => {
                     let block = self.working_set.get_block(*block_id);
                     self.format_block(block);
                 }
-                _ => self.format_expression(rhs),
+                _ => {
+                    if !self.try_write_redundant_parenthesized_pipeline_rhs(rhs) {
+                        self.format_expression(rhs);
+                    }
+                }
             }
 
             for extra in positional.iter().skip(2) {
@@ -338,7 +345,11 @@ impl<'a> Formatter<'a> {
                 self.format_block_or_expr(positional);
             }
             CommandType::Let => self.format_let_argument(positional),
-            CommandType::Regular => self.format_expression(positional),
+            CommandType::Regular => {
+                if !self.try_format_closure_like_span(positional.span) {
+                    self.format_expression(positional);
+                }
+            }
         }
     }
 
@@ -415,6 +426,11 @@ impl<'a> Formatter<'a> {
                     }
                 }
             }
+
+            if !self.pipeline_requires_multiline(pipeline) {
+                self.format_block(block);
+                return;
+            }
         }
 
         self.format_subexpression(block_id, span);
@@ -437,6 +453,100 @@ impl<'a> Formatter<'a> {
                 }
             }
         }
+    }
+
+    fn try_write_redundant_parenthesized_pipeline_rhs(&mut self, rhs: &Expression) -> bool {
+        let raw = self.get_span_content(rhs.span);
+        let trimmed = raw.trim_ascii();
+        if trimmed.len() < 3 || trimmed.contains(&b'\n') {
+            return false;
+        }
+
+        if !(trimmed.starts_with(b"(") && trimmed.ends_with(b")") && trimmed.contains(&b'|')) {
+            return false;
+        }
+
+        let inner = &trimmed[1..trimmed.len() - 1];
+        let inner = inner.trim_ascii();
+
+        // Keep explicit wrappers for external-command assignments.
+        if inner.starts_with(b"^") {
+            return false;
+        }
+
+        if inner.is_empty() {
+            return false;
+        }
+
+        self.write_bytes(inner);
+        true
+    }
+
+    fn try_format_closure_like_span(&mut self, span: nu_protocol::Span) -> bool {
+        if span.end <= span.start + 2 || span.end > self.source.len() {
+            return false;
+        }
+
+        let raw = &self.source[span.start..span.end];
+        let trimmed = raw.trim_ascii();
+        if trimmed.len() < 4 || trimmed.contains(&b'\n') {
+            return false;
+        }
+
+        if trimmed
+            .get(1)
+            .is_none_or(|byte| !byte.is_ascii_whitespace())
+        {
+            return false;
+        }
+
+        if !(trimmed.starts_with(b"{") && trimmed.ends_with(b"}")) {
+            return false;
+        }
+
+        let inner = trimmed[1..trimmed.len() - 1].trim_ascii();
+        if inner.first() != Some(&b'|') {
+            return false;
+        }
+
+        let Some(second_pipe) = inner[1..]
+            .iter()
+            .position(|byte| *byte == b'|')
+            .map(|pos| pos + 1)
+        else {
+            return false;
+        };
+
+        let params = &inner[1..second_pipe];
+        let body = inner[second_pipe + 1..].trim_ascii();
+
+        self.write("{|");
+        let mut params_iter = params.split(|&b| b == b',').peekable();
+        while let Some(param) = params_iter.next() {
+            let mut sub_parts = param.splitn(2, |&b| b == b':');
+
+            if let (Some(param_name), Some(type_hint)) = (sub_parts.next(), sub_parts.next()) {
+                self.write_bytes(param_name.trim_ascii());
+                self.write_bytes(b": ");
+                self.write_bytes(type_hint.trim_ascii());
+            } else {
+                self.write_bytes(param.trim_ascii());
+            }
+
+            if params_iter.peek().is_some() {
+                self.write_bytes(b", ");
+            }
+        }
+        self.write("|");
+
+        if !body.is_empty() {
+            self.space();
+            self.write_bytes(body);
+            self.write(" ");
+        }
+
+        self.write("}");
+        true
     }
 
     // ─────────────────────────────────────────────────────────────────────────

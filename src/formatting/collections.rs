@@ -22,12 +22,18 @@ impl<'a> Formatter<'a> {
         }
 
         let uses_commas = self.list_uses_commas(items);
+        let source_has_newline = self.list_has_source_newline(items);
 
         let all_simple = items.iter().all(|item| match item {
             ListItem::Item(expr) | ListItem::Spread(_, expr) => self.is_simple_expr(expr),
         });
 
-        if all_simple && items.len() <= 5 {
+        let inline_single_item = items.len() == 1 && all_simple;
+        let should_preserve_multiline = source_has_newline && items.len() > 1;
+        let should_inline =
+            inline_single_item || (all_simple && items.len() <= 5 && !should_preserve_multiline);
+
+        if should_inline {
             self.write("[");
             for (i, item) in items.iter().enumerate() {
                 if i > 0 {
@@ -44,11 +50,35 @@ impl<'a> Formatter<'a> {
             self.write("[");
             self.newline();
             self.indent_level += 1;
-            for item in items {
+
+            let mut idx = 0;
+            while idx < items.len() {
                 self.write_indent();
-                self.format_list_item(item);
+
+                if idx + 1 < items.len() {
+                    let current = &items[idx];
+                    let next = &items[idx + 1];
+                    if self.should_pair_flag_value_items(current, next)
+                        && self.paired_list_items_fit_on_line(current, next, uses_commas)
+                    {
+                        self.format_list_item(current);
+                        if uses_commas {
+                            self.write(", ");
+                        } else {
+                            self.write(" ");
+                        }
+                        self.format_list_item(next);
+                        self.newline();
+                        idx += 2;
+                        continue;
+                    }
+                }
+
+                self.format_list_item(&items[idx]);
                 self.newline();
+                idx += 1;
             }
+
             self.indent_level -= 1;
             self.write_indent();
             self.write("]");
@@ -61,13 +91,9 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        let item_bounds = |item: &ListItem| match item {
-            ListItem::Item(expr) | ListItem::Spread(_, expr) => (expr.span.start, expr.span.end),
-        };
-
-        let (_, mut prev_end) = item_bounds(&items[0]);
+        let (_, mut prev_end) = self.list_item_bounds(&items[0]);
         for item in items.iter().skip(1) {
-            let (start, end) = item_bounds(item);
+            let (start, end) = self.list_item_bounds(item);
             if start > prev_end && self.source[prev_end..start].contains(&b',') {
                 return true;
             }
@@ -86,6 +112,83 @@ impl<'a> Formatter<'a> {
                 self.format_expression(expr);
             }
         }
+    }
+
+    fn list_item_bounds(&self, item: &ListItem) -> (usize, usize) {
+        match item {
+            ListItem::Item(expr) | ListItem::Spread(_, expr) => (expr.span.start, expr.span.end),
+        }
+    }
+
+    fn list_has_source_newline(&self, items: &[ListItem]) -> bool {
+        if items.len() < 2 {
+            return false;
+        }
+
+        let (_, mut prev_end) = self.list_item_bounds(&items[0]);
+        for item in items.iter().skip(1) {
+            let (start, end) = self.list_item_bounds(item);
+            if prev_end < start && self.source[prev_end..start].contains(&b'\n') {
+                return true;
+            }
+            prev_end = end;
+        }
+
+        false
+    }
+
+    fn should_pair_flag_value_items(&self, current: &ListItem, next: &ListItem) -> bool {
+        self.list_item_is_flag_string(current) && !self.list_item_is_flag_string(next)
+    }
+
+    fn list_item_is_flag_string(&self, item: &ListItem) -> bool {
+        let expr = match item {
+            ListItem::Item(expr) => expr,
+            ListItem::Spread(_, _) => return false,
+        };
+
+        if !matches!(expr.expr, Expr::String(_)) {
+            return false;
+        }
+
+        let raw = self.get_span_content(expr.span);
+        let trimmed = raw.trim_ascii();
+        if trimmed.len() < 3 || trimmed.first() != Some(&b'"') || trimmed.last() != Some(&b'"') {
+            return false;
+        }
+
+        let inner = &trimmed[1..trimmed.len() - 1];
+        inner.starts_with(b"-")
+    }
+
+    fn paired_list_items_fit_on_line(
+        &self,
+        current: &ListItem,
+        next: &ListItem,
+        uses_commas: bool,
+    ) -> bool {
+        let mut probe = Formatter::new(
+            self.source,
+            self.working_set,
+            self.config,
+            self.allow_compact_recovered_record_style,
+        );
+        probe.format_list_item(current);
+        let left_len = probe.output.len();
+
+        let mut probe = Formatter::new(
+            self.source,
+            self.working_set,
+            self.config,
+            self.allow_compact_recovered_record_style,
+        );
+        probe.format_list_item(next);
+        let right_len = probe.output.len();
+
+        let separator_len = if uses_commas { 2 } else { 1 };
+        let indent_len = self.config.indent * self.indent_level;
+
+        indent_len + left_len + separator_len + right_len <= self.config.line_length
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -276,18 +379,37 @@ impl<'a> Formatter<'a> {
 
     /// Format a match block (`match $val { pattern => expr }`).
     pub(super) fn format_match_block(&mut self, matches: &[(MatchPattern, Expression)]) {
+        let rendered_lhs: Vec<Vec<u8>> = matches
+            .iter()
+            .map(|(pattern, expr)| self.render_match_arm_lhs(pattern, expr))
+            .collect();
+
+        let should_align = self.should_preserve_match_arm_alignment(matches)
+            && rendered_lhs.iter().all(|lhs| !lhs.contains(&b'\n'));
+        let max_lhs_len = if should_align {
+            rendered_lhs.iter().map(Vec::len).max().unwrap_or(0)
+        } else {
+            0
+        };
+
         self.write("{");
         self.newline();
         self.indent_level += 1;
 
-        for (pattern, expr) in matches {
+        for ((_pattern, expr), lhs) in matches.iter().zip(rendered_lhs.iter()) {
             self.write_indent();
-            self.format_match_pattern(pattern);
-            if let Some(guard) = &pattern.guard {
-                self.write(" if ");
-                self.format_expression(guard);
+            self.write_bytes(lhs);
+
+            if should_align {
+                let spaces = max_lhs_len.saturating_sub(lhs.len()) + 1;
+                for _ in 0..spaces {
+                    self.output.push(b' ');
+                }
+            } else {
+                self.write(" ");
             }
-            self.write(" => ");
+
+            self.write("=> ");
             self.format_block_or_expr(expr);
             self.newline();
         }
@@ -337,5 +459,146 @@ impl<'a> Formatter<'a> {
             Pattern::IgnoreRest => self.write(".."),
             Pattern::IgnoreValue => self.write("_"),
         }
+    }
+
+    fn render_match_arm_lhs(&self, pattern: &MatchPattern, rhs: &Expression) -> Vec<u8> {
+        let mut probe = Formatter::new(
+            self.source,
+            self.working_set,
+            self.config,
+            self.allow_compact_recovered_record_style,
+        );
+        probe.format_match_pattern_for_arm(pattern, rhs);
+        if let Some(guard) = &pattern.guard {
+            probe.write(" if ");
+            probe.format_expression(guard);
+        }
+        probe.output
+    }
+
+    fn should_preserve_match_arm_alignment(&self, matches: &[(MatchPattern, Expression)]) -> bool {
+        let spacing_hints: Vec<usize> = matches
+            .iter()
+            .filter_map(|(pattern, expr)| self.source_spaces_before_match_arrow(pattern, expr))
+            .collect();
+
+        if spacing_hints.len() < 2 || spacing_hints.iter().all(|spaces| *spaces <= 1) {
+            return false;
+        }
+
+        let arrow_columns: Vec<usize> = matches
+            .iter()
+            .filter_map(|(pattern, expr)| self.source_match_arrow_column(pattern, expr))
+            .collect();
+
+        if arrow_columns.len() < 2 {
+            return false;
+        }
+
+        let first = arrow_columns[0];
+        arrow_columns.iter().all(|col| *col == first)
+    }
+
+    fn source_match_arrow_column(
+        &self,
+        pattern: &MatchPattern,
+        expr: &Expression,
+    ) -> Option<usize> {
+        if pattern.span.end >= expr.span.start || expr.span.start > self.source.len() {
+            return None;
+        }
+
+        let between = &self.source[pattern.span.end..expr.span.start];
+        let arrow_idx = between.windows(2).position(|pair| pair == b"=>")?;
+        let line_start = self.source[..pattern.span.start]
+            .iter()
+            .rposition(|byte| *byte == b'\n')
+            .map_or(0, |idx| idx + 1);
+
+        Some(pattern.span.end.saturating_sub(line_start) + arrow_idx)
+    }
+
+    fn source_spaces_before_match_arrow(
+        &self,
+        pattern: &MatchPattern,
+        expr: &Expression,
+    ) -> Option<usize> {
+        if pattern.span.end >= expr.span.start || expr.span.start > self.source.len() {
+            return None;
+        }
+
+        let between = &self.source[pattern.span.end..expr.span.start];
+        let arrow_idx = between.windows(2).position(|pair| pair == b"=>")?;
+        let before_arrow = &between[..arrow_idx];
+
+        Some(
+            before_arrow
+                .iter()
+                .rev()
+                .take_while(|byte| byte.is_ascii_whitespace())
+                .count(),
+        )
+    }
+
+    fn format_match_pattern_for_arm(&mut self, pattern: &MatchPattern, rhs: &Expression) {
+        if let Pattern::Expression(expr) = &pattern.pattern {
+            if self.should_unquote_identifier_safe_match_pattern(expr, rhs) {
+                let raw = self.get_span_content(expr.span);
+                let trimmed = raw.trim_ascii();
+                let inner = &trimmed[1..trimmed.len() - 1];
+                self.write_bytes(inner);
+                return;
+            }
+        }
+
+        self.format_match_pattern(pattern);
+    }
+
+    fn should_unquote_identifier_safe_match_pattern(
+        &self,
+        expr: &Expression,
+        rhs: &Expression,
+    ) -> bool {
+        if !matches!(expr.expr, Expr::String(_)) {
+            return false;
+        }
+
+        if matches!(
+            rhs.expr,
+            Expr::Subexpression(_) | Expr::Block(_) | Expr::Closure(_)
+        ) {
+            return false;
+        }
+
+        let rhs_raw = self.get_span_content(rhs.span);
+        let rhs_trimmed = rhs_raw.trim_ascii();
+        if rhs_trimmed.starts_with(b"(") && rhs_trimmed.ends_with(b")") {
+            return false;
+        }
+
+        let raw = self.get_span_content(expr.span);
+        let trimmed = raw.trim_ascii();
+        if trimmed.len() < 3 || trimmed.first() != Some(&b'"') || trimmed.last() != Some(&b'"') {
+            return false;
+        }
+
+        let inner = &trimmed[1..trimmed.len() - 1];
+        if inner.is_empty() || inner.contains(&b'\\') {
+            return false;
+        }
+
+        let first = inner[0];
+        if !(first.is_ascii_alphabetic() || first == b'_') {
+            return false;
+        }
+
+        if !inner
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+        {
+            return false;
+        }
+
+        true
     }
 }
