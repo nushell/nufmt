@@ -605,4 +605,9 @@ fixture_tests!(
         ground_truth_closure_argument_pipe_spacing_normalized_issue160,
         idempotency_closure_argument_pipe_spacing_normalized_issue160
     ),
+    (
+        "parens_stripping_boolean_exprs_issue162",
+        ground_truth_parens_stripping_boolean_exprs_issue162,
+        idempotency_parens_stripping_boolean_exprs_issue162
+    ),
 );
