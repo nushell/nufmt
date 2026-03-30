@@ -351,6 +351,10 @@ fn normalize_redundant_assignment_pipeline_parens(line: &str) -> String {
         return line.to_string();
     }
 
+    if rhs.contains(") and (") || rhs.contains(") or (") {
+        return line.to_string();
+    }
+
     let lhs = line[..eq_idx].trim_end();
     format!("{lhs} = {inner}")
 }
