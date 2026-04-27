@@ -4,8 +4,7 @@ use std::{fs, io::Write, path::PathBuf, process::Command};
 use tempfile::tempdir;
 
 const INVALID: &str = "# beginning of script comment
-
-let one = 1
+let   one   =   1
 ";
 const VALID: &str = "# beginning of script comment
 let one = 1

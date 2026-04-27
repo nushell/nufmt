@@ -610,4 +610,19 @@ fixture_tests!(
         ground_truth_parens_stripping_boolean_exprs_issue162,
         idempotency_parens_stripping_boolean_exprs_issue162
     ),
+    (
+        "empty_lines_between_comments_and_blocks_preserved_issue165",
+        ground_truth_empty_lines_between_comments_and_blocks_preserved_issue165,
+        idempotency_empty_lines_between_comments_and_blocks_preserved_issue165
+    ),
+    (
+        "alias_references_do_not_duplicate_rhs_issue167",
+        ground_truth_alias_references_do_not_duplicate_rhs_issue167,
+        idempotency_alias_references_do_not_duplicate_rhs_issue167
+    ),
+    (
+        "multiline_record_comments_preserved_issue168",
+        ground_truth_multiline_record_comments_preserved_issue168,
+        idempotency_multiline_record_comments_preserved_issue168
+    ),
 );
