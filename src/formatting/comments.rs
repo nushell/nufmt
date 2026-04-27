@@ -60,6 +60,55 @@ pub(super) fn extract_comments(source: &[u8]) -> Vec<(Span, Vec<u8>)> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 impl<'a> Formatter<'a> {
+    /// Return true when the source slice contains at least one blank line
+    /// (two newline boundaries with only whitespace between them).
+    fn source_has_blank_line(&self, start: usize, end: usize) -> bool {
+        if start >= end || end > self.source.len() {
+            return false;
+        }
+
+        let mut previous_newline: Option<usize> = None;
+        for (offset, byte) in self.source[start..end].iter().enumerate() {
+            if *byte != b'\n' {
+                continue;
+            }
+
+            if let Some(prev) = previous_newline {
+                let gap_start = start + prev + 1;
+                let gap_end = start + offset;
+                if self.source[gap_start..gap_end]
+                    .iter()
+                    .all(|b| b.is_ascii_whitespace())
+                {
+                    return true;
+                }
+            }
+
+            previous_newline = Some(offset);
+        }
+
+        false
+    }
+
+    fn ensure_trailing_newlines(&mut self, min_newlines: usize) {
+        if self.output.is_empty() || min_newlines == 0 {
+            return;
+        }
+
+        // Count contiguous trailing newlines so we can top up to the requested
+        // separation without over-emitting line breaks.
+        let existing = self
+            .output
+            .iter()
+            .rev()
+            .take_while(|&&byte| byte == b'\n')
+            .count();
+
+        for _ in existing..min_newlines {
+            self.newline();
+        }
+    }
+
     /// Emit all comments that fall between `last_pos` and `pos`, each on its
     /// own line with the current indentation.
     pub(super) fn write_comments_before(&mut self, pos: usize) {
@@ -75,24 +124,29 @@ impl<'a> Formatter<'a> {
 
         comments_to_write.sort_by_key(|(_, start, _)| *start);
 
+        let Some((_, first_start, _)) = comments_to_write.first() else {
+            return;
+        };
+
+        let leading_newlines = if self.source_has_blank_line(self.last_pos, *first_start) {
+            2
+        } else {
+            1
+        };
+        // Preserve spacing before a standalone comment group.
+        self.ensure_trailing_newlines(leading_newlines);
+
         let mut prev_comment_end: Option<usize> = None;
         for (idx, start, content) in &comments_to_write {
             self.written_comments[*idx] = true;
 
-            // Preserve blank lines between comment groups by checking
-            // whether the original source has a blank line between the
-            // previous comment and this one.
             if let Some(prev_end) = prev_comment_end {
-                let between = &self.source[prev_end..*start];
-                let newline_count = between.iter().filter(|&&b| b == b'\n').count();
-                if newline_count >= 2 {
-                    // There was at least one blank line in the source
-                    // between the two comments — emit one now.
-                    if !self.at_line_start {
-                        self.newline();
-                    }
-                    self.newline();
-                }
+                let between_newlines = if self.source_has_blank_line(prev_end, *start) {
+                    2
+                } else {
+                    1
+                };
+                self.ensure_trailing_newlines(between_newlines);
             }
 
             if !self.at_line_start {
@@ -107,6 +161,15 @@ impl<'a> Formatter<'a> {
             self.newline();
 
             prev_comment_end = Some(start + content.len());
+        }
+
+        if let Some(last_comment_end) = prev_comment_end {
+            self.last_pos = last_comment_end;
+            if self.source_has_blank_line(last_comment_end, pos) {
+                // Preserve a blank separator when comments are followed by a
+                // spaced-apart statement group.
+                self.ensure_trailing_newlines(2);
+            }
         }
     }
 

@@ -19,6 +19,7 @@ pub(super) const BLOCK_COMMANDS: &[&str] = &["for", "while", "loop", "module"];
 pub(super) const CONDITIONAL_COMMANDS: &[&str] = &["if", "try"];
 pub(super) const DEF_COMMANDS: &[&str] = &["def", "def-env", "export def"];
 pub(super) const EXTERN_COMMANDS: &[&str] = &["extern", "export extern"];
+pub(super) const ALIAS_COMMANDS: &[&str] = &["alias", "export alias"];
 pub(super) const LET_COMMANDS: &[&str] = &["let", "let-env", "mut", "const", "export const"];
 
 impl<'a> Formatter<'a> {
@@ -44,6 +45,11 @@ impl<'a> Formatter<'a> {
 
         if matches!(cmd_type, CommandType::Let) {
             self.format_let_call(call);
+            return;
+        }
+
+        if matches!(cmd_type, CommandType::Alias) {
+            self.format_alias_call(call);
             return;
         }
 
@@ -270,12 +276,90 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Format alias definitions while preserving the literal right-hand side.
+    ///
+    /// The parser resolves alias references semantically, which can expand the
+    /// RHS if it is re-rendered from the AST. Preserve the original source text
+    /// after `=` to keep alias definitions idempotent.
+    pub(super) fn format_alias_call(&mut self, call: &nu_protocol::ast::Call) {
+        let positional: Vec<&Expression> = call
+            .arguments
+            .iter()
+            .filter_map(|arg| match arg {
+                Argument::Positional(expr) | Argument::Unknown(expr) => Some(expr),
+                _ => None,
+            })
+            .collect();
+
+        let Some(name) = positional.first() else {
+            for arg in &call.arguments {
+                self.format_call_argument(arg, &CommandType::Alias);
+            }
+            return;
+        };
+
+        self.space();
+        self.format_expression(name);
+
+        let rhs_end = call
+            .arguments
+            .iter()
+            .filter_map(|arg| match arg {
+                Argument::Positional(expr) | Argument::Unknown(expr) | Argument::Spread(expr) => {
+                    Some(expr.span.end)
+                }
+                Argument::Named(named) => named
+                    .2
+                    .as_ref()
+                    .map_or(Some(named.0.span.end), |value| Some(value.span.end)),
+            })
+            .max();
+
+        let Some(rhs_end) = rhs_end else {
+            return;
+        };
+
+        if name.span.end >= rhs_end || rhs_end > self.source.len() {
+            self.format_regular_arguments(&call.arguments[1..]);
+            return;
+        }
+
+        let between = &self.source[name.span.end..rhs_end];
+        let Some(eq_offset) = between.iter().position(|byte| *byte == b'=') else {
+            self.format_regular_arguments(&call.arguments[1..]);
+            return;
+        };
+
+        let rhs_start = between[eq_offset + 1..]
+            .iter()
+            .position(|byte| !byte.is_ascii_whitespace())
+            .map(|offset| name.span.end + eq_offset + 1 + offset);
+
+        let Some(rhs_start) = rhs_start else {
+            self.write(" =");
+            return;
+        };
+
+        // Keep the exact user-authored alias RHS to avoid semantic expansion
+        // when aliases reference other aliases.
+        self.write(" = ");
+        self.write_bytes(&self.source[rhs_start..rhs_end]);
+    }
+
+    fn format_regular_arguments(&mut self, args: &[Argument]) {
+        for arg in args {
+            self.format_call_argument(arg, &CommandType::Regular);
+        }
+    }
+
     /// Classify a command name into a [`CommandType`] for formatting purposes.
     pub(super) fn classify_command(name: &str) -> CommandType {
         if DEF_COMMANDS.contains(&name) {
             CommandType::Def
         } else if EXTERN_COMMANDS.contains(&name) {
             CommandType::Extern
+        } else if ALIAS_COMMANDS.contains(&name) {
+            CommandType::Alias
         } else if CONDITIONAL_COMMANDS.contains(&name) {
             CommandType::Conditional
         } else if LET_COMMANDS.contains(&name) {
@@ -336,6 +420,7 @@ impl<'a> Formatter<'a> {
         match cmd_type {
             CommandType::Def => self.format_def_argument(positional),
             CommandType::Extern => self.format_extern_argument(positional),
+            CommandType::Alias => self.format_expression(positional),
             CommandType::Conditional => {
                 self.conditional_context_depth += 1;
                 self.format_block_or_expr(positional);

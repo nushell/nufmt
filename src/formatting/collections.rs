@@ -258,17 +258,30 @@ impl<'a> Formatter<'a> {
             self.write("{");
             self.newline();
             self.indent_level += 1;
+
+            let closing_brace_pos = span.end.saturating_sub(1);
             for item in items {
+                let item_start = match item {
+                    RecordItem::Pair(key, _) => key.span.start,
+                    RecordItem::Spread(_, expr) => expr.span.start,
+                };
+                self.write_comments_before(item_start);
                 self.write_indent();
                 self.format_record_item(item, preserve_compact);
+
                 // Capture inline comments on the same line as the record item.
                 let item_end = match item {
                     RecordItem::Pair(_, v) => v.span.end,
                     RecordItem::Spread(_, expr) => expr.span.end,
                 };
-                self.write_inline_comment_bounded(item_end, None);
+                self.write_inline_comment_bounded(item_end, Some(closing_brace_pos));
+                // Advance beyond the current item so inter-item comments are
+                // searched from the correct source window.
+                self.last_pos = self.last_pos.max(item_end);
                 self.newline();
             }
+
+            self.write_comments_before(closing_brace_pos);
             self.indent_level -= 1;
             self.write_indent();
             self.write("}");

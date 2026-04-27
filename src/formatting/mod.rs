@@ -80,6 +80,7 @@ pub(crate) struct Formatter<'a> {
 pub(crate) enum CommandType {
     Def,
     Extern,
+    Alias,
     Conditional,
     Let,
     Block,
