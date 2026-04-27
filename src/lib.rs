@@ -8,7 +8,7 @@ use formatting::{add_newline_at_end_of_file, format_inner};
 use log::debug;
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub mod config;
 pub mod config_error;
@@ -69,8 +69,8 @@ pub fn format_single_file(
     (file, FileDiagnostic::Reformatted)
 }
 
-/// Write bytes to a file
-fn write_file(path: &PathBuf, contents: &[u8]) -> std::io::Result<()> {
+/// Write bytes to a file.
+fn write_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     let mut writer = File::create(path)?;
     writer.write_all(contents)
 }

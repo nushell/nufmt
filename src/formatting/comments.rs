@@ -90,6 +90,8 @@ impl<'a> Formatter<'a> {
         false
     }
 
+    /// Ensure `self.output` ends with at least `min_newlines` newline bytes,
+    /// emitting additional ones as needed without over-indenting.
     fn ensure_trailing_newlines(&mut self, min_newlines: usize) {
         if self.output.is_empty() || min_newlines == 0 {
             return;

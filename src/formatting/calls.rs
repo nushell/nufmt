@@ -22,6 +22,26 @@ pub(super) const EXTERN_COMMANDS: &[&str] = &["extern", "export extern"];
 pub(super) const ALIAS_COMMANDS: &[&str] = &["alias", "export alias"];
 pub(super) const LET_COMMANDS: &[&str] = &["let", "let-env", "mut", "const", "export const"];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Free helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Return the end byte position of an [`Argument`]'s source span.
+///
+/// For named arguments the end is the value span's end when a value is
+/// present, or the flag span's end otherwise.
+fn argument_end_pos(arg: &Argument) -> usize {
+    match arg {
+        Argument::Positional(expr) | Argument::Unknown(expr) | Argument::Spread(expr) => {
+            expr.span.end
+        }
+        Argument::Named(named) => named
+            .2
+            .as_ref()
+            .map_or(named.0.span.end, |value| value.span.end),
+    }
+}
+
 impl<'a> Formatter<'a> {
     // ─────────────────────────────────────────────────────────────────────────
     // Call formatting
@@ -121,15 +141,7 @@ impl<'a> Formatter<'a> {
 
         let end = source_args
             .iter()
-            .map(|arg| match *arg {
-                Argument::Positional(expr) | Argument::Unknown(expr) | Argument::Spread(expr) => {
-                    expr.span.end
-                }
-                Argument::Named(named) => named
-                    .2
-                    .as_ref()
-                    .map_or(named.0.span.end, |value| value.span.end),
-            })
+            .map(|arg| argument_end_pos(arg))
             .max()
             .unwrap_or(call.head.end);
 
@@ -185,6 +197,8 @@ impl<'a> Formatter<'a> {
         self.write(")");
     }
 
+    /// Return the raw source text at the call's head span, or `None` if the
+    /// span is invalid.
     fn call_head_text(&self, call: &nu_protocol::ast::Call) -> Option<String> {
         if call.head.end <= call.head.start || call.head.end > self.source.len() {
             return None;
@@ -197,25 +211,21 @@ impl<'a> Formatter<'a> {
         )
     }
 
+    /// Return `true` if the call's head text is an alias-declaration keyword
+    /// (e.g. `alias` or `export alias`).
     fn call_head_matches_alias_decl_command(&self, call: &nu_protocol::ast::Call) -> bool {
         self.call_head_text(call)
             .as_deref()
             .is_some_and(|head| ALIAS_COMMANDS.contains(&head))
     }
 
+    /// Format an invocation of an alias (i.e. a call *using* an alias rather
+    /// than declaring one).  Preserves the exact source text after the head.
     fn format_alias_invocation_call(&mut self, call: &nu_protocol::ast::Call) {
         let call_end = call
             .arguments
             .iter()
-            .map(|arg| match arg {
-                Argument::Positional(expr) | Argument::Unknown(expr) | Argument::Spread(expr) => {
-                    expr.span.end
-                }
-                Argument::Named(named) => named
-                    .2
-                    .as_ref()
-                    .map_or(named.0.span.end, |value| value.span.end),
-            })
+            .map(argument_end_pos)
             .max()
             .unwrap_or(call.head.end)
             .min(self.source.len());
@@ -225,6 +235,9 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Return `true` if `arg`'s source span starts at or after the call head,
+    /// meaning the argument was written by the user rather than injected by the
+    /// parser (e.g. default values or alias expansions).
     fn argument_belongs_to_call_source(
         &self,
         call: &nu_protocol::ast::Call,
@@ -398,19 +411,7 @@ impl<'a> Formatter<'a> {
         self.space();
         self.format_expression(name);
 
-        let rhs_end = call
-            .arguments
-            .iter()
-            .filter_map(|arg| match arg {
-                Argument::Positional(expr) | Argument::Unknown(expr) | Argument::Spread(expr) => {
-                    Some(expr.span.end)
-                }
-                Argument::Named(named) => named
-                    .2
-                    .as_ref()
-                    .map_or(Some(named.0.span.end), |value| Some(value.span.end)),
-            })
-            .max();
+        let rhs_end = call.arguments.iter().map(argument_end_pos).max();
 
         let Some(rhs_end) = rhs_end else {
             return;
@@ -443,6 +444,7 @@ impl<'a> Formatter<'a> {
         self.write_bytes(&self.source[rhs_start..rhs_end]);
     }
 
+    /// Format a slice of arguments using the `Regular` command strategy.
     fn format_regular_arguments(&mut self, args: &[Argument]) {
         for arg in args {
             self.format_call_argument(arg, &CommandType::Regular);
@@ -512,6 +514,7 @@ impl<'a> Formatter<'a> {
 
     /// Format a positional argument, using the command type to pick the
     /// right strategy.
+    /// Format a positional argument, choosing a strategy based on `cmd_type`.
     fn format_positional_argument(&mut self, positional: &Expression, cmd_type: &CommandType) {
         self.space();
         match cmd_type {
@@ -540,6 +543,7 @@ impl<'a> Formatter<'a> {
     }
 
     /// Format an argument for `def` commands (name, signature, body).
+    /// Format an argument for `def` commands (name string, signature, or body).
     fn format_def_argument(&mut self, positional: &Expression) {
         match &positional.expr {
             Expr::String(_) => self.format_expression(positional),
@@ -559,6 +563,8 @@ impl<'a> Formatter<'a> {
     }
 
     /// Format an argument for `extern` commands (preserve original signature).
+    /// Format an argument for `extern` commands, preserving the raw source
+    /// for signature nodes so that extern declarations stay idempotent.
     fn format_extern_argument(&mut self, positional: &Expression) {
         match &positional.expr {
             Expr::Signature(_) => self.write_expr_span(positional),
@@ -566,6 +572,7 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Format an argument for `let`/`mut`/`const` commands.
     /// Format an argument for `let`/`mut`/`const` commands.
     fn format_let_argument(&mut self, positional: &Expression) {
         match &positional.expr {
@@ -662,6 +669,9 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Return `true` if the external call's source tail ends with exactly the
+    /// same token sequence as the last N parsed `args`, which indicates that the
+    /// parser prepended alias-expanded tokens before the user-written suffix.
     fn external_call_tail_matches_arg_suffix(
         &self,
         tail_start: usize,
@@ -691,6 +701,8 @@ impl<'a> Formatter<'a> {
         arg_tokens[suffix_start..] == source_tokens
     }
 
+    /// Split `bytes` into whitespace-delimited word tokens, honouring
+    /// single- and double-quoted strings.
     fn tokenize_source_words(&self, bytes: &[u8]) -> Vec<Vec<u8>> {
         let mut tokens = Vec::new();
         let mut current = Vec::new();
@@ -734,6 +746,9 @@ impl<'a> Formatter<'a> {
         tokens
     }
 
+    /// Attempt to emit `rhs` without its outer parentheses when they are
+    /// redundant around a single pipeline (e.g. `let x = (a | b)` → `let x = a | b`).
+    /// Returns `true` if the rewrite was applied.
     fn try_write_redundant_parenthesized_pipeline_rhs(&mut self, rhs: &Expression) -> bool {
         let raw = self.get_span_content(rhs.span);
         let trimmed = raw.trim_ascii();
@@ -761,6 +776,8 @@ impl<'a> Formatter<'a> {
         true
     }
 
+    /// Attempt to emit an empty block/closure argument as `{}` rather than
+    /// going through the normal block formatter.  Returns `true` on success.
     fn try_format_empty_braced_regular_argument(&mut self, positional: &Expression) -> bool {
         if !matches!(positional.expr, Expr::Block(_) | Expr::Closure(_)) {
             return false;
@@ -792,6 +809,9 @@ impl<'a> Formatter<'a> {
         true
     }
 
+    /// Attempt to normalise a span that looks like a closure (`{ |p| body }`).
+    /// Returns `true` if the span was handled, `false` if the caller should
+    /// fall back to the regular expression formatter.
     fn try_format_closure_like_span(&mut self, span: nu_protocol::Span) -> bool {
         if span.end <= span.start + 2 || span.end > self.source.len() {
             return false;

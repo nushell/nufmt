@@ -124,7 +124,7 @@ fn load_config(cli_config: Option<PathBuf>) -> Result<Config, ConfigError> {
     }
 }
 
-fn read_config(path: &PathBuf) -> Result<Config, ConfigError> {
+fn read_config(path: &Path) -> Result<Config, ConfigError> {
     let content = std::fs::read_to_string(path)?;
     let content_nuon = nuon::from_nuon(&content, None)?;
     Config::try_from(content_nuon)

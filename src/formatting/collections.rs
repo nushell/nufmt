@@ -167,23 +167,8 @@ impl<'a> Formatter<'a> {
         next: &ListItem,
         uses_commas: bool,
     ) -> bool {
-        let mut probe = Formatter::new(
-            self.source,
-            self.working_set,
-            self.config,
-            self.allow_compact_recovered_record_style,
-        );
-        probe.format_list_item(current);
-        let left_len = probe.output.len();
-
-        let mut probe = Formatter::new(
-            self.source,
-            self.working_set,
-            self.config,
-            self.allow_compact_recovered_record_style,
-        );
-        probe.format_list_item(next);
-        let right_len = probe.output.len();
+        let left_len = self.probe_format(|p| p.format_list_item(current)).len();
+        let right_len = self.probe_format(|p| p.format_list_item(next)).len();
 
         let separator_len = if uses_commas { 2 } else { 1 };
         let indent_len = self.config.indent * self.indent_level;
@@ -475,18 +460,13 @@ impl<'a> Formatter<'a> {
     }
 
     fn render_match_arm_lhs(&self, pattern: &MatchPattern, rhs: &Expression) -> Vec<u8> {
-        let mut probe = Formatter::new(
-            self.source,
-            self.working_set,
-            self.config,
-            self.allow_compact_recovered_record_style,
-        );
-        probe.format_match_pattern_for_arm(pattern, rhs);
-        if let Some(guard) = &pattern.guard {
-            probe.write(" if ");
-            probe.format_expression(guard);
-        }
-        probe.output
+        self.probe_format(|probe| {
+            probe.format_match_pattern_for_arm(pattern, rhs);
+            if let Some(guard) = &pattern.guard {
+                probe.write(" if ");
+                probe.format_expression(guard);
+            }
+        })
     }
 
     fn should_preserve_match_arm_alignment(&self, matches: &[(MatchPattern, Expression)]) -> bool {

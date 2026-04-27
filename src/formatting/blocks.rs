@@ -110,6 +110,8 @@ impl<'a> Formatter<'a> {
     }
 
     /// Whether a pipeline is a top-level `use` command.
+    /// Return `true` if the pipeline's first element is a `use` or
+    /// `export use` command.
     fn is_use_pipeline(&self, pipeline: &nu_protocol::ast::Pipeline) -> bool {
         matches!(
             self.pipeline_decl_name(pipeline),
@@ -117,6 +119,8 @@ impl<'a> Formatter<'a> {
         )
     }
 
+    /// Return the declaration name of the first call in `pipeline`, or
+    /// `None` if the pipeline doesn't start with a call.
     fn pipeline_decl_name(&self, pipeline: &nu_protocol::ast::Pipeline) -> Option<&str> {
         let first = pipeline.elements.first()?;
         let Expr::Call(call) = &first.expr.expr else {
@@ -126,6 +130,8 @@ impl<'a> Formatter<'a> {
         Some(self.working_set.get_decl(call.decl_id).name())
     }
 
+    /// Classify a pipeline as a variable or constant `let` family, or `None`
+    /// for unrelated pipelines.
     fn pipeline_let_family(&self, pipeline: &nu_protocol::ast::Pipeline) -> Option<LetFamily> {
         match self.pipeline_decl_name(pipeline)? {
             "let" | "let-env" | "mut" => Some(LetFamily::Variable),
@@ -134,6 +140,8 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Return `true` if there is at least one blank line in the source between
+    /// the end of `current` and the start of `next`.
     fn has_blank_line_between_pipelines(
         &self,
         current: &nu_protocol::ast::Pipeline,
@@ -174,6 +182,8 @@ impl<'a> Formatter<'a> {
         false
     }
 
+    /// Return `true` if there is a `#` comment character in the source
+    /// between the end of `current` and the start of `next`.
     fn has_comment_between_pipelines(
         &self,
         current: &nu_protocol::ast::Pipeline,
@@ -191,6 +201,8 @@ impl<'a> Formatter<'a> {
         current_end < next_start && self.source[current_end..next_start].contains(&b'#')
     }
 
+    /// Return `true` if the call span of `pipeline`'s first element contains
+    /// a newline, meaning the pipeline was originally written multiline.
     fn pipeline_call_span_has_newline(&self, pipeline: &nu_protocol::ast::Pipeline) -> bool {
         let Some(first) = pipeline.elements.first() else {
             return false;
@@ -376,6 +388,8 @@ impl<'a> Formatter<'a> {
 
     /// Detect whether a braced block looks like a compact record literal
     /// (e.g. `{name:"Alice"}`), which should preserve its tight formatting.
+    /// Return `true` if the span looks like a compact record literal
+    /// (e.g. `{name:"Alice"}`) that should not have spaces injected.
     fn block_expression_looks_like_compact_record(&self, span: Span) -> bool {
         if span.end <= span.start + 1 || span.end > self.source.len() {
             return false;
@@ -436,6 +450,8 @@ impl<'a> Formatter<'a> {
         estimated_inline_len > self.config.line_length
     }
 
+    /// Return `true` if `expr` contains a nested pipeline (e.g. a
+    /// subexpression or closure that has multiple elements).
     fn expr_contains_nested_pipeline(&self, expr: &Expression) -> bool {
         match &expr.expr {
             Expr::Subexpression(block_id) | Expr::Block(block_id) | Expr::Closure(block_id) => {
@@ -541,6 +557,8 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Emit closure parameter bytes in normalised form (trimmed, comma-space
+    /// separated, with `: type` preserved).
     fn write_normalized_closure_params(&mut self, params: &[u8]) {
         let mut params_iter = params.split(|&b| b == b',').peekable();
 
@@ -563,6 +581,8 @@ impl<'a> Formatter<'a> {
 
     /// Normalise closure-like blocks parsed as regular block expressions,
     /// such as `{ |line| $line }`.
+    /// Attempt to format `span` as a space-prefixed closure (`{ |params| body }`).
+    /// Returns `true` if the span was handled this way.
     fn try_format_pipe_closure_block_from_span(&mut self, span: Span) -> bool {
         if span.end <= span.start + 2 || span.end > self.source.len() {
             return false;
