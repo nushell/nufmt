@@ -78,16 +78,28 @@ pub(crate) struct Formatter<'a> {
 /// Command types for formatting purposes.
 #[derive(Debug, Clone)]
 pub(crate) enum CommandType {
+    /// `def` / `def-env` / `export def` — function definition.
     Def,
+    /// `extern` / `export extern` — extern declaration.
     Extern,
+    /// `alias` / `export alias` — alias declaration.
     Alias,
+    /// `if` / `try` — conditional with block arguments.
     Conditional,
+    /// `let` / `let-env` / `mut` / `const` / `export const` — variable binding.
     Let,
+    /// `for` / `while` / `loop` / `module` — block-taking loop/scope commands.
     Block,
+    /// Any other command.
     Regular,
 }
 
 impl<'a> Formatter<'a> {
+    /// Create a new `Formatter` for the given source bytes.
+    ///
+    /// `allow_compact_recovered_record_style` enables a special compact
+    /// inline-record style used when formatting repaired malformed records
+    /// (e.g. `{ name:Alice, age:30 }` from a missing-comma repair pass).
     fn new(
         source: &'a [u8],
         working_set: &'a StateWorkingSet<'a>,
@@ -198,19 +210,39 @@ impl<'a> Formatter<'a> {
     fn finish(self) -> Vec<u8> {
         self.output
     }
+
+    /// Run a formatting closure in an isolated probe formatter and return the
+    /// output bytes without affecting `self`.
+    ///
+    /// Useful for measuring the rendered length of an expression before
+    /// deciding whether to use inline or multiline layout.
+    pub(crate) fn probe_format<F>(&self, f: F) -> Vec<u8>
+    where
+        F: FnOnce(&mut Formatter<'_>),
+    {
+        let mut probe = Formatter::new(
+            self.source,
+            self.working_set,
+            self.config,
+            self.allow_compact_recovered_record_style,
+        );
+        f(&mut probe);
+        probe.output
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Format an array of bytes.
-///
-/// Reading the file gives you a list of bytes.
+/// Format raw Nushell source bytes into their canonical form.
 pub(crate) fn format_inner(contents: &[u8], config: &Config) -> Result<Vec<u8>, FormatError> {
     format_inner_with_options(contents, config)
 }
 
+/// Core formatting pass: parse, optionally repair, then format.
+///
+/// Called recursively after a repair pass when parse errors are detected.
 fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>, FormatError> {
     let engine_state = get_engine_state();
     let mut working_set = StateWorkingSet::new(&engine_state);
@@ -294,6 +326,9 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
     Ok(postprocess_formatted_output(formatter.finish()))
 }
 
+/// Apply post-formatting fixups that are easier to handle on the rendered
+/// text than in the AST walk (e.g. collapsing redundant assignment-pipeline
+/// parentheses and normalising closure `{|` spacing).
 fn postprocess_formatted_output(output: Vec<u8>) -> Vec<u8> {
     let mut changed = false;
     let text = String::from_utf8_lossy(&output);
@@ -327,6 +362,8 @@ fn postprocess_formatted_output(output: Vec<u8>) -> Vec<u8> {
     }
 }
 
+/// Remove redundant outer parentheses around a pipeline on the RHS of a
+/// `let`/`mut`/`const` assignment (e.g. `let x = (a | b)` → `let x = a | b`).
 fn normalize_redundant_assignment_pipeline_parens(line: &str) -> String {
     let trimmed_start = line.trim_start();
     let is_let_like = trimmed_start.starts_with("let ")
@@ -360,6 +397,8 @@ fn normalize_redundant_assignment_pipeline_parens(line: &str) -> String {
     format!("{lhs} = {inner}")
 }
 
+/// Remove stray spaces between `{` and `|` in closure heads
+/// (e.g. `{ |p|` → `{|p|`).
 fn normalize_closure_pipe_spacing(line: &str) -> String {
     let bytes = line.as_bytes();
     let mut result = Vec::with_capacity(bytes.len());

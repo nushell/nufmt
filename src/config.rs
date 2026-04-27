@@ -8,10 +8,19 @@ use nu_protocol::Value;
 /// Configuration options for the formatter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
+    /// Number of spaces per indentation level (default: 4).
     pub indent: usize,
+    /// Maximum line length before wrapping (default: 80).
     pub line_length: usize,
+    /// Number of blank lines to insert between top-level definitions (default: 1).
     pub margin: usize,
+    /// Whether `margin` was set explicitly in the config file.
+    ///
+    /// When `false`, the formatter uses heuristics (e.g. preserving the
+    /// blank-line structure already present in the source) instead of
+    /// enforcing a fixed count.
     pub margin_is_explicit: bool,
+    /// Glob patterns for files to exclude from formatting.
     pub excludes: Vec<String>,
 }
 
@@ -28,6 +37,10 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Create a `Config` with explicitly specified values.
+    ///
+    /// All three arguments are mandatory; `excludes` defaults to empty and
+    /// `margin_is_explicit` is set to `true`.
     pub fn new(tab_spaces: usize, max_width: usize, margin: usize) -> Self {
         Self {
             indent: tab_spaces,
@@ -70,49 +83,46 @@ impl TryFrom<Value> for Config {
     }
 }
 
-/// Parse a value as a positive integer (usize)
+/// Parse a value as an integer that must be `>= min_value`.
+///
+/// `expected_desc` is the human-readable constraint shown in error messages
+/// (e.g. `"a positive number"`, `"a non-negative number"`).
+fn parse_int_at_least(
+    key: &str,
+    value: &Value,
+    min_value: i64,
+    expected_desc: &'static str,
+) -> Result<usize, ConfigError> {
+    let Value::Int { val, .. } = value else {
+        return Err(ConfigError::InvalidOptionType(
+            key.to_string(),
+            value.get_type().to_string(),
+            "number",
+        ));
+    };
+
+    if *val < min_value {
+        return Err(ConfigError::InvalidOptionValue(
+            key.to_string(),
+            val.to_string(),
+            expected_desc,
+        ));
+    }
+
+    Ok(*val as usize)
+}
+
+/// Parse a value as a positive integer (must be `>= 1`).
 fn parse_positive_int(key: &str, value: &Value) -> Result<usize, ConfigError> {
-    let Value::Int { val, .. } = value else {
-        return Err(ConfigError::InvalidOptionType(
-            key.to_string(),
-            value.get_type().to_string(),
-            "number",
-        ));
-    };
-
-    if *val <= 0 {
-        return Err(ConfigError::InvalidOptionValue(
-            key.to_string(),
-            val.to_string(),
-            "a positive number",
-        ));
-    }
-
-    Ok(*val as usize)
+    parse_int_at_least(key, value, 1, "a positive number")
 }
 
-/// Parse a value as a non-negative integer (usize)
+/// Parse a value as a non-negative integer (must be `>= 0`).
 fn parse_non_negative_int(key: &str, value: &Value) -> Result<usize, ConfigError> {
-    let Value::Int { val, .. } = value else {
-        return Err(ConfigError::InvalidOptionType(
-            key.to_string(),
-            value.get_type().to_string(),
-            "number",
-        ));
-    };
-
-    if *val < 0 {
-        return Err(ConfigError::InvalidOptionValue(
-            key.to_string(),
-            val.to_string(),
-            "a non-negative number",
-        ));
-    }
-
-    Ok(*val as usize)
+    parse_int_at_least(key, value, 0, "a non-negative number")
 }
 
-/// Parse a value as a list of strings
+/// Parse a `Value` as a `list<string>` and return the strings.
 fn parse_string_list(value: &Value) -> Result<Vec<String>, ConfigError> {
     let Value::List { vals, .. } = value else {
         return Err(ConfigError::InvalidOptionType(

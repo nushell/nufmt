@@ -317,6 +317,8 @@ impl<'a> Formatter<'a> {
         self.inline_comment_upper_bound = saved_bound;
     }
 
+    /// Return `true` if the token immediately before `span_start` (ignoring
+    /// whitespace) is the `not` keyword.
     fn subexpr_preceded_by_not(&self, span_start: usize) -> bool {
         if span_start == 0 || span_start > self.source.len() {
             return false;
@@ -356,6 +358,8 @@ impl<'a> Formatter<'a> {
 
     /// Best-effort normalisation for a narrow garbage case:
     /// `((head) | tail)` -> `head | tail`.
+    /// Attempt to simplify a `((head) | tail)` garbage node to `head | tail`.
+    /// Returns `true` if the rewrite was applied.
     fn try_write_redundant_pipeline_subexpr_without_outer_parens(
         &mut self,
         expr: &Expression,
@@ -397,6 +401,8 @@ impl<'a> Formatter<'a> {
         true
     }
 
+    /// Attempt to normalise a garbage node that looks like a `{ |p| body }`
+    /// closure with incorrect spacing.  Returns `true` on success.
     fn try_write_spacing_normalized_pipe_closure_garbage(&mut self, expr: &Expression) -> bool {
         let raw = self.get_span_content(expr.span);
         let trimmed = raw.trim_ascii();
