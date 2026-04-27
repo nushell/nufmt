@@ -73,7 +73,13 @@ impl<'a> Formatter<'a> {
             Expr::BinaryOp(lhs, op, rhs) => self.format_binary_op(lhs, op, rhs),
             Expr::UnaryNot(inner) => {
                 self.write("not ");
-                self.format_expression(inner);
+                if let Expr::Subexpression(block_id) = &inner.expr {
+                    self.preserve_subexpr_parens_depth += 1;
+                    self.format_subexpression(*block_id, inner.span);
+                    self.preserve_subexpr_parens_depth -= 1;
+                } else {
+                    self.format_expression(inner);
+                }
             }
 
             Expr::Block(block_id) => {
@@ -249,7 +255,7 @@ impl<'a> Formatter<'a> {
 
             let can_drop_parens =
                 block.pipelines.len() == 1 && block.pipelines[0].elements.len() == 1;
-            if can_drop_parens {
+            if can_drop_parens && !self.subexpr_preceded_by_not(span.start) {
                 self.format_block(block);
                 return;
             }
@@ -309,6 +315,26 @@ impl<'a> Formatter<'a> {
         self.write(")");
 
         self.inline_comment_upper_bound = saved_bound;
+    }
+
+    fn subexpr_preceded_by_not(&self, span_start: usize) -> bool {
+        if span_start == 0 || span_start > self.source.len() {
+            return false;
+        }
+
+        let mut cursor = span_start;
+        while cursor > 0 && self.source[cursor - 1].is_ascii_whitespace() {
+            cursor -= 1;
+        }
+        let word_end = cursor;
+
+        while cursor > 0
+            && (self.source[cursor - 1].is_ascii_alphabetic() || self.source[cursor - 1] == b'-')
+        {
+            cursor -= 1;
+        }
+
+        self.source[cursor..word_end].eq_ignore_ascii_case(b"not")
     }
 
     /// Format an expression that could be a block or a regular expression.

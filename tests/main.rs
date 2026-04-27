@@ -406,3 +406,91 @@ fn mixed_line_string_literal_and_pipeline_repair_are_safe_issue145() {
         "pipeline repair should still apply to executable code: {stdout}"
     );
 }
+
+#[test]
+fn margin_one_enforces_one_blank_line_and_margin_zero_is_supported_issue169() {
+    let dir = tempdir().unwrap();
+    let config_margin_one = dir.path().join("nufmt-margin-one.nuon");
+    let config_margin_zero = dir.path().join("nufmt-margin-zero.nuon");
+    let margin_one_file = dir.path().join("margin_one_issue169.nu");
+    let margin_zero_file = dir.path().join("margin_zero_issue169.nu");
+
+    fs::write(
+        &config_margin_one,
+        "{\n    indent: 4\n    line_length: 80\n    margin: 1\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        &config_margin_zero,
+        "{\n    indent: 4\n    line_length: 80\n    margin: 0\n}\n",
+    )
+    .unwrap();
+
+    fs::write(&margin_one_file, "echo one\necho two\n").unwrap();
+    fs::write(&margin_zero_file, "echo one\necho two\n").unwrap();
+
+    let margin_one_output = Command::new(get_test_binary())
+        .arg("--config")
+        .arg(config_margin_one.to_str().unwrap())
+        .arg(margin_one_file.to_str().unwrap())
+        .output()
+        .unwrap();
+
+    assert_eq!(margin_one_output.status.code(), Some(0));
+    let margin_one_content = fs::read_to_string(&margin_one_file).unwrap();
+    assert_eq!(margin_one_content, "echo one\n\necho two\n");
+
+    let margin_zero_output = Command::new(get_test_binary())
+        .arg("--config")
+        .arg(config_margin_zero.to_str().unwrap())
+        .arg(margin_zero_file.to_str().unwrap())
+        .output()
+        .unwrap();
+
+    assert_eq!(margin_zero_output.status.code(), Some(0));
+    let margin_zero_content = fs::read_to_string(&margin_zero_file).unwrap();
+    assert_eq!(margin_zero_content, "echo one\necho two\n");
+}
+
+#[test]
+fn alias_invocation_in_def_does_not_duplicate_expanded_rhs_issue171() {
+    let output = run_stdin(
+        "alias ez = eza --git --git-repos --long --header --all --time-style=relative --group\n\
+def ezt [level: int = 2] {\n\
+    ez --git --git-repos --long --header --time-style=relative --group --tree --level $level\n\
+}\n",
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        stdout.contains(
+            "ez --git --git-repos --long --header --time-style=relative --group --tree --level $level"
+        ),
+        "expected explicit alias invocation args to be preserved: {stdout}"
+    );
+    assert!(
+        !stdout.contains("--group --git --git-repos --long --header --time-style=relative --group"),
+        "unexpected duplicated alias expansion detected: {stdout}"
+    );
+}
+
+#[test]
+fn unary_not_condition_keeps_required_subexpression_parens_issue172() {
+    let output = run_stdin(
+        "def has [cmd: string] {\n\
+    which $cmd | is-not-empty\n\
+}\n\
+\n\
+if not (has systemctl) {\n\
+    print ok\n\
+}\n",
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        stdout.contains("if not (has systemctl) {"),
+        "parenthesized condition should not be rewritten into invalid syntax: {stdout}"
+    );
+}
