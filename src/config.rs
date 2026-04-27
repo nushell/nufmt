@@ -11,6 +11,7 @@ pub struct Config {
     pub indent: usize,
     pub line_length: usize,
     pub margin: usize,
+    pub margin_is_explicit: bool,
     pub excludes: Vec<String>,
 }
 
@@ -20,6 +21,7 @@ impl Default for Config {
             indent: 4,
             line_length: 80,
             margin: 1,
+            margin_is_explicit: false,
             excludes: Vec::new(),
         }
     }
@@ -31,6 +33,7 @@ impl Config {
             indent: tab_spaces,
             line_length: max_width,
             margin,
+            margin_is_explicit: true,
             excludes: Vec::new(),
         }
     }
@@ -54,7 +57,10 @@ impl TryFrom<Value> for Config {
             match key.as_str() {
                 "indent" => config.indent = parse_positive_int(key, value)?,
                 "line_length" => config.line_length = parse_positive_int(key, value)?,
-                "margin" => config.margin = parse_positive_int(key, value)?,
+                "margin" => {
+                    config.margin = parse_non_negative_int(key, value)?;
+                    config.margin_is_explicit = true;
+                }
                 "exclude" => config.excludes = parse_string_list(value)?,
                 unknown => return Err(ConfigError::UnknownOption(unknown.to_string())),
             }
@@ -79,6 +85,27 @@ fn parse_positive_int(key: &str, value: &Value) -> Result<usize, ConfigError> {
             key.to_string(),
             val.to_string(),
             "a positive number",
+        ));
+    }
+
+    Ok(*val as usize)
+}
+
+/// Parse a value as a non-negative integer (usize)
+fn parse_non_negative_int(key: &str, value: &Value) -> Result<usize, ConfigError> {
+    let Value::Int { val, .. } = value else {
+        return Err(ConfigError::InvalidOptionType(
+            key.to_string(),
+            value.get_type().to_string(),
+            "number",
+        ));
+    };
+
+    if *val < 0 {
+        return Err(ConfigError::InvalidOptionValue(
+            key.to_string(),
+            val.to_string(),
+            "a non-negative number",
         ));
     }
 

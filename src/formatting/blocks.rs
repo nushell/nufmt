@@ -59,8 +59,8 @@ impl<'a> Formatter<'a> {
 
     /// Decide how many newline characters to emit between adjacent pipelines.
     ///
-    /// At top-level this respects `margin` while preserving author-intent groups
-    /// for `margin = 1`, and keeps adjacent `use` statements compact.
+    /// At top-level this respects `margin` while keeping adjacent `use`
+    /// statements and same-family `let`/`const` groups compact.
     fn separator_newlines_between_top_level_pipelines(
         &self,
         current: &nu_protocol::ast::Pipeline,
@@ -98,7 +98,7 @@ impl<'a> Formatter<'a> {
             }
         }
 
-        if self.config.margin == 1 {
+        if self.config.margin == 1 && !self.config.margin_is_explicit {
             if self.has_blank_line_between_pipelines(current, next) {
                 return 2;
             }
