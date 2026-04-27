@@ -32,6 +32,7 @@ impl<'a> Formatter<'a> {
         let decl = self.working_set.get_decl(call.decl_id);
         let decl_name = decl.name();
         let cmd_type = Self::classify_command(decl_name);
+        let head_text = self.call_head_text(call);
 
         if self.should_wrap_call_multiline(call, &cmd_type) {
             self.format_wrapped_call(call);
@@ -49,7 +50,18 @@ impl<'a> Formatter<'a> {
         }
 
         if matches!(cmd_type, CommandType::Alias) {
-            self.format_alias_call(call);
+            if self.call_head_matches_alias_decl_command(call) {
+                self.format_alias_call(call);
+            } else {
+                self.format_alias_invocation_call(call);
+            }
+            return;
+        }
+
+        if matches!(cmd_type, CommandType::Regular)
+            && head_text.as_deref().is_some_and(|head| head != decl_name)
+        {
+            self.format_alias_invocation_call(call);
             return;
         }
 
@@ -58,8 +70,23 @@ impl<'a> Formatter<'a> {
             return;
         }
 
+        let preserve_not_subexpr_parens = self.conditional_context_depth > 0 && decl_name == "not";
+
+        if preserve_not_subexpr_parens {
+            self.preserve_subexpr_parens_depth += 1;
+        }
+
         for arg in &call.arguments {
+            if matches!(cmd_type, CommandType::Regular)
+                && !self.argument_belongs_to_call_source(call, arg)
+            {
+                continue;
+            }
             self.format_call_argument(arg, &cmd_type);
+        }
+
+        if preserve_not_subexpr_parens {
+            self.preserve_subexpr_parens_depth -= 1;
         }
     }
 
@@ -69,23 +96,32 @@ impl<'a> Formatter<'a> {
         call: &nu_protocol::ast::Call,
         cmd_type: &CommandType,
     ) -> bool {
-        if !matches!(cmd_type, CommandType::Regular) || call.arguments.len() < 3 {
+        if !matches!(cmd_type, CommandType::Regular) {
             return false;
         }
 
-        if !call.arguments.iter().all(|arg| {
+        let source_args: Vec<&Argument> = call
+            .arguments
+            .iter()
+            .filter(|arg| self.argument_belongs_to_call_source(call, arg))
+            .collect();
+
+        if source_args.len() < 3 {
+            return false;
+        }
+
+        if !source_args.iter().all(|arg| {
             matches!(
-                arg,
+                *arg,
                 Argument::Positional(_) | Argument::Unknown(_) | Argument::Spread(_)
             )
         }) {
             return false;
         }
 
-        let end = call
-            .arguments
+        let end = source_args
             .iter()
-            .map(|arg| match arg {
+            .map(|arg| match *arg {
                 Argument::Positional(expr) | Argument::Unknown(expr) | Argument::Spread(expr) => {
                     expr.span.end
                 }
@@ -113,6 +149,12 @@ impl<'a> Formatter<'a> {
     ///
     /// `(cmd\n  arg1\n  arg2\n)`
     fn format_wrapped_call(&mut self, call: &nu_protocol::ast::Call) {
+        let source_args: Vec<&Argument> = call
+            .arguments
+            .iter()
+            .filter(|arg| self.argument_belongs_to_call_source(call, arg))
+            .collect();
+
         self.write("(");
         if call.head.end != 0 {
             self.write_span(call.head);
@@ -120,7 +162,7 @@ impl<'a> Formatter<'a> {
         self.newline();
         self.indent_level += 1;
 
-        for arg in &call.arguments {
+        for arg in source_args {
             self.write_indent();
             match arg {
                 Argument::Positional(expr) | Argument::Unknown(expr) => {
@@ -141,6 +183,61 @@ impl<'a> Formatter<'a> {
         self.indent_level -= 1;
         self.write_indent();
         self.write(")");
+    }
+
+    fn call_head_text(&self, call: &nu_protocol::ast::Call) -> Option<String> {
+        if call.head.end <= call.head.start || call.head.end > self.source.len() {
+            return None;
+        }
+
+        Some(
+            String::from_utf8_lossy(&self.source[call.head.start..call.head.end])
+                .trim()
+                .to_string(),
+        )
+    }
+
+    fn call_head_matches_alias_decl_command(&self, call: &nu_protocol::ast::Call) -> bool {
+        self.call_head_text(call)
+            .as_deref()
+            .is_some_and(|head| ALIAS_COMMANDS.contains(&head))
+    }
+
+    fn format_alias_invocation_call(&mut self, call: &nu_protocol::ast::Call) {
+        let call_end = call
+            .arguments
+            .iter()
+            .map(|arg| match arg {
+                Argument::Positional(expr) | Argument::Unknown(expr) | Argument::Spread(expr) => {
+                    expr.span.end
+                }
+                Argument::Named(named) => named
+                    .2
+                    .as_ref()
+                    .map_or(named.0.span.end, |value| value.span.end),
+            })
+            .max()
+            .unwrap_or(call.head.end)
+            .min(self.source.len());
+
+        if call.head.end < call_end {
+            self.write_bytes(&self.source[call.head.end..call_end]);
+        }
+    }
+
+    fn argument_belongs_to_call_source(
+        &self,
+        call: &nu_protocol::ast::Call,
+        arg: &Argument,
+    ) -> bool {
+        let span_start = match arg {
+            Argument::Positional(expr) | Argument::Unknown(expr) | Argument::Spread(expr) => {
+                expr.span.start
+            }
+            Argument::Named(named) => named.0.span.start,
+        };
+
+        span_start >= call.head.start
     }
 
     /// Format `let`/`mut`/`const` calls while preserving explicit type annotations.
@@ -431,6 +528,10 @@ impl<'a> Formatter<'a> {
             }
             CommandType::Let => self.format_let_argument(positional),
             CommandType::Regular => {
+                if self.try_format_empty_braced_regular_argument(positional) {
+                    return;
+                }
+
                 if !self.try_format_closure_like_span(positional.span) {
                     self.format_expression(positional);
                 }
@@ -528,6 +629,27 @@ impl<'a> Formatter<'a> {
             self.write("^");
         }
         self.format_expression(head);
+
+        let tail_end = args
+            .iter()
+            .map(|arg| match arg {
+                ExternalArgument::Regular(arg_expr) | ExternalArgument::Spread(arg_expr) => {
+                    arg_expr.span.end
+                }
+            })
+            .max()
+            .unwrap_or(head.span.end)
+            .min(self.source.len());
+
+        if head.span.end < tail_end
+            && self.external_call_tail_matches_arg_suffix(head.span.end, tail_end, args)
+        {
+            // Keep the authored tail only when the parser has prepended alias-expanded
+            // arguments ahead of the user-written suffix.
+            self.write_bytes(&self.source[head.span.end..tail_end]);
+            return;
+        }
+
         for arg in args {
             self.space();
             match arg {
@@ -538,6 +660,78 @@ impl<'a> Formatter<'a> {
                 }
             }
         }
+    }
+
+    fn external_call_tail_matches_arg_suffix(
+        &self,
+        tail_start: usize,
+        tail_end: usize,
+        args: &[ExternalArgument],
+    ) -> bool {
+        let source_tokens = self.tokenize_source_words(&self.source[tail_start..tail_end]);
+        let arg_tokens: Vec<Vec<u8>> = args
+            .iter()
+            .map(|arg| match arg {
+                ExternalArgument::Regular(expr) => {
+                    self.source[expr.span.start..expr.span.end].to_vec()
+                }
+                ExternalArgument::Spread(expr) => {
+                    let mut token = b"...".to_vec();
+                    token.extend_from_slice(&self.source[expr.span.start..expr.span.end]);
+                    token
+                }
+            })
+            .collect();
+
+        if source_tokens.is_empty() || source_tokens.len() >= arg_tokens.len() {
+            return false;
+        }
+
+        let suffix_start = arg_tokens.len() - source_tokens.len();
+        arg_tokens[suffix_start..] == source_tokens
+    }
+
+    fn tokenize_source_words(&self, bytes: &[u8]) -> Vec<Vec<u8>> {
+        let mut tokens = Vec::new();
+        let mut current = Vec::new();
+        let mut in_string: Option<u8> = None;
+        let mut escaped = false;
+
+        for &byte in bytes {
+            if let Some(quote) = in_string {
+                current.push(byte);
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                if byte == b'\\' {
+                    escaped = true;
+                    continue;
+                }
+                if byte == quote {
+                    in_string = None;
+                }
+                continue;
+            }
+
+            if byte.is_ascii_whitespace() {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+                continue;
+            }
+
+            if byte == b'\'' || byte == b'"' {
+                in_string = Some(byte);
+            }
+            current.push(byte);
+        }
+
+        if !current.is_empty() {
+            tokens.push(current);
+        }
+
+        tokens
     }
 
     fn try_write_redundant_parenthesized_pipeline_rhs(&mut self, rhs: &Expression) -> bool {
@@ -564,6 +758,37 @@ impl<'a> Formatter<'a> {
         }
 
         self.write_bytes(inner);
+        true
+    }
+
+    fn try_format_empty_braced_regular_argument(&mut self, positional: &Expression) -> bool {
+        if !matches!(positional.expr, Expr::Block(_) | Expr::Closure(_)) {
+            return false;
+        }
+
+        if positional.span.end <= positional.span.start + 1
+            || positional.span.end > self.source.len()
+        {
+            return false;
+        }
+
+        let raw = &self.source[positional.span.start..positional.span.end];
+        if !raw.starts_with(b"{") || !raw.ends_with(b"}") {
+            return false;
+        }
+
+        if !raw[1..raw.len() - 1]
+            .iter()
+            .all(|b| b.is_ascii_whitespace())
+        {
+            return false;
+        }
+
+        if self.has_comments_in_span(positional.span.start, positional.span.end) {
+            return false;
+        }
+
+        self.write("{}");
         true
     }
 

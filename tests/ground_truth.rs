@@ -35,6 +35,8 @@ pub fn get_test_binary() -> PathBuf {
 fn run_ground_truth_test(test_binary: &PathBuf, name: &str) {
     let input_path = PathBuf::from(format!("tests/fixtures/input/{}.nu", name));
     let expected_path = PathBuf::from(format!("tests/fixtures/expected/{}.nu", name));
+    let config_path = PathBuf::from(format!("tests/fixtures/config/{}.nuon", name));
+    let config = config_path.exists().then_some(config_path.as_path());
 
     // Ensure files exist
     assert!(
@@ -52,7 +54,7 @@ fn run_ground_truth_test(test_binary: &PathBuf, name: &str) {
     let input = fs::read_to_string(&input_path).expect("Failed to read input file");
 
     // Run formatter via stdin
-    let formatted = match format_via_stdin(test_binary, &input) {
+    let formatted = match format_via_stdin(test_binary, &input, config) {
         Ok(output) => output,
         Err(err) => panic!("Formatter failed for {}: {}", name, err),
     };
@@ -95,6 +97,8 @@ fn run_ground_truth_test(test_binary: &PathBuf, name: &str) {
 /// Test that formatting is idempotent (formatting twice gives same result)
 fn run_idempotency_test(test_binary: &PathBuf, name: &str) {
     let input_path = PathBuf::from(format!("tests/fixtures/input/{}.nu", name));
+    let config_path = PathBuf::from(format!("tests/fixtures/config/{}.nuon", name));
+    let config = config_path.exists().then_some(config_path.as_path());
 
     if !input_path.exists() {
         return; // Skip if input doesn't exist
@@ -103,14 +107,14 @@ fn run_idempotency_test(test_binary: &PathBuf, name: &str) {
     let input = fs::read_to_string(&input_path).expect("Failed to read input file");
 
     // First format
-    let first_output = format_via_stdin(test_binary, &input);
+    let first_output = format_via_stdin(test_binary, &input, config);
     if first_output.is_err() {
         return; // Skip if formatting fails
     }
     let first = first_output.unwrap();
 
     // Second format
-    let second_output = format_via_stdin(test_binary, &first);
+    let second_output = format_via_stdin(test_binary, &first, config);
     if second_output.is_err() {
         panic!("Second format failed for {}, but first succeeded", name);
     }
@@ -126,9 +130,19 @@ fn run_idempotency_test(test_binary: &PathBuf, name: &str) {
     }
 }
 
-fn format_via_stdin(test_binary: &PathBuf, input: &str) -> Result<String, String> {
-    let output = Command::new(test_binary)
-        .arg("--stdin")
+fn format_via_stdin(
+    test_binary: &PathBuf,
+    input: &str,
+    config: Option<&std::path::Path>,
+) -> Result<String, String> {
+    let mut command = Command::new(test_binary);
+    command.arg("--stdin");
+
+    if let Some(config_path) = config {
+        command.arg("--config").arg(config_path);
+    }
+
+    let output = command
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -624,5 +638,25 @@ fixture_tests!(
         "multiline_record_comments_preserved_issue168",
         ground_truth_multiline_record_comments_preserved_issue168,
         idempotency_multiline_record_comments_preserved_issue168
+    ),
+    (
+        "margin_one_sets_single_blank_line_issue169",
+        ground_truth_margin_one_sets_single_blank_line_issue169,
+        idempotency_margin_one_sets_single_blank_line_issue169
+    ),
+    (
+        "margin_zero_allows_no_blank_line_issue169",
+        ground_truth_margin_zero_allows_no_blank_line_issue169,
+        idempotency_margin_zero_allows_no_blank_line_issue169
+    ),
+    (
+        "alias_invocation_in_def_does_not_duplicate_expanded_rhs_issue171",
+        ground_truth_alias_invocation_in_def_does_not_duplicate_expanded_rhs_issue171,
+        idempotency_alias_invocation_in_def_does_not_duplicate_expanded_rhs_issue171
+    ),
+    (
+        "unary_not_condition_keeps_required_subexpression_parens_issue172",
+        ground_truth_unary_not_condition_keeps_required_subexpression_parens_issue172,
+        idempotency_unary_not_condition_keeps_required_subexpression_parens_issue172
     ),
 );
