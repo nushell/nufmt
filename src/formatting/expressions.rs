@@ -253,8 +253,12 @@ impl<'a> Formatter<'a> {
                 return;
             }
 
-            let can_drop_parens =
-                block.pipelines.len() == 1 && block.pipelines[0].elements.len() == 1;
+            let can_drop_parens = block.pipelines.len() == 1
+                && block.pipelines[0].elements.len() == 1
+                && !matches!(
+                    block.pipelines[0].elements[0].expr.expr,
+                    Expr::Call(_) | Expr::ExternalCall(_, _)
+                );
             if can_drop_parens && !self.subexpr_preceded_by_not(span.start) {
                 self.format_block(block);
                 return;
