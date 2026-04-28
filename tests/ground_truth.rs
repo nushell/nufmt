@@ -659,4 +659,9 @@ fixture_tests!(
         ground_truth_unary_not_condition_keeps_required_subexpression_parens_issue172,
         idempotency_unary_not_condition_keeps_required_subexpression_parens_issue172
     ),
+    (
+        "if_call_parentheses_preserved_after_if_issue176",
+        ground_truth_if_call_parentheses_preserved_after_if_issue176,
+        idempotency_if_call_parentheses_preserved_after_if_issue176
+    ),
 );
