@@ -8,7 +8,7 @@
     clippy::manual_let_else
 )]
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use ignore::{overrides::OverrideBuilder, DirEntry, WalkBuilder};
 use log::{info, trace};
 use nu_ansi_term::{Color, Style};
@@ -49,11 +49,28 @@ impl ExitCode {
 struct Cli {
     #[arg(
         value_name = "FILES",
-        default_value = ".",
         conflicts_with("stdin"),
         help = "One of more Nushell files or directories to format"
     )]
     files: Vec<PathBuf>,
+
+    #[arg(
+        long,
+        conflicts_with = "stdin",
+        conflicts_with = "files",
+        conflicts_with = "all_recurse",
+        help = "Format all .nu files in the current directory (non-recursive)"
+    )]
+    all: bool,
+
+    #[arg(
+        long,
+        conflicts_with = "stdin",
+        conflicts_with = "files",
+        conflicts_with = "all",
+        help = "Format all .nu files recursively from the current directory downward"
+    )]
+    all_recurse: bool,
 
     #[arg(
         long,
@@ -89,8 +106,20 @@ fn main() {
     }
 
     let cli = Cli::parse();
+    let has_format_target = !cli.files.is_empty() || cli.stdin || cli.all || cli.all_recurse;
+
+    if !has_format_target && cli.config.is_none() {
+        Cli::command()
+            .print_help()
+            .expect("Unexpected error occurred when printing help");
+        println!();
+        exit_with_code(ExitCode::Success);
+    }
+
     trace!("received cli.files: {:?}", cli.files);
     trace!("received cli.stdin: {:?}", cli.stdin);
+    trace!("received cli.all: {:?}", cli.all);
+    trace!("received cli.all_recurse: {:?}", cli.all_recurse);
     trace!("received cli.config: {:?}", cli.config);
 
     let config = match load_config(cli.config) {
@@ -104,7 +133,15 @@ fn main() {
     let exit_code = if cli.stdin {
         format_stdin(&config)
     } else {
-        format_files_from_paths(cli.files, &config, cli.dry_run)
+        let (paths, recurse) = if cli.all {
+            (vec![PathBuf::from(".")], false)
+        } else if cli.all_recurse {
+            (vec![PathBuf::from(".")], true)
+        } else {
+            (cli.files, true)
+        };
+
+        format_files_from_paths(paths, &config, cli.dry_run, recurse)
     };
 
     std::io::stdout()
@@ -155,8 +192,13 @@ fn format_stdin(config: &Config) -> ExitCode {
 }
 
 /// Format files from the given paths
-fn format_files_from_paths(paths: Vec<PathBuf>, config: &Config, dry_run: bool) -> ExitCode {
-    let (target_files, invalid_files) = match discover_nu_files(paths, &config.excludes) {
+fn format_files_from_paths(
+    paths: Vec<PathBuf>,
+    config: &Config,
+    dry_run: bool,
+    recurse: bool,
+) -> ExitCode {
+    let (target_files, invalid_files) = match discover_nu_files(paths, &config.excludes, recurse) {
         Ok(files) => files,
         Err(err) => {
             eprintln!("{}: {}", Color::LightRed.paint("error"), err);
@@ -319,6 +361,7 @@ fn plural(count: usize) -> &'static str {
 fn discover_nu_files(
     paths: Vec<PathBuf>,
     excludes: &[String],
+    recurse: bool,
 ) -> Result<(Vec<PathBuf>, Vec<PathBuf>), ConfigError> {
     let (valid_paths, invalid_paths): (Vec<_>, Vec<_>) =
         paths.into_iter().partition(|p| p.exists());
@@ -328,7 +371,12 @@ fn discover_nu_files(
     let nu_files = valid_paths
         .iter()
         .flat_map(|path| {
-            WalkBuilder::new(path)
+            let mut builder = WalkBuilder::new(path);
+            if !recurse {
+                builder.max_depth(Some(1));
+            }
+
+            builder
                 .overrides(overrides.clone())
                 .build()
                 .filter_map(Result::ok)
@@ -493,7 +541,7 @@ mod tests {
         fs::write(&target, "let x = 1").unwrap();
 
         let (files, invalid) =
-            discover_nu_files(vec![dir.path().to_path_buf(), nested.clone()], &[])
+            discover_nu_files(vec![dir.path().to_path_buf(), nested.clone()], &[], true)
                 .expect("discovery should succeed");
 
         assert!(invalid.is_empty());

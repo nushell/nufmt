@@ -222,9 +222,12 @@ impl<'a> Formatter<'a> {
     /// Format an invocation of an alias (i.e. a call *using* an alias rather
     /// than declaring one).  Preserves the exact source text after the head.
     fn format_alias_invocation_call(&mut self, call: &nu_protocol::ast::Call) {
+        // Only consider arguments that belong to the authored source (not
+        // parser-injected alias expansion arguments – issue #180).
         let call_end = call
             .arguments
             .iter()
+            .filter(|arg| self.argument_belongs_to_call_source(call, arg))
             .map(argument_end_pos)
             .max()
             .unwrap_or(call.head.end)
@@ -243,14 +246,21 @@ impl<'a> Formatter<'a> {
         call: &nu_protocol::ast::Call,
         arg: &Argument,
     ) -> bool {
-        let span_start = match arg {
+        let (span_start, span_end) = match arg {
             Argument::Positional(expr) | Argument::Unknown(expr) | Argument::Spread(expr) => {
-                expr.span.start
+                (expr.span.start, expr.span.end)
             }
-            Argument::Named(named) => named.0.span.start,
+            Argument::Named(named) => (
+                named.0.span.start,
+                named
+                    .2
+                    .as_ref()
+                    .map_or(named.0.span.end, |value| value.span.end),
+            ),
         };
 
-        span_start >= call.head.start
+        // Exclude parser-injected arguments that don't map to source bytes.
+        span_end > span_start && span_start >= call.head.start
     }
 
     /// Format `let`/`mut`/`const` calls while preserving explicit type annotations.
@@ -637,6 +647,34 @@ impl<'a> Formatter<'a> {
         }
         self.format_expression(head);
 
+        let has_injected_prefix_args = args.iter().any(|arg| match arg {
+            ExternalArgument::Regular(expr) | ExternalArgument::Spread(expr) => {
+                expr.span.end > expr.span.start && expr.span.end <= head.span.start
+            }
+        });
+
+        if has_injected_prefix_args {
+            let authored_tail_end = args
+                .iter()
+                .filter_map(|arg| match arg {
+                    ExternalArgument::Regular(expr) | ExternalArgument::Spread(expr)
+                        if expr.span.end > expr.span.start
+                            && expr.span.start >= head.span.start =>
+                    {
+                        Some(expr.span.end)
+                    }
+                    _ => None,
+                })
+                .max()
+                .unwrap_or(head.span.end)
+                .min(self.source.len());
+
+            if head.span.end < authored_tail_end {
+                self.write_bytes(&self.source[head.span.end..authored_tail_end]);
+            }
+            return;
+        }
+
         let tail_end = args
             .iter()
             .map(|arg| match arg {
@@ -942,7 +980,13 @@ impl<'a> Formatter<'a> {
             }
             if let Some(default) = &param.default_value {
                 self.write(" = ");
-                self.write(&default.to_expanded_string(" ", &nu_protocol::Config::default()));
+                // Use raw source to preserve original quote style (issue #179).
+                let span = default.span();
+                if span.start < span.end && span.end <= self.source.len() {
+                    self.write_bytes(&self.source[span.start..span.end]);
+                } else {
+                    self.write(&default.to_parsable_string(" ", &nu_protocol::Config::default()));
+                }
             }
         }
 
@@ -974,7 +1018,13 @@ impl<'a> Formatter<'a> {
             }
             if let Some(default) = &flag.default_value {
                 self.write(" = ");
-                self.write(&default.to_expanded_string(" ", &nu_protocol::Config::default()));
+                // Use raw source to preserve original quote style (issue #179).
+                let span = default.span();
+                if span.start < span.end && span.end <= self.source.len() {
+                    self.write_bytes(&self.source[span.start..span.end]);
+                } else {
+                    self.write(&default.to_parsable_string(" ", &nu_protocol::Config::default()));
+                }
             }
         }
 

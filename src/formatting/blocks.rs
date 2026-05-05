@@ -256,7 +256,25 @@ impl<'a> Formatter<'a> {
 
         for (i, element) in pipeline.elements.iter().enumerate() {
             if i > 0 {
-                if is_multiline {
+                // If the previous element already ends with a pipe redirect
+                // (e.g. `e>|` or `o+e>|`), it acts as the pipeline separator.
+                // Emit only a space, not an additional `|` (issue #181).
+                let prev_has_pipe_redir = pipeline.elements[i - 1]
+                    .redirection
+                    .as_ref()
+                    .is_some_and(|redir| {
+                        matches!(
+                            redir,
+                            PipelineRedirection::Single {
+                                target: RedirectionTarget::Pipe { .. },
+                                ..
+                            }
+                        )
+                    });
+
+                if prev_has_pipe_redir {
+                    self.space();
+                } else if is_multiline {
                     self.newline();
                     self.write_indent();
                     self.write("| ");
@@ -300,6 +318,13 @@ impl<'a> Formatter<'a> {
     fn format_redirection_target(&mut self, target: &RedirectionTarget) {
         match target {
             RedirectionTarget::File { expr, span, .. } => {
+                if span.start < expr.span.end && expr.span.end <= self.source.len() {
+                    // Keep authored redirection text to avoid parser-artifact
+                    // pipe duplication around tokens like `e>|` and `o+e>|`.
+                    self.write_bytes(&self.source[span.start..expr.span.end]);
+                    return;
+                }
+
                 self.write_span(*span);
                 self.space();
                 self.format_expression(expr);

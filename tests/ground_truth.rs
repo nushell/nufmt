@@ -664,4 +664,24 @@ fixture_tests!(
         ground_truth_if_call_parentheses_preserved_after_if_issue176,
         idempotency_if_call_parentheses_preserved_after_if_issue176
     ),
+    (
+        "try_block_comment_spacing_preserved_issue178",
+        ground_truth_try_block_comment_spacing_preserved_issue178,
+        idempotency_try_block_comment_spacing_preserved_issue178
+    ),
+    (
+        "signature_default_string_quotes_preserved_issue179",
+        ground_truth_signature_default_string_quotes_preserved_issue179,
+        idempotency_signature_default_string_quotes_preserved_issue179
+    ),
+    (
+        "alias_invocation_in_def_keeps_authored_tokens_issue180",
+        ground_truth_alias_invocation_in_def_keeps_authored_tokens_issue180,
+        idempotency_alias_invocation_in_def_keeps_authored_tokens_issue180
+    ),
+    (
+        "stderr_pipeline_redirection_pipe_not_duplicated_issue181",
+        ground_truth_stderr_pipeline_redirection_pipe_not_duplicated_issue181,
+        idempotency_stderr_pipeline_redirection_pipe_not_duplicated_issue181
+    ),
 );

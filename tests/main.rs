@@ -494,3 +494,84 @@ if not (has systemctl) {\n\
         "parenthesized condition should not be rewritten into invalid syntax: {stdout}"
     );
 }
+
+#[test]
+fn no_args_prints_help_instead_of_formatting_current_directory_issue182() {
+    let output = Command::new(get_test_binary()).output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        stdout.contains("Usage:"),
+        "expected help/usage output when no args are provided: {stdout}"
+    );
+}
+
+#[test]
+fn all_formats_only_current_directory_nu_files_issue182() {
+    let dir = tempdir().unwrap();
+    let nested = dir.path().join("nested");
+    fs::create_dir_all(&nested).unwrap();
+
+    let root_nu = dir.path().join("root.nu");
+    let nested_nu = nested.join("child.nu");
+
+    fs::write(&root_nu, INVALID).unwrap();
+    fs::write(&nested_nu, INVALID).unwrap();
+
+    let output = Command::new(get_test_binary())
+        .current_dir(dir.path())
+        .arg("--all")
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(fs::read_to_string(&root_nu).unwrap(), VALID);
+    assert_eq!(fs::read_to_string(&nested_nu).unwrap(), INVALID);
+}
+
+#[test]
+fn all_recurse_formats_current_directory_tree_nu_files_issue182() {
+    let dir = tempdir().unwrap();
+    let nested = dir.path().join("nested");
+    fs::create_dir_all(&nested).unwrap();
+
+    let root_nu = dir.path().join("root.nu");
+    let nested_nu = nested.join("child.nu");
+
+    fs::write(&root_nu, INVALID).unwrap();
+    fs::write(&nested_nu, INVALID).unwrap();
+
+    let output = Command::new(get_test_binary())
+        .current_dir(dir.path())
+        .arg("--all-recurse")
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(fs::read_to_string(&root_nu).unwrap(), VALID);
+    assert_eq!(fs::read_to_string(&nested_nu).unwrap(), VALID);
+}
+
+#[test]
+fn help_includes_all_and_all_recurse_flags_issue182() {
+    let output = Command::new(get_test_binary())
+        .arg("--help")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        stdout.contains("--all"),
+        "help missing --all flag: {stdout}"
+    );
+    assert!(
+        stdout.contains("--all-recurse"),
+        "help missing --all-recurse flag: {stdout}"
+    );
+    assert!(
+        stdout.contains("--stdin"),
+        "help missing --stdin flag: {stdout}"
+    );
+}
