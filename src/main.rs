@@ -319,6 +319,8 @@ impl FormattingStats {
         if self.reformatted > 0 {
             let msg = if check_mode {
                 "would be reformatted"
+            } else if self.reformatted == 1 {
+                "was formatted"
             } else {
                 "were formatted"
             };
