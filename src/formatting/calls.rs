@@ -15,7 +15,7 @@ use nu_utils::NuCow;
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Commands whose block arguments are formatted specially.
-pub(super) const BLOCK_COMMANDS: &[&str] = &["for", "while", "loop", "module"];
+pub(super) const BLOCK_COMMANDS: &[&str] = &["for", "while", "loop", "module", "export module"];
 pub(super) const CONDITIONAL_COMMANDS: &[&str] = &["if", "try"];
 pub(super) const DEF_COMMANDS: &[&str] = &["def", "def-env", "export def"];
 pub(super) const EXTERN_COMMANDS: &[&str] = &["extern", "export extern"];
