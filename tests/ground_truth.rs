@@ -684,4 +684,19 @@ fixture_tests!(
         ground_truth_stderr_pipeline_redirection_pipe_not_duplicated_issue181,
         idempotency_stderr_pipeline_redirection_pipe_not_duplicated_issue181
     ),
+    (
+        "list_closure_type_annotation_issue187",
+        ground_truth_list_closure_type_annotation_issue187,
+        idempotency_list_closure_type_annotation_issue187
+    ),
+    (
+        "extraneous_spaces_in_multi_word_function_stripped_issue188",
+        ground_truth_extraneous_spaces_in_multi_word_function_stripped_issue188,
+        idempotency_extraneous_spaces_in_multi_word_function_stripped_issue188
+    ),
+    (
+        "match_arm_formatting_is_idempotent_issue189",
+        ground_truth_match_arm_formatting_is_idempotent_issue189,
+        idempotency_match_arm_formatting_is_idempotent_issue189
+    ),
 );
