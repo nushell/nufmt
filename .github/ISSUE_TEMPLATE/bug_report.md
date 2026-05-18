@@ -9,34 +9,24 @@ assignees: ''
 ### Describe the bug
 A clear and concise description of what the bug is.
 
-### Steps To Reproduce
-Steps to reproduce the behavior:
-1. ...
-2. ...
-3. ...
+### Script or statement
+Show the script and how you invoke it or the snippet that's going to be formatted
 
-### Expected behavior
+### Actual behavior/output
+What is the output after running the latest version of nufmt
+
+### Expected behavior/output
 A clear and concise description of what you expected to happen.
-
 
 ### Environment
 
-Please run `rustc --version` and paste the result.
+Please run show what operating system and version you're running and what version of nufmt you're running.
 
 ```console
-[user@system:~]$ rustc --version
-output here
+❯ $nu.os-info
+❯ nufmt --version
 ```
 
-If using Nix please run `nix-shell -p nix-info --run "nix-info -m"` and paste the result.
-```console
-[user@system:~]$ nix-shell -p nix-info --run "nix-info -m"
-output here
-```
-
----
-
-#### Notify maintainers
 
 <!--
 Please @ people who are relevant to this issue
