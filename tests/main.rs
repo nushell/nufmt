@@ -10,8 +10,8 @@ const VALID: &str = "# beginning of script comment
 let one = 1
 ";
 
-/// Filter parser diagnostic noise from stderr that appears when RUST_LOG is set.
-/// Removes lines that contain parser diagnostic messages from the nu_parser module.
+/// Filter parser diagnostic noise from stderr that appears when `RUST_LOG` is set.
+/// Removes lines that contain parser diagnostic messages from the `nu_parser` module.
 fn filter_parser_diagnostics(stderr: &str) -> String {
     stderr
         .lines()
