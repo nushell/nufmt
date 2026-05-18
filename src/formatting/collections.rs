@@ -382,8 +382,24 @@ impl<'a> Formatter<'a> {
             .map(|(pattern, expr)| self.render_match_arm_lhs(pattern, expr))
             .collect();
 
-        let should_align = self.should_preserve_match_arm_alignment(matches)
+        // Check if source has alignment preserved
+        let preserve_alignment = self.should_preserve_match_arm_alignment(matches)
             && rendered_lhs.iter().all(|lhs| !lhs.contains(&b'\n'));
+
+        // Additionally check if all RHS expressions will format as single-line
+        // to ensure idempotency - don't align if any RHS becomes multiline
+        let all_rhs_single_line = if preserve_alignment {
+            matches.iter().all(|(_, expr)| {
+                let rendered = self.probe_format(|probe| {
+                    probe.format_block_or_expr(expr);
+                });
+                !rendered.contains(&b'\n')
+            })
+        } else {
+            false
+        };
+
+        let should_align = preserve_alignment && all_rhs_single_line;
         let max_lhs_len = if should_align {
             rendered_lhs.iter().map(Vec::len).max().unwrap_or(0)
         } else {
@@ -408,13 +424,67 @@ impl<'a> Formatter<'a> {
             }
 
             self.write("=> ");
-            self.format_block_or_expr(expr);
+            if self.should_force_multiline_match_arm_block(expr) {
+                self.format_match_arm_block_multiline(expr);
+            } else {
+                self.format_block_or_expr(expr);
+            }
             self.newline();
         }
 
         self.indent_level -= 1;
         self.write_indent();
         self.write("}");
+    }
+
+    /// Return `true` when a simple braced match-arm block would become
+    /// multiline once formatted, so we can emit multiline output in one pass.
+    fn should_force_multiline_match_arm_block(&self, expr: &Expression) -> bool {
+        let Expr::Block(block_id) = &expr.expr else {
+            return false;
+        };
+
+        let block = self.working_set.get_block(*block_id);
+        let source_has_newline = expr.span.end > expr.span.start
+            && self.source[expr.span.start..expr.span.end].contains(&b'\n');
+
+        let is_simple = block.pipelines.len() == 1
+            && block.pipelines[0].elements.len() == 1
+            && !self.block_has_nested_structures(block)
+            && !source_has_newline;
+
+        if !is_simple {
+            return false;
+        }
+
+        self.probe_format(|probe| probe.format_pipeline(&block.pipelines[0]))
+            .contains(&b'\n')
+    }
+
+    /// Format a match-arm block body as multiline, preserving the same
+    /// conditional-depth reset semantics as regular block expressions.
+    fn format_match_arm_block_multiline(&mut self, expr: &Expression) {
+        let Expr::Block(block_id) = &expr.expr else {
+            self.format_block_or_expr(expr);
+            return;
+        };
+
+        let block = self.working_set.get_block(*block_id);
+
+        self.write("{");
+
+        let saved_conditional_depth = self.conditional_context_depth;
+        self.conditional_context_depth = 0;
+
+        self.newline();
+        self.indent_level += 1;
+        self.format_block(block);
+        self.newline();
+        self.indent_level -= 1;
+        self.write_indent();
+        self.write("}");
+
+        self.conditional_context_depth = saved_conditional_depth;
     }
 
     /// Format a match pattern (value, variable, list, record, or, etc.).

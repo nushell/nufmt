@@ -10,14 +10,30 @@ const VALID: &str = "# beginning of script comment
 let one = 1
 ";
 
-fn run_stdin(input: &str) -> std::process::Output {
-    let mut child = Command::new(get_test_binary())
+/// Filter parser diagnostic noise from stderr that appears when RUST_LOG is set.
+/// Removes lines that contain parser diagnostic messages from the nu_parser module.
+fn filter_parser_diagnostics(stderr: &str) -> String {
+    stderr
+        .lines()
+        .filter(|line| !line.contains("nu_parser::"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Run `nufmt --stdin` with optional environment overrides.
+fn run_stdin_with_env(input: &str, env: &[(&str, &str)]) -> std::process::Output {
+    let mut command = Command::new(get_test_binary());
+    command
         .arg("--stdin")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("Failed to spawn nufmt");
+        .stderr(std::process::Stdio::piped());
+
+    for (key, value) in env {
+        command.env(key, value);
+    }
+
+    let mut child = command.spawn().expect("Failed to spawn nufmt");
 
     child
         .stdin
@@ -27,6 +43,28 @@ fn run_stdin(input: &str) -> std::process::Output {
         .expect("Failed to write stdin");
 
     child.wait_with_output().expect("Failed to wait for nufmt")
+}
+
+/// Run `nufmt --stdin` with default environment.
+fn run_stdin(input: &str) -> std::process::Output {
+    run_stdin_with_env(input, &[])
+}
+
+/// Run `nufmt --stdin` with `RUST_LOG=error` enabled.
+fn run_stdin_with_rust_log_error(input: &str) -> std::process::Output {
+    run_stdin_with_env(input, &[("RUST_LOG", "error")])
+}
+
+/// Assert that a formatter run completed successfully without parser noise.
+fn assert_no_parser_error_noise(output: &std::process::Output) {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let cleaned_stderr = filter_parser_diagnostics(&stderr);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        !cleaned_stderr.contains("compile_block_with_id called with parse errors"),
+        "unexpected parser error noise on stderr: {cleaned_stderr}"
+    );
 }
 
 #[test]
@@ -315,25 +353,19 @@ fn format_fixtures_basic() {
 #[test]
 fn mixed_use_and_def_does_not_emit_parser_errors_issue136() {
     let output = run_stdin("use a.nu\ndef abc [] { }\ndef xyz [] { }\n");
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    assert_eq!(output.status.code(), Some(0));
-    assert!(
-        !stderr.contains("compile_block_with_id called with parse errors"),
-        "unexpected parser error noise on stderr: {stderr}"
-    );
+    assert_no_parser_error_noise(&output);
 }
 
 #[test]
 fn cell_path_in_def_block_does_not_emit_parser_errors_issue141() {
     let output = run_stdin("def main [] {\n$var.state\n}\n");
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_parser_error_noise(&output);
+}
 
-    assert_eq!(output.status.code(), Some(0));
-    assert!(
-        !stderr.contains("compile_block_with_id called with parse errors"),
-        "unexpected parser error noise on stderr: {stderr}"
-    );
+#[test]
+fn cli_tests_do_not_fail_when_rust_log_error_is_set_issue190() {
+    let output = run_stdin_with_rust_log_error("use a.nu\ndef abc [] { }\ndef xyz [] { }\n");
+    assert_no_parser_error_noise(&output);
 }
 
 #[test]

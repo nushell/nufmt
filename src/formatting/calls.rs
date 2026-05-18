@@ -59,9 +59,19 @@ impl<'a> Formatter<'a> {
             return;
         }
 
-        // Write command name
+        // Write command name, normalizing multi-word command spacing
         if call.head.end != 0 {
-            self.write_span(call.head);
+            if let Some(ref head) = head_text {
+                // For multi-word commands, normalize spacing between words
+                if head.contains(' ') && head.split_whitespace().count() > 1 {
+                    let normalized = head.split_whitespace().collect::<Vec<_>>().join(" ");
+                    self.write(&normalized);
+                } else {
+                    self.write_span(call.head);
+                }
+            } else {
+                self.write_span(call.head);
+            }
         }
 
         if matches!(cmd_type, CommandType::Let) {
@@ -167,9 +177,21 @@ impl<'a> Formatter<'a> {
             .filter(|arg| self.argument_belongs_to_call_source(call, arg))
             .collect();
 
+        let head_text = self.call_head_text(call);
+
         self.write("(");
         if call.head.end != 0 {
-            self.write_span(call.head);
+            // Normalize multi-word command spacing
+            if let Some(ref head) = head_text {
+                if head.contains(' ') && head.split_whitespace().count() > 1 {
+                    let normalized = head.split_whitespace().collect::<Vec<_>>().join(" ");
+                    self.write(&normalized);
+                } else {
+                    self.write_span(call.head);
+                }
+            } else {
+                self.write_span(call.head);
+            }
         }
         self.newline();
         self.indent_level += 1;
@@ -1154,7 +1176,15 @@ impl<'a> Formatter<'a> {
                     self.write(&rendered);
                 }
             }
-            other => self.write(&other.to_string()),
+            other => {
+                let rendered = other.to_string();
+                if rendered.contains("closure()") {
+                    let normalized = rendered.replace("closure()", "closure");
+                    self.write(&normalized);
+                } else {
+                    self.write(&rendered);
+                }
+            }
         }
     }
 }
