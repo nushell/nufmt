@@ -92,7 +92,7 @@ impl<'a> Formatter<'a> {
                 self.format_subexpression(*block_id, expr.span);
             }
 
-            Expr::List(items) => self.format_list(items),
+            Expr::List(items) => self.format_list(items, expr.span),
             Expr::Record(items) => self.format_record(items, expr.span),
             Expr::Table(table) => self.format_table(&table.columns, &table.rows),
 

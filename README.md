@@ -110,6 +110,7 @@ Create a `nufmt.nuon` file in your project root:
 ```nuon
 {
     indent: 4
+    indent_char: "space"
     line_length: 80
     margin: 1
     exclude: ["vendor/**", "target/**"]
@@ -120,7 +121,8 @@ Configuration options:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `indent` | int | 4 | Number of spaces per indentation level |
+| `indent` | int | 4 | Number of indentation characters per level |
+| `indent_char` | string | `"space"` | Indentation character: `"space"` or `"tab"` |
 | `line_length` | int | 80 | Maximum line length (advisory) |
 | `margin` | int | 1 | Number of blank lines between top-level items |
 | `exclude` | list\<string\> | [] | Glob patterns for files to exclude |

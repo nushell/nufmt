@@ -471,6 +471,7 @@ mod tests {
 
     #[rstest]
     #[case(r#"{line_length: 120, exclude: ["a*nu", "b*.nu"]}"#)]
+    #[case(r#"{indent_char: "tab", line_length: 120}"#)]
     fn read_valid_config(#[case] config_content: &str) {
         let dir = tempdir().unwrap();
         let config_file = dir.path().join("nufmt.nuon");
@@ -478,7 +479,12 @@ mod tests {
 
         let config = read_config(&config_file).expect("Config should be valid");
         assert_eq!(config.line_length, 120_usize);
-        assert_eq!(config.excludes.len(), 2_usize);
+        if config_content.contains("exclude") {
+            assert_eq!(config.excludes.len(), 2_usize);
+        }
+        if config_content.contains(r#"indent_char: "tab""#) {
+            assert_eq!(config.indent_char, nu_formatter::config::IndentChar::Tab);
+        }
     }
 
     #[rstest]
@@ -488,6 +494,8 @@ mod tests {
     #[case(r#"{line_length: "120"}"#)]
     #[case(r#"{exclude: "a*nu"}"#)]
     #[case(r#"{exclude: ["a*nu", 1]}"#)]
+    #[case(r#"{indent_char: 1}"#)]
+    #[case(r#"{indent_char: "tabs"}"#)]
     fn read_invalid_config(#[case] config_content: &str) {
         let dir = tempdir().unwrap();
         let config_file = dir.path().join("nufmt.nuon");

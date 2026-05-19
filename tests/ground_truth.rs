@@ -570,6 +570,11 @@ fixture_tests!(
         idempotency_comment_spacing_before_toplevel_statements_issue150
     ),
     (
+        "side_comments_in_multiline_lists_preserved_issue195",
+        ground_truth_side_comments_in_multiline_lists_preserved_issue195,
+        idempotency_side_comments_in_multiline_lists_preserved_issue195
+    ),
+    (
         "list_flag_value_pairing_preserved_issue151",
         ground_truth_list_flag_value_pairing_preserved_issue151,
         idempotency_list_flag_value_pairing_preserved_issue151
@@ -698,5 +703,10 @@ fixture_tests!(
         "match_arm_formatting_is_idempotent_issue189",
         ground_truth_match_arm_formatting_is_idempotent_issue189,
         idempotency_match_arm_formatting_is_idempotent_issue189
+    ),
+    (
+        "tab_indentation_via_config_issue196",
+        ground_truth_tab_indentation_via_config_issue196,
+        idempotency_tab_indentation_via_config_issue196
     ),
 );

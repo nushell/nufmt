@@ -21,7 +21,7 @@ mod expressions;
 mod garbage;
 mod repair;
 
-use crate::config::Config;
+use crate::config::{Config, IndentChar};
 use crate::format_error::FormatError;
 use log::{debug, trace};
 use nu_parser::parse;
@@ -133,8 +133,14 @@ impl<'a> Formatter<'a> {
     /// Write indentation if at the start of a line.
     pub(crate) fn write_indent(&mut self) {
         if self.at_line_start {
-            let indent = " ".repeat(self.config.indent * self.indent_level);
-            self.output.extend(indent.as_bytes());
+            let indent_len = self.config.indent * self.indent_level;
+            let indent_char = match self.config.indent_char {
+                IndentChar::Space => b' ',
+                IndentChar::Tab => b'\t',
+            };
+            for _ in 0..indent_len {
+                self.output.push(indent_char);
+            }
             self.at_line_start = false;
         }
     }
