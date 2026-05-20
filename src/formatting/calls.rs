@@ -164,7 +164,7 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        source_span.len() > self.config.line_length
+        source_span.len() + (self.config.indent * self.indent_level) > self.config.line_length
     }
 
     /// Format a long regular call as:
@@ -1111,7 +1111,7 @@ impl<'a> Formatter<'a> {
                 .sum::<usize>()
             + sig.required_positional.len().saturating_sub(1) * 2;
 
-        inline_len <= self.config.line_length
+        inline_len + (self.config.indent * self.indent_level) <= self.config.line_length
     }
 
     // ─────────────────────────────────────────────────────────────────────────

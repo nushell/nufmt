@@ -33,7 +33,8 @@ impl<'a> Formatter<'a> {
         let should_preserve_multiline = source_has_newline && items.len() > 1;
         let should_inline = !has_comments_in_list
             && (inline_single_item
-                || (all_simple && items.len() <= 5 && !should_preserve_multiline));
+                || (all_simple && items.len() <= 5 && !should_preserve_multiline))
+            && self.inline_list_fits_on_line(items, uses_commas);
 
         if should_inline {
             self.write("[");
@@ -195,6 +196,20 @@ impl<'a> Formatter<'a> {
 
         let inner = &trimmed[1..trimmed.len() - 1];
         inner.starts_with(b"-")
+    }
+
+    fn inline_list_fits_on_line(&self, items: &[ListItem], uses_commas: bool) -> bool {
+        let mut total_len = 2; // for [ and ]
+        for (i, item) in items.iter().enumerate() {
+            let item_len = self.probe_format(|p| p.format_list_item(item)).len();
+            total_len += item_len;
+            if i > 0 {
+                total_len += if uses_commas { 2 } else { 1 }; // separator
+            }
+        }
+
+        let indent_len = self.config.indent * self.indent_level;
+        indent_len + total_len <= self.config.line_length
     }
 
     fn paired_list_items_fit_on_line(

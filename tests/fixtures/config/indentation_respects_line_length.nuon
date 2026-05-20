@@ -1,0 +1,5 @@
+{
+indent_char: "space"
+indent: 20
+line_length: 40
+}
