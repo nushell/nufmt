@@ -50,6 +50,8 @@ impl<'a> Formatter<'a> {
             self.write("]");
         } else {
             self.write("[");
+            let first_item_start = self.list_item_bounds(&items[0]).0;
+            self.write_inline_comment_bounded(span.start.saturating_add(1), Some(first_item_start));
             self.newline();
             self.indent_level += 1;
             let closing_bracket_pos = span.end.saturating_sub(1);
