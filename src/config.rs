@@ -15,7 +15,11 @@ pub enum IndentChar {
 /// Configuration options for the formatter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
-    /// Number of spaces per indentation level (default: 4).
+    /// Visual indentation width per level (default: 4).
+    ///
+    /// With `indent_char = "space"`, this is the number of spaces written.
+    /// With `indent_char = "tab"`, this is the virtual tab width used in
+    /// layout calculations while writing one tab per indentation level.
     pub indent: usize,
     /// Character used for each indentation unit (`space` or `tab`).
     pub indent_char: IndentChar,

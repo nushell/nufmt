@@ -121,7 +121,7 @@ Configuration options:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `indent` | int | 4 | Number of indentation characters per level |
+| `indent` | int | 4 | Visual indentation width per level (tab width when `indent_char = "tab"`) |
 | `indent_char` | string | `"space"` | Indentation character: `"space"` or `"tab"` |
 | `line_length` | int | 80 | Maximum line length (advisory) |
 | `margin` | int | 1 | Number of blank lines between top-level items |
