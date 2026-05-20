@@ -135,11 +135,14 @@ impl<'a> Formatter<'a> {
         if self.at_line_start {
             match self.config.indent_char {
                 IndentChar::Space => {
-                    for _ in 0..(self.config.indent * self.indent_level) {
+                    let num_spaces = self.config.indent * self.indent_level;
+                    self.output.reserve(num_spaces);
+                    for _ in 0..num_spaces {
                         self.output.push(b' ');
                     }
                 }
                 IndentChar::Tab => {
+                    self.output.reserve(self.indent_level);
                     for _ in 0..self.indent_level {
                         self.output.push(b'\t');
                     }
