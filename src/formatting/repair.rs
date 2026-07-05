@@ -194,18 +194,44 @@ pub(super) fn try_repair_compact_if_else(source: &str) -> (String, bool) {
 /// Detect byte positions where a comma is likely missing between record fields.
 fn detect_missing_record_comma_positions(source: &str) -> Vec<usize> {
     let bytes = source.as_bytes();
+    // Comments are extracted with their own string-aware scan (see
+    // `comments::extract_comments`) so a `#` inside a string literal is never
+    // mistaken for a comment start. We reuse those spans here to skip over
+    // comment bodies entirely: an apostrophe inside a comment (e.g. "don't",
+    // "it's") must never be mistaken for the start of a single-quoted string,
+    // or quote-parity tracking below desyncs for the rest of the file.
+    let comment_spans = super::comments::extract_comments(bytes);
+    let mut comments = comment_spans.iter();
+    let mut next_comment = comments.next();
+
     let mut in_string = false;
+    let mut in_single_string = false;
     let mut escaped = false;
     let mut insert_positions: Vec<usize> = Vec::new();
 
-    for (idx, &byte) in bytes.iter().enumerate() {
+    let mut idx = 0;
+    while idx < bytes.len() {
+        let byte = bytes[idx];
+
+        // Single-quoted strings are raw in nushell: no escapes, and a `"` inside
+        // them must not toggle the double-quote tracking below.
+        if in_single_string {
+            if byte == b'\'' {
+                in_single_string = false;
+            }
+            idx += 1;
+            continue;
+        }
+
         if in_string {
             if escaped {
                 escaped = false;
+                idx += 1;
                 continue;
             }
             if byte == b'\\' {
                 escaped = true;
+                idx += 1;
                 continue;
             }
             if byte == b'"' {
@@ -237,13 +263,38 @@ fn detect_missing_record_comma_positions(source: &str) -> Vec<usize> {
                     }
                 }
             }
+            idx += 1;
             continue;
+        }
+
+        // Drop any comment spans we've already passed (defensive; should not
+        // normally trigger since both scans walk left-to-right in lockstep).
+        while let Some((span, _)) = next_comment {
+            if span.end <= idx {
+                next_comment = comments.next();
+            } else {
+                break;
+            }
+        }
+
+        // Not inside any string: a `#` here starts a line comment. Skip its
+        // whole body so apostrophes/quotes inside it are never tracked.
+        if let Some((span, _)) = next_comment {
+            if span.start == idx {
+                idx = span.end;
+                next_comment = comments.next();
+                continue;
+            }
         }
 
         if byte == b'"' {
             in_string = true;
             escaped = false;
+        } else if byte == b'\'' {
+            in_single_string = true;
         }
+
+        idx += 1;
     }
 
     insert_positions
