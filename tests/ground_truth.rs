@@ -709,4 +709,24 @@ fixture_tests!(
         ground_truth_tab_indentation_via_config_issue196,
         idempotency_tab_indentation_via_config_issue196
     ),
+    (
+        "single_quoted_double_quote_does_not_break_interpolation_issue201",
+        ground_truth_single_quoted_double_quote_does_not_break_interpolation_issue201,
+        idempotency_single_quoted_double_quote_does_not_break_interpolation_issue201
+    ),
+    (
+        "comment_apostrophe_does_not_break_interpolation_issue201",
+        ground_truth_comment_apostrophe_does_not_break_interpolation_issue201,
+        idempotency_comment_apostrophe_does_not_break_interpolation_issue201
+    ),
+    (
+        "mid_file_comment_apostrophe_does_not_break_interpolation_issue201",
+        ground_truth_mid_file_comment_apostrophe_does_not_break_interpolation_issue201,
+        idempotency_mid_file_comment_apostrophe_does_not_break_interpolation_issue201
+    ),
+    (
+        "multiple_apostrophes_in_comment_does_not_break_interpolation_issue201",
+        ground_truth_multiple_apostrophes_in_comment_does_not_break_interpolation_issue201,
+        idempotency_multiple_apostrophes_in_comment_does_not_break_interpolation_issue201
+    ),
 );
