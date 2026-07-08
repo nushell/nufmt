@@ -525,6 +525,26 @@ fixture_tests!(
         idempotency_match_guards_preserved_issue139
     ),
     (
+        "match_guard_paren_does_not_hoist_comments",
+        ground_truth_match_guard_paren_does_not_hoist_comments,
+        idempotency_match_guard_paren_does_not_hoist_comments
+    ),
+    (
+        "match_inter_arm_comment_not_hoisted_into_guard",
+        ground_truth_match_inter_arm_comment_not_hoisted_into_guard,
+        idempotency_match_inter_arm_comment_not_hoisted_into_guard
+    ),
+    (
+        "nested_record_comments_preserved",
+        ground_truth_nested_record_comments_preserved,
+        idempotency_nested_record_comments_preserved
+    ),
+    (
+        "raw_string_hash_delimiter_preserves_comments",
+        ground_truth_raw_string_hash_delimiter_preserves_comments,
+        idempotency_raw_string_hash_delimiter_preserves_comments
+    ),
+    (
         "catch_block_indentation_and_closing_brace_preserved_issue140",
         ground_truth_catch_block_indentation_and_closing_brace_preserved_issue140,
         idempotency_catch_block_indentation_and_closing_brace_preserved_issue140

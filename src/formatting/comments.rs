@@ -14,29 +14,41 @@ use nu_protocol::Span;
 pub(super) fn extract_comments(source: &[u8]) -> Vec<(Span, Vec<u8>)> {
     let mut comments = Vec::new();
     let mut i = 0;
-    let mut in_string = false;
-    let mut string_char = b'"';
 
     while i < source.len() {
         let c = source[i];
 
-        // Track string state to avoid matching # inside strings
-        if !in_string && (c == b'"' || c == b'\'') {
-            in_string = true;
-            string_char = c;
-            i += 1;
-            continue;
-        }
-
-        if in_string {
-            if c == b'\\' && i + 1 < source.len() {
-                i += 2; // Skip escaped character
+        // Raw string: r#'...'# (or r##'...'##, r###'...'###, ...). Skip the whole
+        // literal so that neither the `#` in its delimiters nor any `#` in its
+        // body is ever mistaken for a comment. Without this, the `#` in `r#'`
+        // starts a bogus comment and the closing `'#` opens a phantom string
+        // that swallows every real comment until the next stray apostrophe.
+        if c == b'r' {
+            if let Some(hashes) = raw_string_open_hashes(source, i) {
+                let body_start = i + 1 + hashes + 1; // 'r' + N*'#' + '\''
+                i = find_raw_string_end(source, body_start, hashes).unwrap_or(source.len());
                 continue;
             }
-            if c == string_char {
-                in_string = false;
-            }
+        }
+
+        // Quoted string. Single-quoted strings are raw (no escapes); only
+        // double-quoted strings process backslash escapes. Consuming each string
+        // inline (rather than a persistent flag) means an unterminated string can
+        // never bleed across the rest of the file.
+        if c == b'"' || c == b'\'' {
+            let quote = c;
             i += 1;
+            while i < source.len() {
+                let b = source[i];
+                if quote == b'"' && b == b'\\' && i + 1 < source.len() {
+                    i += 2;
+                    continue;
+                }
+                i += 1;
+                if b == quote {
+                    break;
+                }
+            }
             continue;
         }
 
@@ -47,12 +59,45 @@ pub(super) fn extract_comments(source: &[u8]) -> Vec<(Span, Vec<u8>)> {
                 i += 1;
             }
             comments.push((Span::new(start, i), source[start..i].to_vec()));
+            continue;
         }
 
         i += 1;
     }
 
     comments
+}
+
+/// If `source[i..]` begins a raw-string opener (`r#'`, `r##'`, ...), return the
+/// number of `#` hashes; otherwise `None`. Requires `source[i] == b'r'`.
+fn raw_string_open_hashes(source: &[u8], i: usize) -> Option<usize> {
+    let mut j = i + 1;
+    let mut hashes = 0;
+    while j < source.len() && source[j] == b'#' {
+        hashes += 1;
+        j += 1;
+    }
+    if hashes >= 1 && source.get(j) == Some(&b'\'') {
+        Some(hashes)
+    } else {
+        None
+    }
+}
+
+/// Find the byte index just past a raw-string closer (`'` followed by `hashes`
+/// `#`), scanning from `body_start`. Returns `None` if unterminated.
+fn find_raw_string_end(source: &[u8], body_start: usize, hashes: usize) -> Option<usize> {
+    let mut j = body_start;
+    while j < source.len() {
+        if source[j] == b'\'' {
+            let close = j + 1 + hashes;
+            if source.len() >= close && source[j + 1..close].iter().all(|&b| b == b'#') {
+                return Some(close);
+            }
+        }
+        j += 1;
+    }
+    None
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

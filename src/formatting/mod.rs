@@ -239,6 +239,14 @@ impl<'a> Formatter<'a> {
             self.config,
             self.allow_compact_recovered_record_style,
         );
+        // Inherit the parent's comment-emission cursor so a probe never
+        // re-vacuums comments that precede the current position (they are
+        // already emitted / owned by the parent). Without this, rendering a
+        // parenthesized match-arm guard in a probe flushes every earlier
+        // standalone comment inside the guard's `(` (issue: match-guard
+        // comment hoist).
+        probe.last_pos = self.last_pos;
+        probe.written_comments = self.written_comments.clone();
         f(&mut probe);
         probe.output
     }
