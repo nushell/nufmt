@@ -266,7 +266,18 @@ impl<'a> Formatter<'a> {
 
         let preserve_multiline_top_level = source_has_newline && self.indent_level == 0;
 
-        if all_simple && items.len() <= 3 && !nested_multiline && !preserve_multiline_top_level {
+        // A record containing standalone comments must stay multiline, otherwise
+        // the inline path emits fields without `write_comments_before` and the
+        // comments are silently dropped. Same `has_comments_in_span` guard that
+        // `format_list` already applies for the same reason.
+        let has_comments_in_record = self.has_comments_in_span(span.start, span.end);
+
+        if all_simple
+            && items.len() <= 3
+            && !nested_multiline
+            && !preserve_multiline_top_level
+            && !has_comments_in_record
+        {
             // Inline format
             let record_start = self.output.len();
             self.write("{");
@@ -461,7 +472,10 @@ impl<'a> Formatter<'a> {
         self.newline();
         self.indent_level += 1;
 
-        for ((_pattern, expr), lhs) in matches.iter().zip(rendered_lhs.iter()) {
+        for ((pattern, expr), lhs) in matches.iter().zip(rendered_lhs.iter()) {
+            // Emit any standalone comments preceding this arm at the arm
+            // boundary, so they are neither dropped nor pulled into a guard.
+            self.write_comments_before(pattern.span.start);
             self.write_indent();
             self.write_bytes(lhs);
 
@@ -582,6 +596,11 @@ impl<'a> Formatter<'a> {
 
     fn render_match_arm_lhs(&self, pattern: &MatchPattern, rhs: &Expression) -> Vec<u8> {
         self.probe_format(|probe| {
+            // Constrain comment emission to this arm's own span. Seeding to the
+            // pattern start stops a parenthesized guard from vacuuming comments
+            // that sit *between* the previous arm and this one — those are
+            // emitted at the arm boundary by `format_match_block` instead.
+            probe.last_pos = pattern.span.start;
             probe.format_match_pattern_for_arm(pattern, rhs);
             if let Some(guard) = &pattern.guard {
                 probe.write(" if ");
