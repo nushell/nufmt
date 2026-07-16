@@ -125,7 +125,7 @@ fn main() {
     let config = match load_config(cli.config) {
         Ok(config) => config,
         Err(err) => {
-            eprintln!("{}: {}", Color::LightRed.paint("error"), &err);
+            eprintln!("{}: {}", Color::LightRed.paint("error"), err);
             exit_with_code(ExitCode::Failure);
         }
     };
@@ -240,7 +240,7 @@ fn format_files(
     files
         .into_par_iter()
         .map(|file| {
-            info!("formatting file: {:?}", &file);
+            info!("formatting file: {:?}", file);
             nu_formatter::format_single_file(file, config, mode)
         })
         .collect()
