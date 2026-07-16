@@ -269,7 +269,7 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
     let mut working_set = StateWorkingSet::new(&engine_state);
 
     let parsed_block = parse(&mut working_set, None, contents, false);
-    trace!("parsed block:\n{:?}", &parsed_block);
+    trace!("parsed block:\n{:?}", parsed_block);
 
     let source_text = String::from_utf8_lossy(contents);
     let mut malformed_spans: Vec<Span> = working_set
