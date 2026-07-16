@@ -72,6 +72,13 @@
             })
           ];
           cargoLock.lockFile = ./Cargo.lock;
+
+          meta = {
+            description = "A formatter for Nushell scripts, built entirely on Nushell's own parsing infrastructure";
+            homepage = "https://github.com/nushell/nufmt";
+            license = inputs.nixpkgs.lib.licenses.mit;
+            mainProgram = "nufmt";
+          };
         };
 
         formatter = inputs.treefmt-nix.lib.mkWrapper pkgs {
