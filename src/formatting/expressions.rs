@@ -166,7 +166,7 @@ impl<'a> Formatter<'a> {
             self.format_expression(from);
         }
         if let Some(next) = &range.next {
-            self.write(&op.trim_end_matches('<')); // Exclusive ranges should not have `<` before the step.
+            self.write(op.trim_end_matches('<')); // Exclusive ranges should not have `<` before the step.
             self.format_expression(next);
         }
         self.write(&op);
