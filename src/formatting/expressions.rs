@@ -165,12 +165,11 @@ impl<'a> Formatter<'a> {
         if let Some(from) = &range.from {
             self.format_expression(from);
         }
-        self.write(&op);
         if let Some(next) = &range.next {
+            self.write(op.trim_end_matches('<')); // Exclusive ranges should not have `<` before the step.
             self.format_expression(next);
-            // For step ranges (start..step..end), write the operator again before end
-            self.write(&op);
         }
+        self.write(&op);
         if let Some(to) = &range.to {
             self.format_expression(to);
         }
