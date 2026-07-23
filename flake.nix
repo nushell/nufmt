@@ -59,6 +59,7 @@
             # Not included in the package dependencies, but used for development
             rust-analyzer
             rustfmt
+            clippy
           ];
         };
 
