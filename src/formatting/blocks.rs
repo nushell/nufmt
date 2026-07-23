@@ -283,6 +283,17 @@ impl<'a> Formatter<'a> {
                 }
             }
             self.format_pipeline_element(element);
+
+            if let Some(next) = pipeline.elements.get(i + 1) {
+                let end_pos = self.get_element_end_pos(element);
+                let next_start = next.expr.span.start;
+                self.write_inline_comment_bounded(end_pos, Some(next_start));
+                self.last_pos = self.last_pos.max(end_pos);
+
+                if is_multiline {
+                    self.write_comments_before(next_start);
+                }
+            }
         }
     }
 
