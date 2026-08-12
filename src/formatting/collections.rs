@@ -399,10 +399,65 @@ impl<'a> Formatter<'a> {
     // ─────────────────────────────────────────────────────────────────────────
 
     /// Format a table expression (`[[col1, col2]; [val1, val2]]`).
-    pub(super) fn format_table(&mut self, columns: &[Expression], rows: &[Box<[Expression]>]) {
-        self.write("[");
+    ///
+    /// Preserves multiline layout when the source was multiline or the compact
+    /// form would exceed `line_length` (issue #198).
+    pub(super) fn format_table(
+        &mut self,
+        columns: &[Expression],
+        rows: &[Box<[Expression]>],
+        span: Span,
+    ) {
+        let source_has_newline =
+            span.end > span.start && self.source[span.start..span.end].contains(&b'\n');
+        let uses_row_commas = self.table_uses_row_commas(rows);
+        let should_multiline = source_has_newline
+            || self.table_compact_exceeds_line_length(columns, rows, uses_row_commas);
 
-        // Header row
+        if !should_multiline {
+            self.write("[");
+            self.write_table_header(columns);
+            if !rows.is_empty() {
+                self.write("; ");
+                for (i, row) in rows.iter().enumerate() {
+                    if i > 0 {
+                        if uses_row_commas {
+                            self.write(", ");
+                        } else {
+                            self.write(" ");
+                        }
+                    }
+                    self.write_table_row(row);
+                }
+            }
+            self.write("]");
+            return;
+        }
+
+        // Multiline: one header/row per line (issue #198).
+        self.write("[");
+        self.newline();
+        self.indent_level += 1;
+
+        self.write_indent();
+        self.write_table_header(columns);
+        if !rows.is_empty() {
+            self.write(";");
+        }
+        self.newline();
+
+        for row in rows {
+            self.write_indent();
+            self.write_table_row(row);
+            self.newline();
+        }
+
+        self.indent_level -= 1;
+        self.write_indent();
+        self.write("]");
+    }
+
+    fn write_table_header(&mut self, columns: &[Expression]) {
         self.write("[");
         for (i, col) in columns.iter().enumerate() {
             if i > 0 {
@@ -411,26 +466,66 @@ impl<'a> Formatter<'a> {
             self.format_expression(col);
         }
         self.write("]");
+    }
 
-        // Data rows
-        if !rows.is_empty() {
-            self.write("; ");
-            for (i, row) in rows.iter().enumerate() {
-                if i > 0 {
-                    self.write(", ");
-                }
-                self.write("[");
-                for (j, cell) in row.iter().enumerate() {
-                    if j > 0 {
-                        self.write(", ");
-                    }
-                    self.format_expression(cell);
-                }
-                self.write("]");
+    fn write_table_row(&mut self, row: &[Expression]) {
+        self.write("[");
+        for (j, cell) in row.iter().enumerate() {
+            if j > 0 {
+                self.write(", ");
             }
+            self.format_expression(cell);
+        }
+        self.write("]");
+    }
+
+    /// Whether data rows are comma-separated in the original source.
+    fn table_uses_row_commas(&self, rows: &[Box<[Expression]>]) -> bool {
+        if rows.len() < 2 {
+            // Single-row tables in existing fixtures use commas after `;`.
+            return true;
         }
 
-        self.write("]");
+        let Some(first_end) = rows[0].last().map(|c| c.span.end) else {
+            return true;
+        };
+        let Some(second_start) = rows[1].first().map(|c| c.span.start) else {
+            return true;
+        };
+
+        if second_start <= first_end {
+            return true;
+        }
+
+        self.source[first_end..second_start].contains(&b',')
+    }
+
+    fn table_compact_exceeds_line_length(
+        &self,
+        columns: &[Expression],
+        rows: &[Box<[Expression]>],
+        uses_row_commas: bool,
+    ) -> bool {
+        let rendered = self.probe_format(|p| {
+            p.write("[");
+            p.write_table_header(columns);
+            if !rows.is_empty() {
+                p.write("; ");
+                for (i, row) in rows.iter().enumerate() {
+                    if i > 0 {
+                        if uses_row_commas {
+                            p.write(", ");
+                        } else {
+                            p.write(" ");
+                        }
+                    }
+                    p.write_table_row(row);
+                }
+            }
+            p.write("]");
+        });
+        let indent_len = self.config.indent * self.indent_level;
+        indent_len + rendered.len() > self.config.line_length
     }
 
     // ─────────────────────────────────────────────────────────────────────────

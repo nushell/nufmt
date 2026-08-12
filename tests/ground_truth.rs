@@ -754,4 +754,29 @@ fixture_tests!(
         ground_truth_multiple_apostrophes_in_comment_does_not_break_interpolation_issue201,
         idempotency_multiple_apostrophes_in_comment_does_not_break_interpolation_issue201
     ),
+    (
+        "multiline_tables_preserved_issue198",
+        ground_truth_multiline_tables_preserved_issue198,
+        idempotency_multiline_tables_preserved_issue198
+    ),
+    (
+        "list_closure_trailing_comments_preserved_issue199",
+        ground_truth_list_closure_trailing_comments_preserved_issue199,
+        idempotency_list_closure_trailing_comments_preserved_issue199
+    ),
+    (
+        "record_pipeline_subexpr_parens_preserved_issue200",
+        ground_truth_record_pipeline_subexpr_parens_preserved_issue200,
+        idempotency_record_pipeline_subexpr_parens_preserved_issue200
+    ),
+    (
+        "signature_defaults_preserved_issue204",
+        ground_truth_signature_defaults_preserved_issue204,
+        idempotency_signature_defaults_preserved_issue204
+    ),
+    (
+        "alias_prefer_builtin_percent_preserved_issue211",
+        ground_truth_alias_prefer_builtin_percent_preserved_issue211,
+        idempotency_alias_prefer_builtin_percent_preserved_issue211
+    ),
 );

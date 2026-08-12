@@ -6,7 +6,7 @@
 use super::{CommandType, Formatter};
 use nu_protocol::{
     ast::{Argument, Expr, Expression, ExternalArgument},
-    Completion, Signature, SyntaxShape,
+    Completion, Signature, Span, SyntaxShape,
 };
 use nu_utils::NuCow;
 
@@ -584,7 +584,7 @@ impl<'a> Formatter<'a> {
                     self.write_expr_span(positional);
                     self.mark_comments_written_in_span(positional.span.start, positional.span.end);
                 } else {
-                    self.format_signature(sig);
+                    self.format_signature(sig, positional.span);
                 }
             }
             Expr::Closure(block_id) | Expr::Block(block_id) => {
@@ -944,7 +944,10 @@ impl<'a> Formatter<'a> {
     // ─────────────────────────────────────────────────────────────────────────
 
     /// Format a parameter signature (`[x: int, --flag(-f)]`).
-    pub(super) fn format_signature(&mut self, sig: &Signature) {
+    ///
+    /// `sig_span` is the original `[…]` source span; defaults are recovered
+    /// from that text when the parser drops or expands them (issue #204).
+    pub(super) fn format_signature(&mut self, sig: &Signature, sig_span: Span) {
         self.write("[");
 
         let param_count = sig.required_positional.len()
@@ -986,13 +989,26 @@ impl<'a> Formatter<'a> {
                 self.write_shape(&param.shape);
                 self.write_custom_completion(&param.completion);
             }
+            // Rare: parser may still leave a default only in source.
+            if let Some(default_src) =
+                self.signature_default_from_source(sig_span, &param.name, false)
+            {
+                self.write(" = ");
+                self.write_bytes(&default_src);
+            }
         }
 
         // Optional positional parameters
         for param in &sig.optional_positional {
             write_sep(self, &mut first, has_multiline);
             self.write(&param.name);
-            if param.default_value.is_none() {
+
+            let source_default = self.signature_default_from_source(sig_span, &param.name, false);
+
+            // Emit `?` only when there is truly no default (AST or source).
+            // Unresolvable defaults like `$nu.history-path` become
+            // `default_value: None` in the AST but remain in source (issue #204).
+            if param.default_value.is_none() && source_default.is_none() {
                 self.write("?");
             }
             if param.shape != SyntaxShape::Any {
@@ -1000,7 +1016,10 @@ impl<'a> Formatter<'a> {
                 self.write_shape(&param.shape);
                 self.write_custom_completion(&param.completion);
             }
-            if let Some(default) = &param.default_value {
+            if let Some(default_src) = source_default {
+                self.write(" = ");
+                self.write_bytes(&default_src);
+            } else if let Some(default) = &param.default_value {
                 self.write(" = ");
                 // Use raw source to preserve original quote style (issue #179).
                 let span = default.span();
@@ -1038,7 +1057,18 @@ impl<'a> Formatter<'a> {
                 self.write_shape(shape);
                 self.write_custom_completion(&flag.completion);
             }
-            if let Some(default) = &flag.default_value {
+
+            let flag_key = if flag.long.is_empty() {
+                flag.short.map(|c| c.to_string()).unwrap_or_default()
+            } else {
+                flag.long.clone()
+            };
+            let source_default = self.signature_default_from_source(sig_span, &flag_key, true);
+
+            if let Some(default_src) = source_default {
+                self.write(" = ");
+                self.write_bytes(&default_src);
+            } else if let Some(default) = &flag.default_value {
                 self.write(" = ");
                 // Use raw source to preserve original quote style (issue #179).
                 let span = default.span();
@@ -1114,6 +1144,285 @@ impl<'a> Formatter<'a> {
         inline_len + (self.config.indent * self.indent_level) <= self.config.line_length
     }
 
+    /// Recover an authored default expression for a parameter/flag from the
+    /// signature's original source text (issue #204).
+    ///
+    /// Returns owned bytes so callers can write while holding `&mut self`.
+    fn signature_default_from_source(
+        &self,
+        sig_span: Span,
+        name: &str,
+        is_flag: bool,
+    ) -> Option<Vec<u8>> {
+        if name.is_empty() || sig_span.end <= sig_span.start || sig_span.end > self.source.len() {
+            return None;
+        }
+
+        let body = &self.source[sig_span.start..sig_span.end];
+        // Strip surrounding `[` `]` if present.
+        let inner = if body.first() == Some(&b'[') && body.last() == Some(&b']') {
+            &body[1..body.len() - 1]
+        } else {
+            body
+        };
+
+        let name_bytes = name.as_bytes();
+        let mut search_from = 0;
+
+        while search_from < inner.len() {
+            let rel = find_identifier(inner, search_from, name_bytes)?;
+            let name_end = rel + name_bytes.len();
+
+            // For flags, the source form is `--name` or `-x`; require a leading `-`.
+            if is_flag {
+                let before = &inner[..rel];
+                let dashed = before.ends_with(b"--") || before.ends_with(b"-");
+                if !dashed {
+                    search_from = name_end;
+                    continue;
+                }
+            } else {
+                // Positional names must not be part of a flag (`--file`).
+                if rel > 0 && inner[rel - 1] == b'-' {
+                    search_from = name_end;
+                    continue;
+                }
+            }
+
+            let mut idx = name_end;
+            // Skip optional `?`, short-flag `(-x)`, type `: shape`, completions.
+            idx = skip_sig_param_prefix(inner, idx);
+
+            // Skip whitespace before `=`.
+            while idx < inner.len() && inner[idx].is_ascii_whitespace() {
+                idx += 1;
+            }
+
+            if idx >= inner.len() || inner[idx] != b'=' {
+                search_from = name_end;
+                continue;
+            }
+            idx += 1; // skip `=`
+
+            while idx < inner.len() && inner[idx].is_ascii_whitespace() {
+                idx += 1;
+            }
+
+            let default_start = idx;
+            let default_end = scan_default_expr_end(inner, idx);
+            if default_end > default_start {
+                return Some(inner[default_start..default_end].to_vec());
+            }
+            search_from = name_end;
+        }
+
+        None
+    }
+}
+
+/// Find `needle` as a whole identifier starting at or after `from`.
+fn find_identifier(haystack: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || from >= haystack.len() {
+        return None;
+    }
+
+    let mut i = from;
+    while i + needle.len() <= haystack.len() {
+        if &haystack[i..i + needle.len()] == needle {
+            let before_ok = i == 0
+                || !matches!(
+                    haystack[i - 1],
+                    b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-'
+                );
+            let after = i + needle.len();
+            let after_ok = after >= haystack.len()
+                || !matches!(
+                    haystack[after],
+                    b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-'
+                );
+            if before_ok && after_ok {
+                return Some(i);
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Skip past optional `?`, `(-x)`, `: shape`, and `@completion` after a param name.
+fn skip_sig_param_prefix(inner: &[u8], mut idx: usize) -> usize {
+    while idx < inner.len() && inner[idx].is_ascii_whitespace() {
+        idx += 1;
+    }
+    if idx < inner.len() && inner[idx] == b'?' {
+        idx += 1;
+    }
+    while idx < inner.len() && inner[idx].is_ascii_whitespace() {
+        idx += 1;
+    }
+    // Short flag form after long name: `(-s)`
+    if idx + 1 < inner.len() && inner[idx] == b'(' && inner[idx + 1] == b'-' {
+        if let Some(close) = inner[idx..].iter().position(|&b| b == b')') {
+            idx += close + 1;
+        }
+    }
+    while idx < inner.len() && inner[idx].is_ascii_whitespace() {
+        idx += 1;
+    }
+    // Type annotation `: shape` (stop before `=` or next param).
+    if idx < inner.len() && inner[idx] == b':' {
+        idx += 1;
+        while idx < inner.len() && inner[idx].is_ascii_whitespace() {
+            idx += 1;
+        }
+        // Shape may include nested brackets: `list<string>`, `record<a: int>`.
+        let mut depth_angle = 0i32;
+        let mut depth_square = 0i32;
+        let mut depth_paren = 0i32;
+        let mut depth_brace = 0i32;
+        while idx < inner.len() {
+            let b = inner[idx];
+            match b {
+                b'<' => depth_angle += 1,
+                b'>' => depth_angle -= 1,
+                b'[' => depth_square += 1,
+                b']' => depth_square -= 1,
+                b'(' => depth_paren += 1,
+                b')' => depth_paren -= 1,
+                b'{' => depth_brace += 1,
+                b'}' => depth_brace -= 1,
+                b'@' if depth_angle == 0
+                    && depth_square == 0
+                    && depth_paren == 0
+                    && depth_brace == 0 =>
+                {
+                    // custom completion starts; consume below
+                    break;
+                }
+                b'=' | b',' | b'\n'
+                    if depth_angle == 0
+                        && depth_square == 0
+                        && depth_paren == 0
+                        && depth_brace == 0 =>
+                {
+                    break;
+                }
+                _ => {}
+            }
+            // Stop at whitespace that separates params only when depths are zero
+            // and next non-ws looks like a new param (`--` or identifier after comma).
+            idx += 1;
+        }
+    }
+    while idx < inner.len() && inner[idx].is_ascii_whitespace() {
+        idx += 1;
+    }
+    // Custom completion `@cmd` or `@[…]`
+    if idx < inner.len() && inner[idx] == b'@' {
+        idx += 1;
+        if idx < inner.len() && inner[idx] == b'[' {
+            let mut depth = 1i32;
+            idx += 1;
+            while idx < inner.len() && depth > 0 {
+                match inner[idx] {
+                    b'[' => depth += 1,
+                    b']' => depth -= 1,
+                    _ => {}
+                }
+                idx += 1;
+            }
+        } else {
+            while idx < inner.len()
+                && !inner[idx].is_ascii_whitespace()
+                && inner[idx] != b'='
+                && inner[idx] != b','
+            {
+                idx += 1;
+            }
+        }
+    }
+    idx
+}
+
+/// Scan the end of a default expression, respecting quotes and nested brackets.
+fn scan_default_expr_end(inner: &[u8], start: usize) -> usize {
+    let mut idx = start;
+    let mut depth_square = 0i32;
+    let mut depth_paren = 0i32;
+    let mut depth_brace = 0i32;
+    let mut depth_angle = 0i32;
+    let mut in_double = false;
+    let mut in_single = false;
+    let mut escaped = false;
+
+    while idx < inner.len() {
+        let b = inner[idx];
+
+        if in_double {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == b'"' {
+                in_double = false;
+            }
+            idx += 1;
+            continue;
+        }
+        if in_single {
+            if b == b'\'' {
+                in_single = false;
+            }
+            idx += 1;
+            continue;
+        }
+
+        match b {
+            b'"' => in_double = true,
+            b'\'' => in_single = true,
+            b'[' => depth_square += 1,
+            b']' => {
+                if depth_square == 0 && depth_paren == 0 && depth_brace == 0 && depth_angle == 0 {
+                    // End of signature body — default ends before this.
+                    break;
+                }
+                depth_square -= 1;
+            }
+            b'(' => depth_paren += 1,
+            b')' => depth_paren -= 1,
+            b'{' => depth_brace += 1,
+            b'}' => depth_brace -= 1,
+            b'<' => depth_angle += 1,
+            b'>' => depth_angle -= 1,
+            b'#' if depth_square == 0
+                && depth_paren == 0
+                && depth_brace == 0
+                && depth_angle == 0 =>
+            {
+                // Line comment starts — default ends.
+                break;
+            }
+            b',' | b'\n'
+                if depth_square == 0
+                    && depth_paren == 0
+                    && depth_brace == 0
+                    && depth_angle == 0 =>
+            {
+                break;
+            }
+            _ => {}
+        }
+        idx += 1;
+    }
+
+    // Trim trailing whitespace from the default.
+    while idx > start && inner[idx - 1].is_ascii_whitespace() {
+        idx -= 1;
+    }
+    idx
+}
+
+impl<'a> Formatter<'a> {
     // ─────────────────────────────────────────────────────────────────────────
     // Custom completions and shapes
     // ─────────────────────────────────────────────────────────────────────────
