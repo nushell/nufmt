@@ -6,7 +6,6 @@ let uu_jobs = [
 ]
 
 let uu_jobs2 = [
-
     # { pi update } 
     { yay-uu }
     { pkg-uu }

@@ -53,6 +53,9 @@ impl<'a> Formatter<'a> {
             self.write("[");
             let first_item_start = self.list_item_bounds(&items[0]).0;
             self.write_inline_comment_bounded(span.start.saturating_add(1), Some(first_item_start));
+            // Advance past `[` so leading list comments only measure spacing
+            // inside the list, not blank lines from before the opening bracket.
+            self.last_pos = self.last_pos.max(span.start.saturating_add(1));
             self.newline();
             self.indent_level += 1;
             let closing_bracket_pos = span.end.saturating_sub(1);
@@ -303,6 +306,9 @@ impl<'a> Formatter<'a> {
         } else {
             // Multiline format
             self.write("{");
+            // Advance past `{` so leading record comments only measure spacing
+            // inside the record (same rationale as multiline lists).
+            self.last_pos = self.last_pos.max(span.start.saturating_add(1));
             self.newline();
             self.indent_level += 1;
 
@@ -363,7 +369,11 @@ impl<'a> Formatter<'a> {
                 } else {
                     self.write(": ");
                 }
+                // Record values need explicit parens around pipelines such as
+                // `($in | first)`; without them the `|` is a parse error (#200).
+                self.preserve_subexpr_parens_depth += 1;
                 self.format_expression(value);
+                self.preserve_subexpr_parens_depth -= 1;
             }
             RecordItem::Spread(_, expr) => {
                 self.write("...");

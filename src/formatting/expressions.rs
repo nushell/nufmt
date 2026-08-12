@@ -280,12 +280,13 @@ impl<'a> Formatter<'a> {
             }
         }
 
-        // Bare `($in)` can drop parentheses; multi-element pipelines like
-        // `($in | first)` must keep them (record values become invalid otherwise
-        // — issue #200).
+        // Pipelines that start with `$in` can drop outer parens in free
+        // contexts (e.g. def bodies — issue #82). Record values and other
+        // precedence-sensitive spots set `preserve_subexpr_parens_depth` so
+        // `($in | …)` keeps its parentheses (issue #200).
         if self.preserve_subexpr_parens_depth == 0
             && block.pipelines.len() == 1
-            && block.pipelines[0].elements.len() == 1
+            && !block.pipelines[0].elements.is_empty()
         {
             let first_element = &block.pipelines[0].elements[0];
             let element_text = String::from_utf8_lossy(
