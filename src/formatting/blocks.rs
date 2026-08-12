@@ -380,6 +380,13 @@ impl<'a> Formatter<'a> {
         let saved_conditional_depth = self.conditional_context_depth;
         self.conditional_context_depth = 0;
 
+        // Bound inline comments at the closing brace so a trailing comment
+        // after `}` is not pulled inside the block (issue #199).
+        let saved_bound = self.inline_comment_upper_bound;
+        if with_braces {
+            self.inline_comment_upper_bound = Some(span.end.saturating_sub(1));
+        }
+
         let is_simple = block.pipelines.len() == 1
             && block.pipelines[0].elements.len() == 1
             && !self.block_has_nested_structures(block)
@@ -419,6 +426,7 @@ impl<'a> Formatter<'a> {
             self.write("}");
         }
 
+        self.inline_comment_upper_bound = saved_bound;
         self.conditional_context_depth = saved_conditional_depth;
     }
 

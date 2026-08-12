@@ -15,17 +15,17 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.6.1", optional = true, features = ["unicode", "derive"] }
-env_logger = "0.11.10"
-ignore = "0.4.25"
-log = "0.4.29"
+env_logger = "0.11.11"
+ignore = "0.4.33"
+log = "0.4.33"
 nu-ansi-term = "0.50.3"
-nu-cmd-lang = "0.112.2"
-nu-parser = "0.112.2"
-nu-protocol = "0.112.2"
-nu-utils = "0.112.2"
-nuon = "0.112.2"
+nu-cmd-lang = "0.114.1"
+nu-parser = "0.114.1"
+nu-protocol = "0.114.1"
+nu-utils = "0.114.1"
+nuon = "0.114.1"
 rayon = "1.12.0"
-thiserror = "2.0.18"
+thiserror = "2.0.20"
 
 [dev-dependencies]
 criterion = "0.8.2"

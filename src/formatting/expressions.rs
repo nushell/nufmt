@@ -38,7 +38,11 @@ impl<'a> Formatter<'a> {
                 if !(self.try_write_redundant_pipeline_subexpr_without_outer_parens(expr)
                     || self.try_write_spacing_normalized_pipe_closure_garbage(expr))
                 {
-                    self.write_expr_span(expr);
+                    // Parser sometimes emits Garbage for only a suffix of a
+                    // statement (e.g. `alias c = %clear` → Garbage for `%clear`).
+                    // Expand left on the same line so the authored prefix is not
+                    // dropped (issue #211).
+                    self.write_garbage_preserving_statement_prefix(expr);
                 }
             }
 
@@ -64,7 +68,7 @@ impl<'a> Formatter<'a> {
                     self.last_pos = expr.span.end;
                     self.mark_comments_written_in_span(expr.span.start, expr.span.end);
                 } else {
-                    self.format_signature(sig);
+                    self.format_signature(sig, expr.span);
                 }
             }
 
@@ -94,7 +98,7 @@ impl<'a> Formatter<'a> {
 
             Expr::List(items) => self.format_list(items, expr.span),
             Expr::Record(items) => self.format_record(items, expr.span),
-            Expr::Table(table) => self.format_table(&table.columns, &table.rows),
+            Expr::Table(table) => self.format_table(&table.columns, &table.rows, expr.span),
 
             Expr::Range(range) => self.format_range(range),
             Expr::CellPath(cell_path) => self.format_cell_path(cell_path),
@@ -276,7 +280,10 @@ impl<'a> Formatter<'a> {
             }
         }
 
-        // Preserve explicit parens in precedence-sensitive contexts
+        // Pipelines that start with `$in` can drop outer parens in free
+        // contexts (e.g. def bodies — issue #82). Record values and other
+        // precedence-sensitive spots set `preserve_subexpr_parens_depth` so
+        // `($in | …)` keeps its parentheses (issue #200).
         if self.preserve_subexpr_parens_depth == 0
             && block.pipelines.len() == 1
             && !block.pipelines[0].elements.is_empty()
@@ -355,10 +362,66 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Emit a garbage node, expanding left only for alias declarations where
+    /// the parser covers just the RHS suffix (e.g. `alias c = %clear` → Garbage
+    /// for `%clear` only — issue #211).
+    fn write_garbage_preserving_statement_prefix(&mut self, expr: &Expression) {
+        let span = expr.span;
+        if span.end > self.source.len() || span.start > span.end {
+            return;
+        }
+
+        let line_start = self.source[..span.start]
+            .iter()
+            .rposition(|&b| b == b'\n')
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let mut start = line_start.max(self.last_pos);
+
+        // Drop pure indentation so `write_indent` can re-apply it.
+        while start < span.start && matches!(self.source[start], b' ' | b'\t') {
+            start += 1;
+        }
+
+        if start < span.start {
+            let prefix = &self.source[start..span.start];
+            if prefix_looks_like_alias_declaration(prefix) {
+                self.write_bytes(&self.source[start..span.end]);
+                return;
+            }
+        }
+
+        self.write_expr_span(expr);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
+}
 
+/// Return `true` if `prefix` looks like `alias name =` or `export alias name =`.
+fn prefix_looks_like_alias_declaration(prefix: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(prefix) else {
+        return false;
+    };
+    let trimmed = text.trim_start();
+    let rest = if let Some(after_export) = trimmed.strip_prefix("export") {
+        let after = after_export.trim_start();
+        if after.is_empty() || !after.starts_with("alias") {
+            return false;
+        }
+        after
+    } else if trimmed.starts_with("alias") {
+        trimmed
+    } else {
+        return false;
+    };
+
+    // Must contain `=` between the alias keyword and the garbage RHS.
+    rest.contains('=')
+}
+
+impl<'a> Formatter<'a> {
     /// Best-effort normalisation for a narrow garbage case:
     /// `((head) | tail)` -> `head | tail`.
     /// Attempt to simplify a `((head) | tail)` garbage node to `head | tail`.
