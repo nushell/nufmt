@@ -5,8 +5,8 @@
 
 use log::debug;
 use nu_protocol::{
-    engine::{Call, Command, CommandType as NuCommandType, EngineState, Stack, StateWorkingSet},
     Category, PipelineData, ShellError, Signature, SyntaxShape,
+    engine::{Call, Command, CommandType as NuCommandType, EngineState, Stack, StateWorkingSet},
 };
 
 /// Stub implementation of the `where` keyword so the parser can resolve it.

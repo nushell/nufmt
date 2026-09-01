@@ -14,8 +14,8 @@ pub(super) fn is_fatal_parse_error(error: &ParseError) -> bool {
         ParseError::ExtraTokens(_)
             | ParseError::ExtraTokensAfterClosingDelimiter(_)
             | ParseError::UnexpectedEof(_, _)
-            | ParseError::Unclosed(_, _)
-            | ParseError::Unbalanced(_, _, _)
+            | ParseError::Unclosed(..)
+            | ParseError::Unbalanced(..)
             | ParseError::IncompleteMathExpression(_)
             | ParseError::UnknownCommand(_)
             | ParseError::Expected(_, _)
@@ -279,12 +279,12 @@ fn detect_missing_record_comma_positions(source: &str) -> Vec<usize> {
 
         // Not inside any string: a `#` here starts a line comment. Skip its
         // whole body so apostrophes/quotes inside it are never tracked.
-        if let Some((span, _)) = next_comment {
-            if span.start == idx {
-                idx = span.end;
-                next_comment = comments.next();
-                continue;
-            }
+        if let Some((span, _)) = next_comment
+            && span.start == idx
+        {
+            idx = span.end;
+            next_comment = comments.next();
+            continue;
         }
 
         if byte == b'"' {
@@ -432,21 +432,23 @@ fn add_brace_padding_segment(segment: &str) -> (String, bool) {
     for (idx, &byte) in bytes.iter().enumerate() {
         if byte == b'{' {
             output.push(byte);
-            if let Some(next) = bytes.get(idx + 1) {
-                if !next.is_ascii_whitespace() && *next != b'}' {
-                    output.push(b' ');
-                    changed = true;
-                }
+            if let Some(next) = bytes.get(idx + 1)
+                && !next.is_ascii_whitespace()
+                && *next != b'}'
+            {
+                output.push(b' ');
+                changed = true;
             }
             continue;
         }
 
         if byte == b'}' {
-            if let Some(last) = output.last() {
-                if !last.is_ascii_whitespace() && *last != b'{' {
-                    output.push(b' ');
-                    changed = true;
-                }
+            if let Some(last) = output.last()
+                && !last.is_ascii_whitespace()
+                && *last != b'{'
+            {
+                output.push(b' ');
+                changed = true;
             }
             output.push(byte);
             continue;
@@ -487,11 +489,11 @@ fn merge_spans(spans: &[Span], len: usize) -> Vec<Span> {
 
     let mut merged: Vec<Span> = Vec::new();
     for span in normalised {
-        if let Some(last) = merged.last_mut() {
-            if span.start <= last.end {
-                last.end = last.end.max(span.end);
-                continue;
-            }
+        if let Some(last) = merged.last_mut()
+            && span.start <= last.end
+        {
+            last.end = last.end.max(span.end);
+            continue;
         }
         merged.push(span);
     }

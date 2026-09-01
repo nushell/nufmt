@@ -5,10 +5,10 @@
 
 use super::Formatter;
 use nu_protocol::{
+    Span,
     ast::{
         Argument, Block, Expr, Expression, PipelineElement, PipelineRedirection, RedirectionTarget,
     },
-    Span,
 };
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -74,27 +74,27 @@ impl<'a> Formatter<'a> {
             return 1;
         }
 
-        if self.indent_level == 0 {
-            if let (Some(current_family), Some(next_family)) = (
+        if self.indent_level == 0
+            && let (Some(current_family), Some(next_family)) = (
                 self.pipeline_let_family(current),
                 self.pipeline_let_family(next),
-            ) {
-                if current_family == next_family {
-                    if self.pipeline_call_span_has_newline(current)
-                        || self.pipeline_call_span_has_newline(next)
-                    {
-                        return self.config.margin.saturating_add(1);
-                    }
-
-                    if self.has_comment_between_pipelines(current, next) {
-                        // Let the margin/blank-line logic below decide spacing for
-                        // comment-delimited groups.
-                    } else {
-                        return 1;
-                    }
-                } else {
+            )
+        {
+            if current_family == next_family {
+                if self.pipeline_call_span_has_newline(current)
+                    || self.pipeline_call_span_has_newline(next)
+                {
                     return self.config.margin.saturating_add(1);
                 }
+
+                if self.has_comment_between_pipelines(current, next) {
+                    // Let the margin/blank-line logic below decide spacing for
+                    // comment-delimited groups.
+                } else {
+                    return 1;
+                }
+            } else {
+                return self.config.margin.saturating_add(1);
             }
         }
 
@@ -167,13 +167,12 @@ impl<'a> Formatter<'a> {
                 continue;
             }
 
-            if let Some(prev) = previous_newline {
-                if between[prev + 1..idx]
+            if let Some(prev) = previous_newline
+                && between[prev + 1..idx]
                     .iter()
                     .all(|b| b.is_ascii_whitespace())
-                {
-                    return true;
-                }
+            {
+                return true;
             }
 
             previous_newline = Some(idx);

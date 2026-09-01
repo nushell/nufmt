@@ -23,12 +23,12 @@ pub(super) fn extract_comments(source: &[u8]) -> Vec<(Span, Vec<u8>)> {
         // body is ever mistaken for a comment. Without this, the `#` in `r#'`
         // starts a bogus comment and the closing `'#` opens a phantom string
         // that swallows every real comment until the next stray apostrophe.
-        if c == b'r' {
-            if let Some(hashes) = raw_string_open_hashes(source, i) {
-                let body_start = i + 1 + hashes + 1; // 'r' + N*'#' + '\''
-                i = find_raw_string_end(source, body_start, hashes).unwrap_or(source.len());
-                continue;
-            }
+        if c == b'r'
+            && let Some(hashes) = raw_string_open_hashes(source, i)
+        {
+            let body_start = i + 1 + hashes + 1; // 'r' + N*'#' + '\''
+            i = find_raw_string_end(source, body_start, hashes).unwrap_or(source.len());
+            continue;
         }
 
         // Quoted string. Single-quoted strings are raw (no escapes); only
@@ -196,12 +196,11 @@ impl<'a> Formatter<'a> {
                 self.ensure_trailing_newlines(between_newlines);
             }
 
-            if !self.at_line_start {
-                if let Some(&last) = self.output.last() {
-                    if last != b'\n' {
-                        self.newline();
-                    }
-                }
+            if !self.at_line_start
+                && let Some(&last) = self.output.last()
+                && last != b'\n'
+            {
+                self.newline();
             }
             self.write_indent();
             self.output.extend(content);

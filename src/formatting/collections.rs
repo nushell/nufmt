@@ -5,8 +5,8 @@
 
 use super::Formatter;
 use nu_protocol::{
-    ast::{Expr, Expression, ListItem, MatchPattern, Pattern, RecordItem},
     Span,
+    ast::{Expr, Expression, ListItem, MatchPattern, Pattern, RecordItem},
 };
 
 impl<'a> Formatter<'a> {
@@ -779,14 +779,12 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_match_pattern_for_arm(&mut self, pattern: &MatchPattern, rhs: &Expression) {
-        if let Pattern::Expression(expr) = &pattern.pattern {
-            if self.should_unquote_identifier_safe_match_pattern(expr, rhs) {
-                let raw = self.get_span_content(expr.span);
-                let trimmed = raw.trim_ascii();
-                let inner = &trimmed[1..trimmed.len() - 1];
-                self.write_bytes(inner);
-                return;
-            }
+        if self.should_unquote_identifier_safe_match_pattern(pattern, rhs) {
+            let raw = self.get_span_content(pattern.span);
+            let trimmed = raw.trim_ascii();
+            let inner = &trimmed[1..trimmed.len() - 1];
+            self.write_bytes(inner);
+            return;
         }
 
         self.format_match_pattern(pattern);
@@ -794,13 +792,9 @@ impl<'a> Formatter<'a> {
 
     fn should_unquote_identifier_safe_match_pattern(
         &self,
-        expr: &Expression,
+        pattern: &MatchPattern,
         rhs: &Expression,
     ) -> bool {
-        if !matches!(expr.expr, Expr::String(_)) {
-            return false;
-        }
-
         if matches!(
             rhs.expr,
             Expr::Subexpression(_) | Expr::Block(_) | Expr::Closure(_)
@@ -814,7 +808,7 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        let raw = self.get_span_content(expr.span);
+        let raw = self.get_span_content(pattern.span);
         let trimmed = raw.trim_ascii();
         if trimmed.len() < 3 || trimmed.first() != Some(&b'"') || trimmed.last() != Some(&b'"') {
             return false;

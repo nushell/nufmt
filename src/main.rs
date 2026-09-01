@@ -9,15 +9,14 @@
 )]
 
 use clap::{CommandFactory, Parser};
-use ignore::{overrides::OverrideBuilder, DirEntry, WalkBuilder};
+use ignore::{DirEntry, WalkBuilder, overrides::OverrideBuilder};
 use log::{info, trace};
 use nu_ansi_term::{Color, Style};
-use nu_formatter::config::Config;
-use nu_formatter::config_error::ConfigError;
 use nu_formatter::FileDiagnostic;
 use nu_formatter::Mode;
+use nu_formatter::config::Config;
+use nu_formatter::config_error::ConfigError;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::convert::TryFrom;
 use std::{
     collections::BTreeMap,
     io::{self, Write},
@@ -29,11 +28,11 @@ const DEFAULT_CONFIG_FILE: &str = "nufmt.nuon";
 /// The possible exit codes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExitCode {
-    /// nufmt terminates successfully, regardless of whether files or stdin were formatted.
+    /// nufmt exits successfully
     Success = 0,
-    /// only used in check mode: nufmt terminates successfully and at least one file would be formatted if check mode was off.
+    /// (check mode) at least one file requires formatting
     CheckFailed = 1,
-    /// nufmt terminates abnormally due to invalid configuration, invalid CLI options, or an internal error.
+    /// nufmt encountered an error
     Failure = 2,
 }
 
@@ -317,27 +316,15 @@ impl FormattingStats {
         }
 
         if self.reformatted > 0 {
-            let msg = if check_mode {
-                "would be reformatted"
-            } else if self.reformatted == 1 {
-                "was formatted"
+            if check_mode {
+                println!("{} file(s) would be reformatted", self.reformatted);
             } else {
-                "were formatted"
-            };
-            println!(
-                "{} file{} {}",
-                self.reformatted,
-                plural(self.reformatted),
-                msg
-            );
+                println!("{} file(s) got formatted", self.reformatted);
+            }
         }
 
         if self.already_formatted > 0 {
-            println!(
-                "{} file{} already formatted",
-                self.already_formatted,
-                plural(self.already_formatted)
-            );
+            println!("{} file(s) already formatted", self.already_formatted);
         }
 
         if self.failures > 0 {
@@ -347,15 +334,6 @@ impl FormattingStats {
         } else {
             ExitCode::Success
         }
-    }
-}
-
-/// Return "s" for plural, empty string for singular
-fn plural(count: usize) -> &'static str {
-    if count == 1 {
-        ""
-    } else {
-        "s"
     }
 }
 

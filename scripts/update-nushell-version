@@ -1,13 +1,13 @@
 #!/usr/bin/env nu
 
-use std log
+use std/log
 
 def main [
     version: string  # the new version of Nushell, e.g. 0.82.0
 ] {
     log info "updating the badge in the README"
     open README.md
-    | str replace 'https://img.shields.io/badge/nushell-v\d+\.\d+\.\d+-green' $"https://img.shields.io/badge/nushell-v($version)-green"
+    | str replace --regex 'https://img.shields.io/badge/nushell-v\d+\.\d+\.\d+-green' $"https://img.shields.io/badge/nushell-v($version)-green"
     | save --force README.md
 
     log info "updating the `nu-cmd-lang` dependency"
@@ -16,6 +16,8 @@ def main [
     cargo add $"nu-parser@($version)"
     log info "updating the `nu-protocol` dependency"
     cargo add $"nu-protocol@($version)"
+    log info "updating the `nu-utils` dependency"
+    cargo add $"nu-utils@($version)"
     log info "updating the `nuon` dependency"
     cargo add $"nuon@($version)"
 

@@ -13,7 +13,7 @@
 [discord-url]: https://discord.gg/NtAbbGn
 [ci-badge]: https://github.com/nushell/nufmt/actions/workflows/main.yml/badge.svg
 [ci-url]: https://github.com/nushell/nufmt/actions/workflows/main.yml
-[nushell-badge]: https://img.shields.io/badge/nushell-v0.109.1-green
+[nushell-badge]: https://img.shields.io/badge/nushell-v0.115.1-green
 [nushell-url]: https://crates.io/crates/nu
 
 </div>
@@ -50,11 +50,7 @@
 cargo install --git https://github.com/nushell/nufmt
 ```
 
-### Using Nix
-
-```bash
-nix run github:nushell/nufmt
-```
+Requires Rust 1.98 or newer
 
 ## Usage
 
@@ -262,12 +258,14 @@ To add a test for a new construct:
 4. Run the tests to verify
 
 Example input file (`tests/fixtures/input/my_construct.nu`):
+
 ```nu
 let x  =  1
 let y   =   2
 ```
 
 Example expected file (`tests/fixtures/expected/my_construct.nu`):
+
 ```nu
 let x = 1
 let y = 2
@@ -287,4 +285,4 @@ If you encounter formatting issues, please:
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](./LICENSE) for details.

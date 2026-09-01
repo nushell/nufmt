@@ -1,7 +1,5 @@
 //! Keeps all the options, tweaks and dials of the configuration.
 
-use std::convert::TryFrom;
-
 use crate::config_error::ConfigError;
 use nu_protocol::Value;
 

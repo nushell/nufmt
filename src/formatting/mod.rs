@@ -25,15 +25,14 @@ use crate::config::{Config, IndentChar};
 use crate::format_error::FormatError;
 use log::{debug, trace};
 use nu_parser::parse;
-use nu_protocol::{engine::StateWorkingSet, ParseError, Span};
+use nu_protocol::{ParseError, Span, engine::StateWorkingSet};
 
 use comments::extract_comments;
 use engine::get_engine_state;
 use garbage::block_contains_garbage;
 use repair::{
-    detect_compact_if_else_spans, detect_missing_record_comma_spans,
+    ParseRepairOutcome, detect_compact_if_else_spans, detect_missing_record_comma_spans,
     detect_redundant_pipeline_subexpr_spans, is_fatal_parse_error, try_repair_parse_errors,
-    ParseRepairOutcome,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -173,12 +172,11 @@ impl<'a> Formatter<'a> {
     /// Write a space if not at line start and not already following whitespace
     /// or an opener.
     pub(crate) fn space(&mut self) {
-        if !self.at_line_start && !self.output.is_empty() {
-            if let Some(&last) = self.output.last() {
-                if !matches!(last, b' ' | b'\n' | b'\t' | b'(' | b'[') {
-                    self.output.push(b' ');
-                }
-            }
+        if !self.at_line_start
+            && let Some(&last) = self.output.last()
+            && !matches!(last, b' ' | b'\n' | b'\t' | b'(' | b'[')
+        {
+            self.output.push(b' ');
         }
     }
 
@@ -284,18 +282,18 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
     let has_garbage = block_contains_garbage(&working_set, &parsed_block);
     let has_fatal_parse_error = working_set.parse_errors.iter().any(is_fatal_parse_error);
 
-    if !malformed_spans.is_empty() || has_garbage {
-        if let Some(repaired) = try_repair_parse_errors(contents, &malformed_spans) {
-            debug!(
-                "retrying formatting after targeted parse-error repair ({} parse errors)",
-                working_set.parse_errors.len()
-            );
-            return match repaired {
-                ParseRepairOutcome::Reformat(repaired_source) => {
-                    format_inner_with_options(&repaired_source, config)
-                }
-            };
-        }
+    if (!malformed_spans.is_empty() || has_garbage)
+        && let Some(repaired) = try_repair_parse_errors(contents, &malformed_spans)
+    {
+        debug!(
+            "retrying formatting after targeted parse-error repair ({} parse errors)",
+            working_set.parse_errors.len()
+        );
+        return match repaired {
+            ParseRepairOutcome::Reformat(repaired_source) => {
+                format_inner_with_options(&repaired_source, config)
+            }
+        };
     }
 
     if has_fatal_parse_error && has_garbage {
@@ -323,10 +321,10 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
     let mut formatter = Formatter::new(contents, &working_set, config, true);
 
     // Write leading comments
-    if let Some(first_pipeline) = parsed_block.pipelines.first() {
-        if let Some(first_elem) = first_pipeline.elements.first() {
-            formatter.write_comments_before(first_elem.expr.span.start);
-        }
+    if let Some(first_pipeline) = parsed_block.pipelines.first()
+        && let Some(first_elem) = first_pipeline.elements.first()
+    {
+        formatter.write_comments_before(first_elem.expr.span.start);
     }
 
     formatter.format_block(&parsed_block);

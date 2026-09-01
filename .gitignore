@@ -10,6 +10,7 @@ result
 # editors
 .idea/
 .vscode/
+.zed/
 
 # Everyone their own
 tmp/
@@ -18,3 +19,4 @@ tests/.DS_Store
 
 # skills
 .github/skills/*
+AGENTS.override.md

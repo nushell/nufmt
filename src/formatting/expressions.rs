@@ -5,8 +5,8 @@
 
 use super::Formatter;
 use nu_protocol::{
-    ast::{CellPath, Expr, Expression, FullCellPath, PathMember},
     Span,
+    ast::{CellPath, Expr, Expression, FullCellPath, PathMember},
 };
 
 impl<'a> Formatter<'a> {
@@ -150,12 +150,12 @@ impl<'a> Formatter<'a> {
         self.write(" ");
 
         // For assignment operators, unwrap Subexpression RHS to avoid double parens
-        if let Expr::Operator(nu_protocol::ast::Operator::Assignment(_)) = &op.expr {
-            if let Expr::Subexpression(block_id) = &rhs.expr {
-                let block = self.working_set.get_block(*block_id);
-                self.format_block(block);
-                return;
-            }
+        if let Expr::Operator(nu_protocol::ast::Operator::Assignment(_)) = &op.expr
+            && let Expr::Subexpression(block_id) = &rhs.expr
+        {
+            let block = self.working_set.get_block(*block_id);
+            self.format_block(block);
+            return;
         }
 
         self.preserve_subexpr_parens_depth += 1;
@@ -273,11 +273,12 @@ impl<'a> Formatter<'a> {
         }
 
         // String interpolations inside subexpressions don't need parentheses
-        if block.pipelines.len() == 1 && block.pipelines[0].elements.len() == 1 {
-            if let Expr::StringInterpolation(_) = &block.pipelines[0].elements[0].expr.expr {
-                self.format_block(block);
-                return;
-            }
+        if block.pipelines.len() == 1
+            && block.pipelines[0].elements.len() == 1
+            && let Expr::StringInterpolation(_) = &block.pipelines[0].elements[0].expr.expr
+        {
+            self.format_block(block);
+            return;
         }
 
         // Pipelines that start with `$in` can drop outer parens in free
