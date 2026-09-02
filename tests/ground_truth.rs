@@ -11,6 +11,11 @@ use std::process::Command;
 pub fn get_test_binary() -> PathBuf {
     let exe_name = if cfg!(windows) { "nufmt.exe" } else { "nufmt" };
 
+    // When the target directory is managed by an external build system such as Nix
+    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_nufmt") {
+        return PathBuf::from(path);
+    }
+
     // Try CARGO_TARGET_DIR first
     if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
         let path = PathBuf::from(target_dir).join("debug").join(exe_name);
