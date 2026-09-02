@@ -50,7 +50,11 @@
 cargo install --git https://github.com/nushell/nufmt
 ```
 
-Requires Rust 1.98 or newer
+### Using Nix
+
+```bash
+nix run github:nushell/nufmt
+```
 
 ## Usage
 
