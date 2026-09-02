@@ -91,7 +91,7 @@ nufmt src/
 
 ```bash
 # Format files in place
-nufmt *.nu
+nufmt ./*.nu
 
 # Check if files need formatting (CI mode)
 nufmt --dry-run src/
