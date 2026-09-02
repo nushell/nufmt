@@ -44,10 +44,6 @@
 
             cargoLock = {
               lockFile = ./Cargo.lock;
-              outputHashes = {
-                "nu-derive-value-0.115.2" = "sha256-PwX5CHTBf0dkG5ggFAkS/7cVc3eDeyysBBaeRriHG7Y=";
-                "proc-macro-error3-3.1.1" = "sha256-/vZmJXRSlag84GL6/pwC3qSbnkENFtOLMzpZX8T2GTQ=";
-              };
             };
 
             meta = {
