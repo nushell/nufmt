@@ -5,7 +5,6 @@ edition = "2024"
 rust-version = "1.98"
 description = "Formats nushell extremely fast"
 readme = "README.md"
-homepage = "https://github.com/nushell/nufmt"
 repository = "https://github.com/nushell/nufmt"
 license = "MIT"
 keywords = ["cli", "formatting", "nu", "nushell"]
@@ -13,11 +12,9 @@ categories = ["command-line-utilities"]
 
 [lib]
 name = "nu_formatter"
-path = "src/lib.rs"
 
 [[bin]]
 name = "nufmt"
-path = "src/main.rs"
 required-features = ["bin"]
 
 [[bench]]
@@ -45,8 +42,4 @@ tempfile = "3.27.0"
 
 [features]
 default = ["bin"]
-bin = ["clap"]
-
-[patch.crates-io]
-nu-derive-value = { git = "https://github.com/nushell/nushell" }
-proc-macro-error3 = { git = "https://github.com/gamma0987/proc-macro-error3" }
+bin = ["dep:clap"]

@@ -1382,11 +1382,12 @@ dependencies = [
 
 [[package]]
 name = "nu-derive-value"
-version = "0.115.2"
-source = "git+https://github.com/nushell/nushell#d470244081e9798c3cebc2fa2063dc298f52603e"
+version = "0.115.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6166a78cf169252879ec5eee57b8628937787af6092a727f5eb6c69962da923"
 dependencies = [
  "heck",
- "proc-macro-error3",
+ "proc-macro-error2",
  "proc-macro2",
  "quote",
  "syn 3.0.4",
@@ -1808,23 +1809,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "proc-macro-error-attr3"
-version = "3.1.1"
-source = "git+https://github.com/gamma0987/proc-macro-error3#0f0e21bb2a46509c923b87459c6be314bc0cabb5"
+name = "proc-macro-error-attr2"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96de42df36bb9bba5542fe9f1a054b8cc87e172759a1868aa05c1f3acc89dfc5"
 dependencies = [
  "proc-macro2",
  "quote",
 ]
 
 [[package]]
-name = "proc-macro-error3"
-version = "3.1.1"
-source = "git+https://github.com/gamma0987/proc-macro-error3#0f0e21bb2a46509c923b87459c6be314bc0cabb5"
+name = "proc-macro-error2"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11ec05c52be0a07b08061f7dd003e7d7092e0472bc731b4af7bb1ef876109802"
 dependencies = [
- "proc-macro-error-attr3",
+ "proc-macro-error-attr2",
  "proc-macro2",
  "quote",
- "syn 3.0.4",
+ "syn 2.0.119",
 ]
 
 [[package]]
