@@ -1,54 +1,65 @@
-# This workflow run when something is pushed on main and it does
-# normal checks like in the normal PRs
+# Run before merging a pull request and after changes reach main
 
-# Jobs on pull request
-name: CI on main
+name: CI
+
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   format:
-    name: format rust files
+    name: Format rust files
     runs-on: ubuntu-latest
     steps:
-      - name: checkout repository
-        uses: actions/checkout@v3
-      - name: Setup Rust toolchain and cache
-        uses: actions-rust-lang/setup-rust-toolchain@v1.4.4
-      - name: format files
-        run: cargo fmt --all --check
+      - uses: actions/checkout@v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@v1.17.0
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
 
   lint:
-    name: lint all rust files
+    name: Lint all rust files
     runs-on: ubuntu-latest
     steps:
-      - name: checkout repository
-        uses: actions/checkout@v3
-      - name: Setup Rust toolchain and cache
-        uses: actions-rust-lang/setup-rust-toolchain@v1.4.4
-      - name: Clippy
-        run: |
-          cargo clippy \
-            --all-targets \
-            --no-deps \
-            --workspace \
+      - uses: actions/checkout@v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@v1.17.0
+        with:
+          components: clippy
+      - run: >-
+          cargo clippy --all-targets --all-features --no-deps --
+          -D warnings -D rustdoc::broken_intra_doc_links
+          -W clippy::explicit_iter_loop -W clippy::explicit_into_iter_loop
+          -W clippy::semicolon_if_nothing_returned -W clippy::doc_markdown
+          -W clippy::manual_let_else
 
   test:
-    name: test rust files
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        include:
-          - os: windows-latest
-          - os: ubuntu-latest
-
-    runs-on: ${{ matrix.os }}
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
     steps:
-      - name: checkout repository
-        uses: actions/checkout@v3
-      - name: Setup Rust toolchain and cache
-        uses: actions-rust-lang/setup-rust-toolchain@v1.4.4
-      - name: run tests
-        run: cargo test --workspace
+      - uses: actions/checkout@v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@v1.17.0
+      - run: cargo test --workspace --all-features
+      - run: cargo test --workspace --all-features --bench file-format-bench
+      - run: git diff --exit-code -- benches/example.nu
+
+  msrv:
+    name: Check MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@v1.17.0
+        with:
+          toolchain: "1.98"
+      - run: cargo check --all-targets --all-features
