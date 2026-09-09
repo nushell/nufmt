@@ -1221,6 +1221,10 @@ impl<'a> Formatter<'a> {
 }
 
 /// Find `needle` as a whole identifier starting at or after `from`.
+fn is_identifier_start(byte: u8) -> bool {
+    byte.is_ascii_alphabetic() || byte == b'_'
+}
+
 fn find_identifier(haystack: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || from >= haystack.len() {
         return None;
@@ -1282,6 +1286,20 @@ fn skip_sig_param_prefix(inner: &[u8], mut idx: usize) -> usize {
         let mut depth_brace = 0i32;
         while idx < inner.len() {
             let b = inner[idx];
+            if b.is_ascii_whitespace()
+                && depth_angle == 0
+                && depth_square == 0
+                && depth_paren == 0
+                && depth_brace == 0
+            {
+                let mut next = idx + 1;
+                while next < inner.len() && inner[next].is_ascii_whitespace() {
+                    next += 1;
+                }
+                if next < inner.len() && (inner[next] == b'-' || is_identifier_start(inner[next])) {
+                    break;
+                }
+            }
             match b {
                 b'<' => depth_angle += 1,
                 b'>' => depth_angle -= 1,
@@ -1296,7 +1314,7 @@ fn skip_sig_param_prefix(inner: &[u8], mut idx: usize) -> usize {
                     && depth_paren == 0
                     && depth_brace == 0 =>
                 {
-                    // custom completion starts; consume below
+                    // Custom completion starts; consume below.
                     break;
                 }
                 b'=' | b',' | b'\n'
@@ -1309,8 +1327,6 @@ fn skip_sig_param_prefix(inner: &[u8], mut idx: usize) -> usize {
                 }
                 _ => {}
             }
-            // Stop at whitespace that separates params only when depths are zero
-            // and next non-ws looks like a new param (`--` or identifier after comma).
             idx += 1;
         }
     }
