@@ -211,6 +211,11 @@ fixture_tests!(
         ground_truth_def_statement,
         idempotency_def_statement
     ),
+    (
+        "wrapped_signature",
+        ground_truth_wrapped_signature,
+        idempotency_wrapped_signature
+    ),
 );
 
 // Control flow
