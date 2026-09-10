@@ -221,6 +221,11 @@ fixture_tests!(
         ground_truth_signature_default_association,
         idempotency_signature_default_association
     ),
+    (
+        "environment_key_with_parentheses",
+        ground_truth_environment_key_with_parentheses,
+        idempotency_environment_key_with_parentheses
+    ),
 );
 
 // Control flow
