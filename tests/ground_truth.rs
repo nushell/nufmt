@@ -216,6 +216,11 @@ fixture_tests!(
         ground_truth_wrapped_signature,
         idempotency_wrapped_signature
     ),
+    (
+        "signature_default_association",
+        ground_truth_signature_default_association,
+        idempotency_signature_default_association
+    ),
 );
 
 // Control flow
