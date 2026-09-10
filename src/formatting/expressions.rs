@@ -207,7 +207,16 @@ impl<'a> Formatter<'a> {
     fn format_cell_path_member(&mut self, member: &PathMember) {
         match member {
             PathMember::String { val, optional, .. } => {
-                self.write(val);
+                if val
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+                {
+                    self.write(val);
+                } else {
+                    self.write("\"");
+                    self.write(&val.replace('\\', "\\\\").replace('"', "\\\""));
+                    self.write("\"");
+                }
                 if *optional {
                     self.write("?");
                 }
