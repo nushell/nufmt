@@ -226,6 +226,11 @@ fixture_tests!(
         ground_truth_environment_key_with_parentheses,
         idempotency_environment_key_with_parentheses
     ),
+    (
+        "mixed_record_fields",
+        ground_truth_mixed_record_fields,
+        idempotency_mixed_record_fields
+    ),
 );
 
 // Control flow
