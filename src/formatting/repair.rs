@@ -191,7 +191,34 @@ pub(super) fn try_repair_compact_if_else(source: &str) -> (String, bool) {
 // Missing record-comma repair
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Detect byte positions where a comma is likely missing between record fields.
+/// Return whether a value ending at `value_end` is followed by a record key
+/// without an intervening comma.
+fn is_missing_record_comma(bytes: &[u8], value_end: usize) -> bool {
+    let mut lookahead = value_end + 1;
+    while lookahead < bytes.len() && bytes[lookahead].is_ascii_whitespace() {
+        lookahead += 1;
+    }
+
+    if lookahead >= bytes.len()
+        || !(bytes[lookahead].is_ascii_alphabetic() || bytes[lookahead] == b'_')
+    {
+        return false;
+    }
+
+    let mut key_end = lookahead;
+    while key_end < bytes.len()
+        && (bytes[key_end].is_ascii_alphanumeric()
+            || bytes[key_end] == b'_'
+            || bytes[key_end] == b'-')
+    {
+        key_end += 1;
+    }
+
+    key_end < bytes.len()
+        && bytes[key_end] == b':'
+        && !bytes[value_end + 1..lookahead].contains(&b',')
+}
+
 fn detect_missing_record_comma_positions(source: &str) -> Vec<usize> {
     let bytes = source.as_bytes();
     // Comments are extracted with their own string-aware scan (see
@@ -236,31 +263,8 @@ fn detect_missing_record_comma_positions(source: &str) -> Vec<usize> {
             }
             if byte == b'"' {
                 in_string = false;
-
-                // Look ahead for `identifier:` pattern (next record key)
-                let mut lookahead = idx + 1;
-                while lookahead < bytes.len() && bytes[lookahead].is_ascii_whitespace() {
-                    lookahead += 1;
-                }
-
-                if lookahead < bytes.len()
-                    && (bytes[lookahead].is_ascii_alphabetic() || bytes[lookahead] == b'_')
-                {
-                    let mut key_end = lookahead;
-                    while key_end < bytes.len()
-                        && (bytes[key_end].is_ascii_alphanumeric()
-                            || bytes[key_end] == b'_'
-                            || bytes[key_end] == b'-')
-                    {
-                        key_end += 1;
-                    }
-
-                    if key_end < bytes.len() && bytes[key_end] == b':' {
-                        let between = &bytes[idx + 1..lookahead];
-                        if !between.contains(&b',') {
-                            insert_positions.push(idx + 1);
-                        }
-                    }
+                if is_missing_record_comma(bytes, idx) {
+                    insert_positions.push(idx + 1);
                 }
             }
             idx += 1;
@@ -278,7 +282,7 @@ fn detect_missing_record_comma_positions(source: &str) -> Vec<usize> {
         }
 
         // Not inside any string: a `#` here starts a line comment. Skip its
-        // whole body so apostrophes/quotes inside it are never tracked.
+        // whole body so apostrophes/quotes inside comments are never tracked.
         if let Some((span, _)) = next_comment {
             if span.start == idx {
                 idx = span.end;
@@ -292,6 +296,8 @@ fn detect_missing_record_comma_positions(source: &str) -> Vec<usize> {
             escaped = false;
         } else if byte == b'\'' {
             in_single_string = true;
+        } else if byte == b')' && is_missing_record_comma(bytes, idx) {
+            insert_positions.push(idx + 1);
         }
 
         idx += 1;
