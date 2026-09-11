@@ -272,13 +272,16 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
     trace!("parsed block:\n{:?}", parsed_block);
 
     let source_text = String::from_utf8_lossy(contents);
-    let mut malformed_spans: Vec<Span> = working_set
+    let parse_error_spans: Vec<Span> = working_set
         .parse_errors
         .iter()
         .map(ParseError::span)
         .collect();
+    let mut malformed_spans = parse_error_spans.clone();
+    if !parse_error_spans.is_empty() {
+        malformed_spans.extend(detect_missing_record_comma_spans(&source_text));
+    }
     malformed_spans.extend(detect_compact_if_else_spans(&source_text));
-    malformed_spans.extend(detect_missing_record_comma_spans(&source_text));
     malformed_spans.extend(detect_redundant_pipeline_subexpr_spans(&source_text));
 
     let has_garbage = block_contains_garbage(&working_set, &parsed_block);
