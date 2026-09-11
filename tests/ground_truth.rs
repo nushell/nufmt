@@ -231,6 +231,11 @@ fixture_tests!(
         ground_truth_mixed_record_fields,
         idempotency_mixed_record_fields
     ),
+    (
+        "valid_multiline_record",
+        ground_truth_valid_multiline_record,
+        idempotency_valid_multiline_record
+    ),
 );
 
 // Control flow
