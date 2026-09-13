@@ -278,14 +278,20 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
         .map(ParseError::span)
         .collect();
 
+    let has_parsing_malformed_spans = !malformed_spans.is_empty();
+
     let has_garbage = block_contains_garbage(&working_set, &parsed_block);
     let has_fatal_parse_error = working_set.parse_errors.iter().any(is_fatal_parse_error);
 
+    // Quality of life transformations / things that get parsed correctly, but are not the users intention
+    malformed_spans.extend(detect_compact_if_else_spans(&source_text));
+    malformed_spans.extend(detect_redundant_pipeline_subexpr_spans(&source_text));
+
     if !malformed_spans.is_empty() || has_garbage {
         // Only try to detect fixable errors if the AST is broken
-        malformed_spans.extend(detect_compact_if_else_spans(&source_text));
-        malformed_spans.extend(detect_missing_record_comma_spans(&source_text));
-        malformed_spans.extend(detect_redundant_pipeline_subexpr_spans(&source_text));
+        if has_parsing_malformed_spans || has_garbage {
+            malformed_spans.extend(detect_missing_record_comma_spans(&source_text));
+        }
 
         if let Some(repaired) = try_repair_parse_errors(contents, &malformed_spans) {
             debug!(
