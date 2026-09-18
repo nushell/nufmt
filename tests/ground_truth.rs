@@ -295,6 +295,11 @@ fixture_tests!(
         ground_truth_multiline_pipeline_inline_comment_preserved,
         idempotency_multiline_pipeline_inline_comment_preserved
     ),
+    (
+        "multiline_pipeline_standalone_comment_preserved",
+        ground_truth_multiline_pipeline_standalone_comment_preserved,
+        idempotency_multiline_pipeline_standalone_comment_preserved
+    ),
     ("closure", ground_truth_closure, idempotency_closure),
     (
         "subexpression",
