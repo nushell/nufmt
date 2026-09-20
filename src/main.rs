@@ -125,7 +125,10 @@ fn main() {
 
     trace!("received cli.files: {:?}", cli.files);
     trace!("received cli.stdin: {:?}", cli.stdin);
-    trace!("received cli.check_for_shebang: {:?}", cli.check_for_shebang);
+    trace!(
+        "received cli.check_for_shebang: {:?}",
+        cli.check_for_shebang
+    );
     trace!("received cli.all: {:?}", cli.all);
     trace!("received cli.all_recurse: {:?}", cli.all_recurse);
     trace!("received cli.config: {:?}", cli.config);
@@ -578,9 +581,13 @@ mod tests {
         let target = nested.join("a.nu");
         fs::write(&target, "let x = 1").unwrap();
 
-        let (files, invalid) =
-            discover_nu_files(vec![dir.path().to_path_buf(), nested.clone()], &[], true, false)
-                .expect("discovery should succeed");
+        let (files, invalid) = discover_nu_files(
+            vec![dir.path().to_path_buf(), nested.clone()],
+            &[],
+            true,
+            false,
+        )
+        .expect("discovery should succeed");
 
         assert!(invalid.is_empty());
 
@@ -624,9 +631,13 @@ mod tests {
         let target = nested.join("my-command");
         fs::write(&target, file_contents).unwrap();
 
-        let (files, invalid) =
-            discover_nu_files(vec![dir.path().to_path_buf(), nested.clone()], &[], true, check_for_shebang)
-                .expect("discovery should succeed");
+        let (files, invalid) = discover_nu_files(
+            vec![dir.path().to_path_buf(), nested.clone()],
+            &[],
+            true,
+            check_for_shebang,
+        )
+        .expect("discovery should succeed");
 
         assert!(invalid.is_empty());
 
@@ -637,6 +648,9 @@ mod tests {
             .filter(|path| *path == canonical_target)
             .count();
 
-        assert_eq!(matches, expected_file_count, "expected to find {expected_file_count} files");
+        assert_eq!(
+            matches, expected_file_count,
+            "expected to find {expected_file_count} files"
+        );
     }
 }
