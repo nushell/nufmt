@@ -89,10 +89,11 @@ struct Cli {
     stdin: bool,
 
     #[arg(
+        short,
         long,
-        help = "Check contents of files to detect nu scripts containing a shebang such as \"#!/usr/bin/env nu\"). May incur a performance penalty for many files or slow disks."
+        help = "Check the contents of files to detect nu scripts containing a shebang such as \"#!/usr/bin/env nu\"). May incur a performance penalty for many files or slow disks."
     )]
-    check_for_shebang: bool,
+    shebang: bool,
 
     #[arg(short, long, help = "nufmt configuration file")]
     config: Option<PathBuf>,
@@ -125,10 +126,7 @@ fn main() {
 
     trace!("received cli.files: {:?}", cli.files);
     trace!("received cli.stdin: {:?}", cli.stdin);
-    trace!(
-        "received cli.check_for_shebang: {:?}",
-        cli.check_for_shebang
-    );
+    trace!("received cli.shebang: {:?}", cli.shebang);
     trace!("received cli.all: {:?}", cli.all);
     trace!("received cli.all_recurse: {:?}", cli.all_recurse);
     trace!("received cli.config: {:?}", cli.config);
@@ -152,7 +150,7 @@ fn main() {
             (cli.files, true)
         };
 
-        format_files_from_paths(paths, &config, cli.dry_run, recurse, cli.check_for_shebang)
+        format_files_from_paths(paths, &config, cli.dry_run, recurse, cli.shebang)
     };
 
     std::io::stdout()
@@ -208,10 +206,10 @@ fn format_files_from_paths(
     config: &Config,
     dry_run: bool,
     recurse: bool,
-    check_for_shebang: bool,
+    shebang: bool,
 ) -> ExitCode {
     let (target_files, invalid_files) =
-        match discover_nu_files(paths, &config.excludes, recurse, check_for_shebang) {
+        match discover_nu_files(paths, &config.excludes, recurse, shebang) {
             Ok(files) => files,
             Err(err) => {
                 eprintln!("{}: {}", Color::LightRed.paint("error"), err);
@@ -377,7 +375,7 @@ fn discover_nu_files(
     paths: Vec<PathBuf>,
     excludes: &[String],
     recurse: bool,
-    check_for_shebang: bool,
+    shebang: bool,
 ) -> Result<(Vec<PathBuf>, Vec<PathBuf>), ConfigError> {
     let (valid_paths, invalid_paths): (Vec<_>, Vec<_>) =
         paths.into_iter().partition(|p| p.exists());
@@ -396,7 +394,7 @@ fn discover_nu_files(
                 .overrides(overrides.clone())
                 .build()
                 .filter_map(Result::ok)
-                .filter(|entry| is_nu_file(entry) || (check_for_shebang && has_nu_shebang(entry)))
+                .filter(|entry| is_nu_file(entry) || (shebang && has_nu_shebang(entry)))
                 .map(|entry| entry.into_path())
         })
         .collect();
@@ -619,9 +617,9 @@ mod tests {
     #[case("#!/nu\nlet x = 5", true, 1)]
     #[case("#! nu\nlet x = 5", true, 1)]
     #[case("\n#!/usr/bin/env nu\nlet x = 5", true, 0)]
-    fn discover_nu_files_shebangs(
+    fn discover_nu_files_with_shebang(
         #[case] file_contents: &str,
-        #[case] check_for_shebang: bool,
+        #[case] shebang: bool,
         #[case] expected_file_count: usize,
     ) {
         let dir = tempdir().unwrap();
@@ -635,7 +633,7 @@ mod tests {
             vec![dir.path().to_path_buf(), nested.clone()],
             &[],
             true,
-            check_for_shebang,
+            shebang,
         )
         .expect("discovery should succeed");
 
