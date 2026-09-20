@@ -91,7 +91,7 @@ struct Cli {
     #[arg(
         short,
         long,
-        help = "Check the contents of files to detect nu scripts containing a shebang such as \"#!/usr/bin/env nu\"). May incur a performance penalty for many files or slow disks."
+        help = "Check the contents of files to detect nu scripts containing a shebang such as \"#!/usr/bin/env nu\". May incur a performance penalty for many files or slow disks."
     )]
     shebang: bool,
 
