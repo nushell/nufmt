@@ -779,4 +779,9 @@ fixture_tests!(
         ground_truth_alias_prefer_builtin_percent_preserved_issue211,
         idempotency_alias_prefer_builtin_percent_preserved_issue211
     ),
+    (
+        "nested_interpolation_issue220",
+        ground_truth_nested_interpolation_issue220,
+        idempotencynested_interpolation_issue220
+    ),
 );
