@@ -523,9 +523,16 @@ fn align_to_char_boundary(source: &str, index: usize, forward: bool) -> usize {
 }
 
 /// Apply all repair strategies to a single source region.
-fn repair_region(source: &str) -> (String, bool) {
+///
+/// Missing-comma repair runs only when `repair_record_commas` is set, because
+/// a multiline record without commas is valid on its own.
+fn repair_region(source: &str, repair_record_commas: bool) -> (String, bool) {
     let (repaired_if_else, if_else_changed) = try_repair_compact_if_else(source);
-    let (mut repaired_record, record_changed) = try_repair_missing_record_commas(&repaired_if_else);
+    let (mut repaired_record, record_changed) = if repair_record_commas {
+        try_repair_missing_record_commas(&repaired_if_else)
+    } else {
+        (repaired_if_else, false)
+    };
     let (repaired_pipeline, pipeline_changed) =
         try_repair_redundant_pipeline_subexpr(&repaired_record);
     repaired_record = repaired_pipeline;
@@ -545,11 +552,14 @@ fn repair_region(source: &str) -> (String, bool) {
 
 /// Attempt to repair parse errors by patching malformed source regions.
 ///
+/// Missing record commas are inserted only when `repair_record_commas` is set.
+///
 /// Returns `Some(ParseRepairOutcome::Reformat(…))` with the patched source
 /// bytes if any repair was applied, or `None` if nothing could be done.
 pub(super) fn try_repair_parse_errors(
     contents: &[u8],
     malformed_spans: &[Span],
+    repair_record_commas: bool,
 ) -> Option<ParseRepairOutcome> {
     if malformed_spans.is_empty() {
         return None;
@@ -576,7 +586,8 @@ pub(super) fn try_repair_parse_errors(
 
         output.push_str(&source[cursor..start]);
 
-        let (repaired_region, region_changed) = repair_region(&source[start..end]);
+        let (repaired_region, region_changed) =
+            repair_region(&source[start..end], repair_record_commas);
         output.push_str(&repaired_region);
         changed |= region_changed;
 

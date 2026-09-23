@@ -277,8 +277,11 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
         .iter()
         .map(ParseError::span)
         .collect();
+    // A multiline record without commas is valid, so missing-comma repair is
+    // limited to input that fails to parse.
+    let repair_record_commas = !parse_error_spans.is_empty();
     let mut malformed_spans = parse_error_spans.clone();
-    if !parse_error_spans.is_empty() {
+    if repair_record_commas {
         malformed_spans.extend(detect_missing_record_comma_spans(&source_text));
     }
     malformed_spans.extend(detect_compact_if_else_spans(&source_text));
@@ -288,7 +291,9 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
     let has_fatal_parse_error = working_set.parse_errors.iter().any(is_fatal_parse_error);
 
     if !malformed_spans.is_empty() || has_garbage {
-        if let Some(repaired) = try_repair_parse_errors(contents, &malformed_spans) {
+        if let Some(repaired) =
+            try_repair_parse_errors(contents, &malformed_spans, repair_record_commas)
+        {
             debug!(
                 "retrying formatting after targeted parse-error repair ({} parse errors)",
                 working_set.parse_errors.len()
