@@ -596,8 +596,14 @@ impl<'a> Formatter<'a> {
             self.write("=> ");
             if self.should_force_multiline_match_arm_block(expr) {
                 self.format_match_arm_block_multiline(expr);
-            } else {
+            } else if matches!(expr.expr, Expr::Block(_)) {
                 self.format_block_or_expr(expr);
+            } else {
+                // Arm bodies need explicit parens around pipelines such as
+                // `($in | from json)`; without them the `|` ends the arm.
+                self.preserve_subexpr_parens_depth += 1;
+                self.format_block_or_expr(expr);
+                self.preserve_subexpr_parens_depth -= 1;
             }
             self.newline();
         }

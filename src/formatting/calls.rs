@@ -112,7 +112,20 @@ impl<'a> Formatter<'a> {
             {
                 continue;
             }
+            // The match scrutinee needs explicit parens around pipelines such
+            // as `($in | describe)`; without them the `|` ends the `match` call.
+            let is_match_scrutinee = decl_name == "match"
+                && matches!(
+                    arg,
+                    Argument::Positional(positional) if !matches!(positional.expr, Expr::MatchBlock(_))
+                );
+            if is_match_scrutinee {
+                self.preserve_subexpr_parens_depth += 1;
+            }
             self.format_call_argument(arg, &cmd_type);
+            if is_match_scrutinee {
+                self.preserve_subexpr_parens_depth -= 1;
+            }
         }
 
         if preserve_not_subexpr_parens {
