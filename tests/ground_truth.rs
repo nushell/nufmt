@@ -227,6 +227,11 @@ fixture_tests!(
         idempotency_environment_key_with_parentheses
     ),
     (
+        "quoted_cell_path_keys_not_unquoted_into_indexes",
+        ground_truth_quoted_cell_path_keys_not_unquoted_into_indexes,
+        idempotency_quoted_cell_path_keys_not_unquoted_into_indexes
+    ),
+    (
         "mixed_record_fields",
         ground_truth_mixed_record_fields,
         idempotency_mixed_record_fields
@@ -235,6 +240,11 @@ fixture_tests!(
         "valid_multiline_record",
         ground_truth_valid_multiline_record,
         idempotency_valid_multiline_record
+    ),
+    (
+        "record_comma_not_added_near_other_repairs",
+        ground_truth_record_comma_not_added_near_other_repairs,
+        idempotency_record_comma_not_added_near_other_repairs
     ),
 );
 
