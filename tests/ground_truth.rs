@@ -570,6 +570,11 @@ fixture_tests!(
         idempotency_match_inter_arm_comment_not_hoisted_into_guard
     ),
     (
+        "match_in_pipeline_parens_preserved",
+        ground_truth_match_in_pipeline_parens_preserved,
+        idempotency_match_in_pipeline_parens_preserved
+    ),
+    (
         "nested_record_comments_preserved",
         ground_truth_nested_record_comments_preserved,
         idempotency_nested_record_comments_preserved
