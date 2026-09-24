@@ -272,20 +272,28 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
     trace!("parsed block:\n{:?}", parsed_block);
 
     let source_text = String::from_utf8_lossy(contents);
-    let mut malformed_spans: Vec<Span> = working_set
+    let parse_error_spans: Vec<Span> = working_set
         .parse_errors
         .iter()
         .map(ParseError::span)
         .collect();
+    // A multiline record without commas is valid, so missing-comma repair is
+    // limited to input that fails to parse.
+    let repair_record_commas = !parse_error_spans.is_empty();
+    let mut malformed_spans = parse_error_spans.clone();
+    if repair_record_commas {
+        malformed_spans.extend(detect_missing_record_comma_spans(&source_text));
+    }
     malformed_spans.extend(detect_compact_if_else_spans(&source_text));
-    malformed_spans.extend(detect_missing_record_comma_spans(&source_text));
     malformed_spans.extend(detect_redundant_pipeline_subexpr_spans(&source_text));
 
     let has_garbage = block_contains_garbage(&working_set, &parsed_block);
     let has_fatal_parse_error = working_set.parse_errors.iter().any(is_fatal_parse_error);
 
     if !malformed_spans.is_empty() || has_garbage {
-        if let Some(repaired) = try_repair_parse_errors(contents, &malformed_spans) {
+        if let Some(repaired) =
+            try_repair_parse_errors(contents, &malformed_spans, repair_record_commas)
+        {
             debug!(
                 "retrying formatting after targeted parse-error repair ({} parse errors)",
                 working_set.parse_errors.len()

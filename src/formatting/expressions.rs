@@ -206,8 +206,32 @@ impl<'a> Formatter<'a> {
     /// optional `?` suffix).
     fn format_cell_path_member(&mut self, member: &PathMember) {
         match member {
-            PathMember::String { val, optional, .. } => {
-                self.write(val);
+            PathMember::String {
+                val,
+                span,
+                optional,
+                ..
+            } => {
+                // A key that was written without quotes already reparses as
+                // the same string key, so it can stay unquoted.
+                let written_bare = self
+                    .source
+                    .get(span.start)
+                    .is_some_and(|byte| !matches!(byte, b'"' | b'\'' | b'`'));
+                // Without quotes, an empty key disappears, and a key such as
+                // `0` or `-1` reparses as an integer index.
+                let safe_to_unquote = !val.is_empty()
+                    && !val.starts_with(|c: char| c.is_ascii_digit() || c == '-')
+                    && val
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'));
+                if written_bare || safe_to_unquote {
+                    self.write(val);
+                } else {
+                    self.write("\"");
+                    self.write(&val.replace('\\', "\\\\").replace('"', "\\\""));
+                    self.write("\"");
+                }
                 if *optional {
                     self.write("?");
                 }

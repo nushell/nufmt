@@ -275,7 +275,13 @@ impl<'a> Formatter<'a> {
                 if prev_has_pipe_redir {
                     self.space();
                 } else if is_multiline {
-                    self.newline();
+                    // A standalone comment written before this stage already
+                    // ended the line. Emitting another newline would leave a
+                    // blank line before the `|`, which ends the pipeline and
+                    // splits it into two statements.
+                    if !self.at_line_start {
+                        self.newline();
+                    }
                     self.write_indent();
                     self.write("| ");
                 } else {

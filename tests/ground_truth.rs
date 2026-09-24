@@ -211,6 +211,41 @@ fixture_tests!(
         ground_truth_def_statement,
         idempotency_def_statement
     ),
+    (
+        "wrapped_signature",
+        ground_truth_wrapped_signature,
+        idempotency_wrapped_signature
+    ),
+    (
+        "signature_default_association",
+        ground_truth_signature_default_association,
+        idempotency_signature_default_association
+    ),
+    (
+        "environment_key_with_parentheses",
+        ground_truth_environment_key_with_parentheses,
+        idempotency_environment_key_with_parentheses
+    ),
+    (
+        "quoted_cell_path_keys_not_unquoted_into_indexes",
+        ground_truth_quoted_cell_path_keys_not_unquoted_into_indexes,
+        idempotency_quoted_cell_path_keys_not_unquoted_into_indexes
+    ),
+    (
+        "mixed_record_fields",
+        ground_truth_mixed_record_fields,
+        idempotency_mixed_record_fields
+    ),
+    (
+        "valid_multiline_record",
+        ground_truth_valid_multiline_record,
+        idempotency_valid_multiline_record
+    ),
+    (
+        "record_comma_not_added_near_other_repairs",
+        ground_truth_record_comma_not_added_near_other_repairs,
+        idempotency_record_comma_not_added_near_other_repairs
+    ),
 );
 
 // Control flow
@@ -269,6 +304,11 @@ fixture_tests!(
         "multiline_pipeline_inline_comment_preserved",
         ground_truth_multiline_pipeline_inline_comment_preserved,
         idempotency_multiline_pipeline_inline_comment_preserved
+    ),
+    (
+        "multiline_pipeline_standalone_comment_preserved",
+        ground_truth_multiline_pipeline_standalone_comment_preserved,
+        idempotency_multiline_pipeline_standalone_comment_preserved
     ),
     ("closure", ground_truth_closure, idempotency_closure),
     (
@@ -538,6 +578,11 @@ fixture_tests!(
         "match_inter_arm_comment_not_hoisted_into_guard",
         ground_truth_match_inter_arm_comment_not_hoisted_into_guard,
         idempotency_match_inter_arm_comment_not_hoisted_into_guard
+    ),
+    (
+        "match_in_pipeline_parens_preserved",
+        ground_truth_match_in_pipeline_parens_preserved,
+        idempotency_match_in_pipeline_parens_preserved
     ),
     (
         "nested_record_comments_preserved",
