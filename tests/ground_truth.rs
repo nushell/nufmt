@@ -217,6 +217,11 @@ fixture_tests!(
         idempotency_wrapped_signature
     ),
     (
+        "invalid_default_flag",
+        ground_truth_invalid_default_flag,
+        idempotency_invalid_default_flag
+    ),
+    (
         "signature_default_association",
         ground_truth_signature_default_association,
         idempotency_signature_default_association
