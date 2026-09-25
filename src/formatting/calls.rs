@@ -1243,20 +1243,28 @@ fn find_identifier(haystack: &[u8], from: usize, needle: &[u8]) -> Option<usize>
         return None;
     }
 
+    let is_ident_char = |c: u8| matches!(c, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-');
+
     let mut i = from;
     while i + needle.len() <= haystack.len() {
         if &haystack[i..i + needle.len()] == needle {
-            let before_ok = i == 0
-                || !matches!(
-                    haystack[i - 1],
-                    b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-'
-                );
+            let before_ok = if i == 0 {
+                true
+            } else if haystack[i - 1] == b'-' {
+                let prefix_start = if i >= 2 && haystack[i - 2] == b'-' {
+                    i - 2
+                } else {
+                    i - 1
+                };
+
+                prefix_start == 0 || !is_ident_char(haystack[prefix_start - 1])
+            } else {
+                !is_ident_char(haystack[i - 1])
+            };
+
             let after = i + needle.len();
-            let after_ok = after >= haystack.len()
-                || !matches!(
-                    haystack[after],
-                    b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-'
-                );
+            let after_ok = after >= haystack.len() || !is_ident_char(haystack[after]);
+
             if before_ok && after_ok {
                 return Some(i);
             }
@@ -1431,11 +1439,11 @@ fn scan_default_expr_end(inner: &[u8], start: usize) -> usize {
                 // Line comment starts — default ends.
                 break;
             }
-            b',' | b'\n'
-                if depth_square == 0
-                    && depth_paren == 0
-                    && depth_brace == 0
-                    && depth_angle == 0 =>
+            _ if (b == b',' || b.is_ascii_whitespace())
+                && depth_square == 0
+                && depth_paren == 0
+                && depth_brace == 0
+                && depth_angle == 0 =>
             {
                 break;
             }

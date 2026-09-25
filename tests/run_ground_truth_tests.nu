@@ -42,7 +42,7 @@ const TEST_CONSTRUCTS = {
         "hide"
         "overlay"
     ]
-    commands_definitions: ["alias", "extern", "external_call"]
+    commands_definitions: ["alias", "extern", "external_call", "invalid_default_flag"]
     special_constructs: ["do_block", "where_clause", "error_make"]
 }
 
