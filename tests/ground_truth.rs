@@ -217,9 +217,9 @@ fixture_tests!(
         idempotency_wrapped_signature
     ),
     (
-        "invalid_default_flag",
-        ground_truth_invalid_default_flag,
-        idempotency_invalid_default_flag
+        "invalid_default_flag_issue228",
+        ground_truth_invalid_default_flag_issue228,
+        idempotency_invalid_default_flag_issue228
     ),
     (
         "signature_default_association",
@@ -828,5 +828,35 @@ fixture_tests!(
         "alias_prefer_builtin_percent_preserved_issue211",
         ground_truth_alias_prefer_builtin_percent_preserved_issue211,
         idempotency_alias_prefer_builtin_percent_preserved_issue211
+    ),
+    (
+        "signature_default_backtick_string_preserved",
+        ground_truth_signature_default_backtick_string_preserved,
+        idempotency_signature_default_backtick_string_preserved
+    ),
+    (
+        "signature_default_raw_string_preserved",
+        ground_truth_signature_default_raw_string_preserved,
+        idempotency_signature_default_raw_string_preserved
+    ),
+    (
+        "signature_default_flag_name_in_string_not_matched",
+        ground_truth_signature_default_flag_name_in_string_not_matched,
+        idempotency_signature_default_flag_name_in_string_not_matched
+    ),
+    (
+        "optional_positional_unresolvable_default_preserved",
+        ground_truth_optional_positional_unresolvable_default_preserved,
+        idempotency_optional_positional_unresolvable_default_preserved
+    ),
+    (
+        "signature_default_param_name_matches_type",
+        ground_truth_signature_default_param_name_matches_type,
+        idempotency_signature_default_param_name_matches_type
+    ),
+    (
+        "signature_default_glued_short_flag",
+        ground_truth_signature_default_glued_short_flag,
+        idempotency_signature_default_glued_short_flag
     ),
 );
