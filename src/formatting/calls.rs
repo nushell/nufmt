@@ -1071,14 +1071,15 @@ impl<'a> Formatter<'a> {
                 self.write_custom_completion(&flag.completion);
             }
 
-            let flag_key = if flag.long.is_empty() {
+            let flag_name = if flag.long.is_empty() {
                 flag.short.map(|c| c.to_string()).unwrap_or_default()
             } else {
                 flag.long.clone()
             };
-            let source_default = self.signature_default_from_source(sig_span, &flag_key, true);
 
-            if let Some(default_src) = source_default {
+            if let Some(default_src) =
+                self.signature_default_from_source(sig_span, &flag_name, true)
+            {
                 self.write(" = ");
                 self.write_bytes(&default_src);
             } else if let Some(default) = &flag.default_value {
@@ -1179,284 +1180,67 @@ impl<'a> Formatter<'a> {
             body
         };
 
-        let name_bytes = name.as_bytes();
-        let mut search_from = 0;
+        let (tokens, _) = nu_parser::lex_signature(inner, 0, b"\n\r", b",:=", false);
 
-        while search_from < inner.len() {
-            let rel = find_identifier(inner, search_from, name_bytes)?;
-            let name_end = rel + name_bytes.len();
+        // Mirrors the `nu_parser::parse_signatures::parse_signature_helper` state machine.
+        enum Mode {
+            Arg,
+            Type,
+            AfterType,
+            DefaultValue,
+        }
+        let mut mode = Mode::Arg;
+        let mut on_target = false;
 
-            // For flags, the source form is `--name` or `-x`; require a leading `-`.
-            if is_flag {
-                let before = &inner[..rel];
-                let dashed = before.ends_with(b"--") || before.ends_with(b"-");
-                if !dashed {
-                    search_from = name_end;
-                    continue;
-                }
-            } else {
-                // Positional names must not be part of a flag (`--file`).
-                if rel > 0 && inner[rel - 1] == b'-' {
-                    search_from = name_end;
-                    continue;
-                }
-            }
-
-            let mut idx = name_end;
-            // Skip optional `?`, short-flag `(-x)`, type `: shape`, completions.
-            idx = skip_sig_param_prefix(inner, idx);
-
-            // Skip whitespace before `=`.
-            while idx < inner.len() && inner[idx].is_ascii_whitespace() {
-                idx += 1;
-            }
-
-            if idx >= inner.len() || inner[idx] != b'=' {
-                search_from = name_end;
+        for token in &tokens {
+            if token.contents == nu_parser::TokenContents::Comment {
                 continue;
             }
-            idx += 1; // skip `=`
 
-            while idx < inner.len() && inner[idx].is_ascii_whitespace() {
-                idx += 1;
+            let bytes = &inner[token.span.start..token.span.end];
+            match bytes {
+                b":" => mode = Mode::Type,
+                b"=" => mode = Mode::DefaultValue,
+                b"," => {
+                    mode = Mode::Arg;
+                    on_target = false;
+                }
+                _ => match mode {
+                    Mode::Arg | Mode::AfterType => {
+                        on_target = token_matches_param(bytes, name, is_flag);
+                        mode = Mode::Arg;
+                    }
+                    Mode::Type => mode = Mode::AfterType,
+                    Mode::DefaultValue => {
+                        if on_target {
+                            return Some(bytes.to_vec());
+                        }
+                        mode = Mode::Arg;
+                    }
+                },
             }
-
-            let default_start = idx;
-            let default_end = scan_default_expr_end(inner, idx);
-            if default_end > default_start {
-                return Some(inner[default_start..default_end].to_vec());
-            }
-            search_from = name_end;
         }
 
         None
     }
 }
 
-/// Find `needle` as a whole identifier starting at or after `from`.
-fn is_identifier_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
-}
+/// Check if a token matches the given parameter name
+fn token_matches_param(token: &[u8], name: &str, is_flag: bool) -> bool {
+    if is_flag {
+        // keep only the name, dropping any short flag attached to it (e.g. `--name(-x)`)
+        let head = match token.iter().position(|&b| b == b'(') {
+            Some(pos) => &token[..pos],
+            None => token,
+        };
 
-fn find_identifier(haystack: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
-    if needle.is_empty() || from >= haystack.len() {
-        return None;
+        let long = format!("--{name}");
+        let short = format!("-{name}");
+        head == long.as_bytes() || head == short.as_bytes()
+    } else {
+        let head = token.strip_suffix(b"?").unwrap_or(token);
+        head == name.as_bytes()
     }
-
-    let is_ident_char = |c: u8| matches!(c, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-');
-
-    let mut i = from;
-    while i + needle.len() <= haystack.len() {
-        if &haystack[i..i + needle.len()] == needle {
-            let before_ok = if i == 0 {
-                true
-            } else if haystack[i - 1] == b'-' {
-                let prefix_start = if i >= 2 && haystack[i - 2] == b'-' {
-                    i - 2
-                } else {
-                    i - 1
-                };
-
-                prefix_start == 0 || !is_ident_char(haystack[prefix_start - 1])
-            } else {
-                !is_ident_char(haystack[i - 1])
-            };
-
-            let after = i + needle.len();
-            let after_ok = after >= haystack.len() || !is_ident_char(haystack[after]);
-
-            if before_ok && after_ok {
-                return Some(i);
-            }
-        }
-        i += 1;
-    }
-    None
-}
-
-/// Skip past optional `?`, `(-x)`, `: shape`, and `@completion` after a param name.
-fn skip_sig_param_prefix(inner: &[u8], mut idx: usize) -> usize {
-    while idx < inner.len() && inner[idx].is_ascii_whitespace() {
-        idx += 1;
-    }
-    if idx < inner.len() && inner[idx] == b'?' {
-        idx += 1;
-    }
-    while idx < inner.len() && inner[idx].is_ascii_whitespace() {
-        idx += 1;
-    }
-    // Short flag form after long name: `(-s)`
-    if idx + 1 < inner.len() && inner[idx] == b'(' && inner[idx + 1] == b'-' {
-        if let Some(close) = inner[idx..].iter().position(|&b| b == b')') {
-            idx += close + 1;
-        }
-    }
-    while idx < inner.len() && inner[idx].is_ascii_whitespace() {
-        idx += 1;
-    }
-    // Type annotation `: shape` (stop before `=` or next param).
-    if idx < inner.len() && inner[idx] == b':' {
-        idx += 1;
-        while idx < inner.len() && inner[idx].is_ascii_whitespace() {
-            idx += 1;
-        }
-        // Shape may include nested brackets: `list<string>`, `record<a: int>`.
-        let mut depth_angle = 0i32;
-        let mut depth_square = 0i32;
-        let mut depth_paren = 0i32;
-        let mut depth_brace = 0i32;
-        while idx < inner.len() {
-            let b = inner[idx];
-            if b.is_ascii_whitespace()
-                && depth_angle == 0
-                && depth_square == 0
-                && depth_paren == 0
-                && depth_brace == 0
-            {
-                let mut next = idx + 1;
-                while next < inner.len() && inner[next].is_ascii_whitespace() {
-                    next += 1;
-                }
-                if next < inner.len() && (inner[next] == b'-' || is_identifier_start(inner[next])) {
-                    break;
-                }
-            }
-            match b {
-                b'<' => depth_angle += 1,
-                b'>' => depth_angle -= 1,
-                b'[' => depth_square += 1,
-                b']' => depth_square -= 1,
-                b'(' => depth_paren += 1,
-                b')' => depth_paren -= 1,
-                b'{' => depth_brace += 1,
-                b'}' => depth_brace -= 1,
-                b'@' if depth_angle == 0
-                    && depth_square == 0
-                    && depth_paren == 0
-                    && depth_brace == 0 =>
-                {
-                    // Custom completion starts; consume below.
-                    break;
-                }
-                b'=' | b',' | b'\n'
-                    if depth_angle == 0
-                        && depth_square == 0
-                        && depth_paren == 0
-                        && depth_brace == 0 =>
-                {
-                    break;
-                }
-                _ => {}
-            }
-            idx += 1;
-        }
-    }
-    while idx < inner.len() && inner[idx].is_ascii_whitespace() {
-        idx += 1;
-    }
-    // Custom completion `@cmd` or `@[…]`
-    if idx < inner.len() && inner[idx] == b'@' {
-        idx += 1;
-        if idx < inner.len() && inner[idx] == b'[' {
-            let mut depth = 1i32;
-            idx += 1;
-            while idx < inner.len() && depth > 0 {
-                match inner[idx] {
-                    b'[' => depth += 1,
-                    b']' => depth -= 1,
-                    _ => {}
-                }
-                idx += 1;
-            }
-        } else {
-            while idx < inner.len()
-                && !inner[idx].is_ascii_whitespace()
-                && inner[idx] != b'='
-                && inner[idx] != b','
-            {
-                idx += 1;
-            }
-        }
-    }
-    idx
-}
-
-/// Scan the end of a default expression, respecting quotes and nested brackets.
-fn scan_default_expr_end(inner: &[u8], start: usize) -> usize {
-    let mut idx = start;
-    let mut depth_square = 0i32;
-    let mut depth_paren = 0i32;
-    let mut depth_brace = 0i32;
-    let mut depth_angle = 0i32;
-    let mut in_double = false;
-    let mut in_single = false;
-    let mut escaped = false;
-
-    while idx < inner.len() {
-        let b = inner[idx];
-
-        if in_double {
-            if escaped {
-                escaped = false;
-            } else if b == b'\\' {
-                escaped = true;
-            } else if b == b'"' {
-                in_double = false;
-            }
-            idx += 1;
-            continue;
-        }
-        if in_single {
-            if b == b'\'' {
-                in_single = false;
-            }
-            idx += 1;
-            continue;
-        }
-
-        match b {
-            b'"' => in_double = true,
-            b'\'' => in_single = true,
-            b'[' => depth_square += 1,
-            b']' => {
-                if depth_square == 0 && depth_paren == 0 && depth_brace == 0 && depth_angle == 0 {
-                    // End of signature body — default ends before this.
-                    break;
-                }
-                depth_square -= 1;
-            }
-            b'(' => depth_paren += 1,
-            b')' => depth_paren -= 1,
-            b'{' => depth_brace += 1,
-            b'}' => depth_brace -= 1,
-            b'<' => depth_angle += 1,
-            b'>' => depth_angle -= 1,
-            b'#' if depth_square == 0
-                && depth_paren == 0
-                && depth_brace == 0
-                && depth_angle == 0 =>
-            {
-                // Line comment starts — default ends.
-                break;
-            }
-            _ if (b == b',' || b.is_ascii_whitespace())
-                && depth_square == 0
-                && depth_paren == 0
-                && depth_brace == 0
-                && depth_angle == 0 =>
-            {
-                break;
-            }
-            _ => {}
-        }
-        idx += 1;
-    }
-
-    // Trim trailing whitespace from the default.
-    while idx > start && inner[idx - 1].is_ascii_whitespace() {
-        idx -= 1;
-    }
-    idx
 }
 
 impl<'a> Formatter<'a> {
