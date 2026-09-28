@@ -1,8 +1,7 @@
 [package]
 name = "nufmt"
 version = "0.1.4"
-edition = "2021"
-authors = ["The NuShell Contributors"]
+edition = "2024"
 license = "MIT"
 description = "Formats nushell extremely fast"
 homepage = "https://github.com/nushell/nufmt"
@@ -14,22 +13,22 @@ categories = ["command-line-utilities"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.6.1", optional = true, features = ["unicode", "derive"] }
+clap = { version = "4.6.7", optional = true, features = ["unicode", "derive"] }
 env_logger = "0.11.11"
 ignore = "0.4.33"
-log = "0.4.33"
+log = "0.4.34"
 nu-ansi-term = "0.50.3"
-nu-cmd-lang = "0.114.1"
-nu-parser = "0.114.1"
-nu-protocol = "0.114.1"
-nu-utils = "0.114.1"
-nuon = "0.114.1"
+nu-cmd-lang = "0.116.0"
+nu-parser = "0.116.0"
+nu-protocol = "0.116.0"
+nu-utils = "0.116.0"
+nuon = "0.116.0"
 rayon = "1.12.0"
-thiserror = "2.0.20"
+thiserror = "2.0.21"
 
 [dev-dependencies]
 criterion = "0.8.2"
-rstest = "0.26.1"
+rstest = "0.27.0"
 tempfile = "3.27.0"
 
 [features]
