@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use nu_formatter::{config::Config, format_string};
 
 fn criterion_benchmark(c: &mut Criterion) {
