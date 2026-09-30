@@ -2,7 +2,7 @@
   description = "The Nushell Formatter";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
   outputs =
@@ -11,7 +11,6 @@
       systems = [
         "aarch64-darwin"
         "aarch64-linux"
-        "x86_64-darwin"
         "x86_64-linux"
       ];
       forEachSystem = nixpkgs.lib.genAttrs systems;
@@ -19,7 +18,6 @@
         system:
         import nixpkgs {
           inherit system;
-          config.allowDeprecatedx86_64Darwin = true;
         }
       );
     in
