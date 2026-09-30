@@ -70,7 +70,9 @@
 }
 # Nested closures in data
 let transform = {|data|
-    $data | each {|item| {|x| $x * $item } }
+    $data | each {|item|
+        {|x| $x * $item }
+    }
 }
 # Nested control flow
 if $outer {
@@ -84,4 +86,7 @@ def outer [] {
     inner
 }
 # Complex pipeline with nested structures
-$data | each {|row| {name: $row.name, values: ($row.items | each {|i| $i * 2 })} } | where {|r| ($r.values | length) > 0 }
+$data | each {|row| {
+    name: $row.name
+    values: ($row.items | each {|i| $i * 2 })
+} } | where {|r| ($r.values | length) > 0 }
