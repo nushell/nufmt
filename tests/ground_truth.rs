@@ -680,9 +680,9 @@ fixture_tests!(
         idempotency_assignment_pipeline_redundant_parens_removed_issue156
     ),
     (
-        "identifier_safe_match_patterns_unquoted_issue157",
-        ground_truth_identifier_safe_match_patterns_unquoted_issue157,
-        idempotency_identifier_safe_match_patterns_unquoted_issue157
+        "match_pattern_string_boundaries_issue157",
+        ground_truth_match_pattern_string_boundaries_issue157,
+        idempotency_match_pattern_string_boundaries_issue157
     ),
     (
         "single_item_list_inline_and_if_layout_preserved_issue158",
