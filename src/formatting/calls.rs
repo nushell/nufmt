@@ -961,6 +961,8 @@ impl<'a> Formatter<'a> {
     /// `sig_span` is the original `[…]` source span; defaults are recovered
     /// from that text when the parser drops or expands them (issue #204).
     pub(super) fn format_signature(&mut self, sig: &Signature, sig_span: Span) {
+        let args_from_source = self.signature_args_from_source(sig_span);
+
         self.write("[");
 
         let param_count = sig.required_positional.len()
@@ -997,17 +999,33 @@ impl<'a> Formatter<'a> {
         for param in &sig.required_positional {
             write_sep(self, &mut first, has_multiline);
             self.write(&param.name);
+
+            let arg_src = args_from_source.iter().find(|arg| {
+                if let Some(span) = arg.name {
+                    token_matches_param(&self.source[span.start..span.end], &param.name, false)
+                } else {
+                    false
+                }
+            });
+
             if param.shape != SyntaxShape::Any {
                 self.write(": ");
                 self.write_shape(&param.shape);
-                self.write_custom_completion(&param.completion);
+
+                if let Some(completion_span) = arg_src
+                    .and_then(|a| a.types.first())
+                    .and_then(|t| t.completion)
+                {
+                    self.write("@");
+                    self.write_bytes(&self.source[completion_span.start..completion_span.end]);
+                } else {
+                    self.write_custom_completion(&param.completion);
+                }
             }
             // Rare: parser may still leave a default only in source.
-            if let Some(default_src) =
-                self.signature_default_from_source(sig_span, &param.name, false)
-            {
+            if let Some(default_span) = arg_src.and_then(|a| a.default_values.first()) {
                 self.write(" = ");
-                self.write_bytes(&default_src);
+                self.write_bytes(&self.source[default_span.start..default_span.end]);
             }
         }
 
@@ -1016,7 +1034,14 @@ impl<'a> Formatter<'a> {
             write_sep(self, &mut first, has_multiline);
             self.write(&param.name);
 
-            let source_default = self.signature_default_from_source(sig_span, &param.name, false);
+            let arg_src = args_from_source.iter().find(|arg| {
+                if let Some(span) = arg.name {
+                    token_matches_param(&self.source[span.start..span.end], &param.name, false)
+                } else {
+                    false
+                }
+            });
+            let source_default = arg_src.and_then(|a| a.default_values.first());
 
             // Emit `?` only when there is truly no default (AST or source).
             // Unresolvable defaults like `$nu.history-path` become
@@ -1027,11 +1052,20 @@ impl<'a> Formatter<'a> {
             if param.shape != SyntaxShape::Any {
                 self.write(": ");
                 self.write_shape(&param.shape);
-                self.write_custom_completion(&param.completion);
+
+                if let Some(completion_span) = arg_src
+                    .and_then(|a| a.types.first())
+                    .and_then(|t| t.completion)
+                {
+                    self.write("@");
+                    self.write_bytes(&self.source[completion_span.start..completion_span.end]);
+                } else {
+                    self.write_custom_completion(&param.completion);
+                }
             }
-            if let Some(default_src) = source_default {
+            if let Some(span) = source_default {
                 self.write(" = ");
-                self.write_bytes(&default_src);
+                self.write_bytes(&self.source[span.start..span.end]);
             } else if let Some(default) = &param.default_value {
                 self.write(" = ");
                 // Use raw source to preserve original quote style (issue #179).
@@ -1065,11 +1099,6 @@ impl<'a> Formatter<'a> {
                     self.write(")");
                 }
             }
-            if let Some(shape) = &flag.arg {
-                self.write(": ");
-                self.write_shape(shape);
-                self.write_custom_completion(&flag.completion);
-            }
 
             let flag_name = if flag.long.is_empty() {
                 flag.short.map(|c| c.to_string()).unwrap_or_default()
@@ -1077,11 +1106,34 @@ impl<'a> Formatter<'a> {
                 flag.long.clone()
             };
 
-            if let Some(default_src) =
-                self.signature_default_from_source(sig_span, &flag_name, true)
-            {
+            let arg_src = args_from_source.iter().find(|arg| {
+                if let Some(span) = arg.name {
+                    token_matches_param(&self.source[span.start..span.end], &flag_name, true)
+                } else {
+                    false
+                }
+            });
+
+            if let Some(shape) = &flag.arg {
+                self.write(": ");
+                self.write_shape(shape);
+
+                if let Some(completion_span) = arg_src
+                    .and_then(|a| a.types.first())
+                    .and_then(|t| t.completion)
+                {
+                    self.write("@");
+                    self.write_bytes(&self.source[completion_span.start..completion_span.end]);
+                } else {
+                    self.write_custom_completion(&flag.completion);
+                }
+            }
+
+            let source_default = arg_src.and_then(|a| a.default_values.first());
+
+            if let Some(span) = source_default {
                 self.write(" = ");
-                self.write_bytes(&default_src);
+                self.write_bytes(&self.source[span.start..span.end]);
             } else if let Some(default) = &flag.default_value {
                 self.write(" = ");
                 // Use raw source to preserve original quote style (issue #179).
@@ -1099,10 +1151,28 @@ impl<'a> Formatter<'a> {
             write_sep(self, &mut first, has_multiline);
             self.write("...");
             self.write(&rest.name);
+
+            let arg_src = args_from_source.iter().find(|arg| {
+                if let Some(span) = arg.name {
+                    token_matches_param(&self.source[span.start..span.end], &rest.name, false)
+                } else {
+                    false
+                }
+            });
+
             if rest.shape != SyntaxShape::Any {
                 self.write(": ");
                 self.write_shape(&rest.shape);
-                self.write_custom_completion(&rest.completion);
+
+                if let Some(completion_span) = arg_src
+                    .and_then(|a| a.types.first())
+                    .and_then(|t| t.completion)
+                {
+                    self.write("@");
+                    self.write_bytes(&self.source[completion_span.start..completion_span.end]);
+                } else {
+                    self.write_custom_completion(&rest.completion);
+                }
             }
         }
 
@@ -1158,18 +1228,9 @@ impl<'a> Formatter<'a> {
         inline_len + (self.config.indent * self.indent_level) <= self.config.line_length
     }
 
-    /// Recover an authored default expression for a parameter/flag from the
-    /// signature's original source text (issue #204).
-    ///
-    /// Returns owned bytes so callers can write while holding `&mut self`.
-    fn signature_default_from_source(
-        &self,
-        sig_span: Span,
-        name: &str,
-        is_flag: bool,
-    ) -> Option<Vec<u8>> {
-        if name.is_empty() || sig_span.end <= sig_span.start || sig_span.end > self.source.len() {
-            return None;
+    pub fn signature_args_from_source(&self, sig_span: Span) -> Vec<ArgFromSource> {
+        if sig_span.end <= sig_span.start || sig_span.end > self.source.len() {
+            return vec![];
         }
 
         let body = &self.source[sig_span.start..sig_span.end];
@@ -1180,7 +1241,13 @@ impl<'a> Formatter<'a> {
             body
         };
 
-        let (tokens, _) = nu_parser::lex_signature(inner, 0, b"\n\r", b",:=", false);
+        let inner_start = if body.first() == Some(&b'[') && body.last() == Some(&b']') {
+            sig_span.start + 1
+        } else {
+            sig_span.start
+        };
+
+        let (tokens, _) = nu_parser::lex_signature(inner, inner_start, b"\n\r", b",:=", false);
 
         // Mirrors the `nu_parser::parse_signatures::parse_signature_helper` state machine.
         enum Mode {
@@ -1190,39 +1257,90 @@ impl<'a> Formatter<'a> {
             DefaultValue,
         }
         let mut mode = Mode::Arg;
-        let mut on_target = false;
+
+        let mut args: Vec<ArgFromSource> = Vec::new();
+        let mut current_arg = ArgFromSource::default();
+        let mut has_data = false;
 
         for token in &tokens {
             if token.contents == nu_parser::TokenContents::Comment {
                 continue;
             }
 
-            let bytes = &inner[token.span.start..token.span.end];
+            let bytes = &self.source[token.span.start..token.span.end];
             match bytes {
-                b":" => mode = Mode::Type,
+                b":" => {
+                    if matches!(mode, Mode::AfterType) && has_data {
+                        args.push(std::mem::take(&mut current_arg));
+                        has_data = false;
+                    }
+                    mode = Mode::Type;
+                }
                 b"=" => mode = Mode::DefaultValue,
                 b"," => {
+                    if has_data {
+                        args.push(std::mem::take(&mut current_arg));
+                        has_data = false;
+                    }
                     mode = Mode::Arg;
-                    on_target = false;
                 }
                 _ => match mode {
                     Mode::Arg | Mode::AfterType => {
-                        on_target = token_matches_param(bytes, name, is_flag);
+                        if has_data {
+                            args.push(std::mem::take(&mut current_arg));
+                        }
+                        current_arg.name = Some(token.span);
+                        has_data = true;
                         mode = Mode::Arg;
                     }
-                    Mode::Type => mode = Mode::AfterType,
+                    Mode::Type => {
+                        let _type = if let Some(i) = bytes.iter().position(|&b| b == b'@') {
+                            TypeFromSource {
+                                name: Span::new(token.span.start, token.span.start + i),
+                                completion: Some(Span::new(
+                                    token.span.start + i + 1,
+                                    token.span.end,
+                                )),
+                            }
+                        } else {
+                            TypeFromSource {
+                                name: token.span,
+                                completion: None,
+                            }
+                        };
+
+                        current_arg.types.push(_type);
+                        has_data = true;
+                        mode = Mode::AfterType;
+                    }
                     Mode::DefaultValue => {
-                        if on_target {
-                            return Some(bytes.to_vec());
-                        }
-                        mode = Mode::Arg;
+                        current_arg.default_values.push(token.span);
+                        has_data = true;
+                        mode = Mode::AfterType;
                     }
                 },
             }
         }
 
-        None
+        if has_data {
+            args.push(current_arg);
+        }
+
+        args
     }
+}
+
+#[derive(Default)]
+pub struct ArgFromSource {
+    name: Option<Span>,
+    types: Vec<TypeFromSource>,
+    default_values: Vec<Span>,
+}
+
+#[allow(dead_code)]
+pub struct TypeFromSource {
+    name: Span,
+    completion: Option<Span>,
 }
 
 /// Check if a token matches the given parameter name
