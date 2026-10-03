@@ -859,4 +859,9 @@ fixture_tests!(
         ground_truth_signature_default_glued_short_flag,
         idempotency_signature_default_glued_short_flag
     ),
+    (
+        "signature_custom_completions",
+        ground_truth_signature_custom_completions,
+        idempotency_signature_custom_completions
+    ),
 );
