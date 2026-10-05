@@ -3,6 +3,7 @@
 //! Handles formatting of blocks (top-level and nested), pipelines,
 //! pipeline elements, redirections, block expressions, and closures.
 
+use super::scan::{closing_param_pipe, scan_regions, top_level_positions, RegionKind};
 use super::Formatter;
 use nu_protocol::{
     ast::{
@@ -24,6 +25,14 @@ impl<'a> Formatter<'a> {
 
     /// Format a block (a sequence of pipelines).
     pub(super) fn format_block(&mut self, block: &Block) {
+        // The `$in` collector is a parser artifact with no source of its own:
+        // format the statements it wraps, so their comments and positions
+        // are tracked as in any other block.
+        if let Some(body) = self.in_collect_body(block) {
+            self.format_block(body);
+            return;
+        }
+
         let num_pipelines = block.pipelines.len();
         for (i, pipeline) in block.pipelines.iter().enumerate() {
             if let Some(first_elem) = pipeline.elements.first() {
@@ -305,7 +314,9 @@ impl<'a> Formatter<'a> {
 
     /// Format a single pipeline element (expression + optional redirection).
     pub(super) fn format_pipeline_element(&mut self, element: &PipelineElement) {
+        let saved_element_span = self.pipeline_element_span.replace(element.expr.span);
         self.format_expression(&element.expr);
+        self.pipeline_element_span = saved_element_span;
         if let Some(ref redirection) = element.redirection {
             self.format_redirection(redirection);
         }
@@ -366,6 +377,8 @@ impl<'a> Formatter<'a> {
         span: Span,
         with_braces: bool,
     ) {
+        let expand_branch = self.pending_branch_expansion.take().unwrap_or(false);
+
         if with_braces && self.try_format_pipe_closure_block_from_span(span) {
             return;
         }
@@ -393,7 +406,8 @@ impl<'a> Formatter<'a> {
             self.inline_comment_upper_bound = Some(span.end.saturating_sub(1));
         }
 
-        let is_simple = block.pipelines.len() == 1
+        let is_simple = !expand_branch
+            && self.has_single_statement(block)
             && block.pipelines[0].elements.len() == 1
             && !self.block_has_nested_structures(block)
             && !source_has_newline;
@@ -413,6 +427,7 @@ impl<'a> Formatter<'a> {
             if with_braces && has_comments_in_block_span {
                 self.newline();
                 self.indent_level += 1;
+                self.skip_to_body_start(span.start + 1);
                 self.write_comments_before(span.end.saturating_sub(1));
                 self.indent_level -= 1;
                 self.write_indent();
@@ -423,7 +438,11 @@ impl<'a> Formatter<'a> {
             self.newline();
             self.indent_level += 1;
             self.format_block(block);
-            self.newline();
+            let wrote_trailing_comments =
+                with_braces && self.write_trailing_body_comments(span.end.saturating_sub(1));
+            if !wrote_trailing_comments {
+                self.newline();
+            }
             self.indent_level -= 1;
             self.write_indent();
         }
@@ -455,6 +474,38 @@ impl<'a> Formatter<'a> {
         }
 
         slice[1..slice.len() - 1].contains(&b':')
+    }
+
+    /// Return the statements of `block` when the parser wrapped them in a
+    /// `$in` collector.
+    ///
+    /// A body whose statements use `$in` becomes a single `Collect` element
+    /// around a subexpression that spans the whole body, so the body looks
+    /// like one statement and the collector's span covers any comment
+    /// before the closing `}`.
+    pub(super) fn in_collect_body(&self, block: &Block) -> Option<&'a Block> {
+        let [pipeline] = block.pipelines.as_slice() else {
+            return None;
+        };
+        let [element] = pipeline.elements.as_slice() else {
+            return None;
+        };
+        let Expr::Collect(_, inner) = &element.expr.expr else {
+            return None;
+        };
+        let Expr::Subexpression(block_id) = inner.expr else {
+            return None;
+        };
+        (block.span == Some(inner.span)).then(|| self.working_set.get_block(block_id).as_ref())
+    }
+
+    /// Return `true` when `block` holds a single statement, looking through
+    /// the `$in` collector (`{ let a = $in; $a }` holds two).
+    pub(super) fn has_single_statement(&self, block: &Block) -> bool {
+        block.pipelines.len() == 1
+            && self
+                .in_collect_body(block)
+                .is_none_or(|body| body.pipelines.len() == 1)
     }
 
     /// Check if a block has nested structures that require multiline formatting.
@@ -554,40 +605,44 @@ impl<'a> Formatter<'a> {
     /// Format a closure expression (`{|params| body}`), extracting and
     /// normalising parameters from the raw source.
     pub(super) fn format_closure_expression(&mut self, block_id: nu_protocol::BlockId, span: Span) {
-        let content = self.get_span_content(span);
-        let has_params = content
-            .iter()
-            .skip(1) // Skip '{'
-            .find(|b| !b.is_ascii_whitespace())
-            .is_some_and(|ch| *ch == b'|');
-
-        if !has_params {
+        // Without parameters this is formatted as a block, which takes the
+        // pending branch expansion itself.
+        if !self.closure_span_has_params(span) {
             self.format_block_expression(block_id, span, true);
             return;
         }
+        let expand_branch = self.pending_branch_expansion.take().unwrap_or(false);
+
+        let content = self.get_span_content(span);
 
         let Some(first_pipe) = content.iter().position(|&b| b == b'|') else {
-            self.write_bytes(&content);
+            self.write_span(span);
             return;
         };
 
-        let Some(second_pipe) = content[first_pipe + 1..]
-            .iter()
-            .position(|&b| b == b'|')
-            .map(|p| first_pipe + 1 + p)
+        let Some(second_pipe) =
+            closing_param_pipe(&content[first_pipe + 1..]).map(|p| first_pipe + 1 + p)
         else {
-            self.write_bytes(&content);
+            self.write_span(span);
             return;
         };
 
         self.write("{|");
         self.write_normalized_closure_params(&content[first_pipe + 1..second_pipe]);
+        // Comments in the parameter list are written with it.
+        self.mark_comments_written_in_span(span.start + first_pipe + 1, span.start + second_pipe);
 
         self.write("|");
 
+        // Bound inline comments at the closing brace so a comment after `}`
+        // is not pulled inside the closure, as for blocks (issue #199).
+        let saved_bound = self.inline_comment_upper_bound;
+        self.inline_comment_upper_bound = Some(span.end.saturating_sub(1));
+
         let block = self.working_set.get_block(block_id);
         let has_comments = self.has_comments_in_span(span.start, span.end);
-        let is_simple = block.pipelines.len() == 1
+        let is_simple = !expand_branch
+            && self.has_single_statement(block)
             && block.pipelines[0].elements.len() == 1
             && !self.block_has_nested_structures(block)
             && !has_comments;
@@ -599,32 +654,65 @@ impl<'a> Formatter<'a> {
         } else {
             self.newline();
             self.indent_level += 1;
+            self.skip_to_body_start(span.start + second_pipe + 1);
             self.format_block(block);
-            self.newline();
+            if !self.write_trailing_body_comments(span.end.saturating_sub(1)) {
+                self.newline();
+            }
             self.indent_level -= 1;
             self.write_indent();
             self.write("}");
         }
+
+        self.inline_comment_upper_bound = saved_bound;
+    }
+
+    /// Return `true` when the closure spanning `span` opens with a
+    /// `|params|` list.
+    pub(super) fn closure_span_has_params(&self, span: Span) -> bool {
+        self.source
+            .get(span.start..span.end)
+            .and_then(|content| {
+                content
+                    .iter()
+                    .skip(1) // Skip '{'
+                    .find(|b| !b.is_ascii_whitespace())
+            })
+            .is_some_and(|ch| *ch == b'|')
     }
 
     /// Emit closure parameter bytes in normalised form (trimmed, comma-space
     /// separated, with `: type` preserved).
+    ///
+    /// Only the `,` and `:` that separate parameters and types count, not
+    /// those in string defaults (`x = "a,b"`) or bracketed types
+    /// (`record<a: int, b: int>`). A list with comments is written as
+    /// authored, since a comment needs its line break.
     fn write_normalized_closure_params(&mut self, params: &[u8]) {
-        let mut params_iter = params.split(|&b| b == b',').peekable();
+        if scan_regions(params)
+            .iter()
+            .any(|region| region.kind == RegionKind::Comment)
+        {
+            self.write_bytes(params);
+            return;
+        }
 
-        while let Some(param) = params_iter.next() {
-            let mut sub_parts = param.splitn(2, |&b| b == b':');
+        let mut start = 0;
+        let mut ends = top_level_positions(params, b',');
+        ends.push(params.len());
+        for (index, end) in ends.into_iter().enumerate() {
+            if index > 0 {
+                self.write_bytes(b", ");
+            }
+            let param = &params[start..end];
+            start = end + 1;
 
-            if let (Some(param_name), Some(type_hint)) = (sub_parts.next(), sub_parts.next()) {
-                self.write_bytes(param_name.trim_ascii());
+            if let Some(&colon) = top_level_positions(param, b':').first() {
+                self.write_bytes(param[..colon].trim_ascii());
                 self.write_bytes(b": ");
-                self.write_bytes(type_hint.trim_ascii());
+                self.write_bytes(param[colon + 1..].trim_ascii());
             } else {
                 self.write_bytes(param.trim_ascii());
-            }
-
-            if params_iter.peek().is_some() {
-                self.write_bytes(b", ");
             }
         }
     }
@@ -638,7 +726,8 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        let raw = &self.source[span.start..span.end];
+        let source = self.source;
+        let raw = &source[span.start..span.end];
         if !raw.starts_with(b"{") || !raw.ends_with(b"}") {
             return false;
         }
@@ -648,16 +737,23 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        let Some(second_pipe_rel) = inner[1..]
-            .iter()
-            .position(|byte| *byte == b'|')
+        self.write_single_line_closure(inner)
+    }
+
+    /// Write `inner`, the trimmed text between the braces of a one-line
+    /// closure (`|params| body`), as `{|params| body }`. Return `false`, and
+    /// write nothing, when the parameter list has no closing `|`.
+    pub(super) fn write_single_line_closure(&mut self, inner: &[u8]) -> bool {
+        let Some(second_pipe) = inner
+            .get(1..)
+            .and_then(closing_param_pipe)
             .map(|pos| pos + 1)
         else {
             return false;
         };
 
-        let params = &inner[1..second_pipe_rel];
-        let body = inner[second_pipe_rel + 1..].trim_ascii();
+        let params = &inner[1..second_pipe];
+        let body = inner[second_pipe + 1..].trim_ascii();
 
         self.write("{|");
         self.write_normalized_closure_params(params);

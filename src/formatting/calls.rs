@@ -3,10 +3,12 @@
 //! Handles `def`, `let`/`mut`/`const`, `extern`, conditional, and regular
 //! command calls, including signature rendering and custom completions.
 
-use super::{CommandType, Formatter};
+use super::scan::parens_enclose;
+use super::{BranchExpansionKey, CommandType, Formatter};
+use crate::config::ConsistentBranches;
 use nu_protocol::{
     ast::{Argument, Expr, Expression, ExternalArgument},
-    Completion, Signature, Span, SyntaxShape,
+    CollectionColumns, Completion, Signature, Span, SyntaxShape,
 };
 use nu_utils::NuCow;
 
@@ -15,7 +17,14 @@ use nu_utils::NuCow;
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Commands whose block arguments are formatted specially.
-pub(super) const BLOCK_COMMANDS: &[&str] = &["for", "while", "loop", "module", "export module"];
+pub(super) const BLOCK_COMMANDS: &[&str] = &[
+    "for",
+    "while",
+    "loop",
+    "module",
+    "export module",
+    "export-env",
+];
 pub(super) const CONDITIONAL_COMMANDS: &[&str] = &["if", "try"];
 pub(super) const DEF_COMMANDS: &[&str] = &["def", "def-env", "export def"];
 pub(super) const EXTERN_COMMANDS: &[&str] = &["extern", "export extern"];
@@ -42,6 +51,28 @@ fn argument_end_pos(arg: &Argument) -> usize {
     }
 }
 
+/// When `arg`, at `index` among the arguments of the `if` or `try` call named
+/// `decl_name`, is one of its branches, return the branch body: the block or
+/// closure itself, or the expression after `else`/`catch`/`finally`. The
+/// condition of an `if` is not a branch.
+fn conditional_branch_body<'c>(
+    decl_name: &str,
+    index: usize,
+    arg: &'c Argument,
+) -> Option<&'c Expression> {
+    let (Argument::Positional(expr) | Argument::Unknown(expr)) = arg else {
+        return None;
+    };
+    if decl_name == "if" && index == 0 {
+        return None;
+    }
+    match &expr.expr {
+        Expr::Block(_) | Expr::Closure(_) => Some(expr),
+        Expr::Keyword(keyword) => Some(&keyword.expr),
+        _ => None,
+    }
+}
+
 impl<'a> Formatter<'a> {
     // ─────────────────────────────────────────────────────────────────────────
     // Call formatting
@@ -49,6 +80,7 @@ impl<'a> Formatter<'a> {
 
     /// Format a call expression.
     pub(super) fn format_call(&mut self, call: &nu_protocol::ast::Call) {
+        let inherited_branch_expansion = self.pending_branch_expansion.take();
         let decl = self.working_set.get_decl(call.decl_id);
         let decl_name = decl.name();
         let cmd_type = Self::classify_command(decl_name);
@@ -59,20 +91,7 @@ impl<'a> Formatter<'a> {
             return;
         }
 
-        // Write command name, normalizing multi-word command spacing
-        if call.head.end != 0 {
-            if let Some(ref head) = head_text {
-                // For multi-word commands, normalize spacing between words
-                if head.contains(' ') && head.split_whitespace().count() > 1 {
-                    let normalized = head.split_whitespace().collect::<Vec<_>>().join(" ");
-                    self.write(&normalized);
-                } else {
-                    self.write_span(call.head);
-                }
-            } else {
-                self.write_span(call.head);
-            }
-        }
+        self.write_call_head(call, head_text.as_deref());
 
         if matches!(cmd_type, CommandType::Let) {
             self.format_let_call(call);
@@ -106,11 +125,25 @@ impl<'a> Formatter<'a> {
             self.preserve_subexpr_parens_depth += 1;
         }
 
-        for arg in &call.arguments {
+        // An `else if` inherits the decision made for the whole chain.
+        let expand_branches = matches!(cmd_type, CommandType::Conditional)
+            && inherited_branch_expansion
+                .unwrap_or_else(|| self.cached_conditional_branches_need_expansion(call));
+
+        for (index, arg) in call.arguments.iter().enumerate() {
             if matches!(cmd_type, CommandType::Regular)
                 && !self.argument_belongs_to_call_source(call, arg)
             {
                 continue;
+            }
+            // Only a block, a closure, or an `else if` belongs to the chain.
+            // Anything else after `else` (e.g. a parenthesized `if`) starts
+            // its own chain.
+            if matches!(cmd_type, CommandType::Conditional)
+                && conditional_branch_body(decl_name, index, arg)
+                    .is_some_and(|body| self.continues_conditional_chain(body))
+            {
+                self.pending_branch_expansion = Some(expand_branches);
             }
             // The match scrutinee needs explicit parens around pipelines such
             // as `($in | describe)`; without them the `|` ends the `match` call.
@@ -123,6 +156,7 @@ impl<'a> Formatter<'a> {
                 self.preserve_subexpr_parens_depth += 1;
             }
             self.format_call_argument(arg, &cmd_type);
+            self.pending_branch_expansion = None;
             if is_match_scrutinee {
                 self.preserve_subexpr_parens_depth -= 1;
             }
@@ -131,6 +165,279 @@ impl<'a> Formatter<'a> {
         if preserve_not_subexpr_parens {
             self.preserve_subexpr_parens_depth -= 1;
         }
+    }
+
+    /// Like [`Self::conditional_branches_need_expansion`], but remembers the
+    /// answer for each chain. Rendering a branch to measure it formats the
+    /// chains nested inside it, so without the cache the work would double
+    /// with every level of nesting.
+    ///
+    /// The answer depends on the available width and on whether parens are
+    /// kept, so it is only reused in the same indent, multiline-pipeline,
+    /// and paren-preserving context; probes that render at indent 0 must not
+    /// decide for the real pass.
+    fn cached_conditional_branches_need_expansion(&self, call: &nu_protocol::ast::Call) -> bool {
+        let key = BranchExpansionKey {
+            head_start: call.head.start,
+            indent_level: self.indent_level,
+            force_pipeline_multiline: self.force_pipeline_multiline_depth > 0,
+            preserve_subexpr_parens: self.preserve_subexpr_parens_depth > 0,
+        };
+        let cached = self.branch_expansion_cache.borrow().get(&key).copied();
+        if let Some(expand) = cached {
+            return expand;
+        }
+
+        let expand = self.conditional_branches_need_expansion(call);
+        self.branch_expansion_cache.borrow_mut().insert(key, expand);
+        expand
+    }
+
+    /// Return `true` when `body` is part of an `if`/`try` chain: a block, a
+    /// closure, or a nested `if`/`try` call (an `else if`).
+    fn continues_conditional_chain(&self, body: &Expression) -> bool {
+        match &body.expr {
+            Expr::Block(_) | Expr::Closure(_) => true,
+            Expr::Call(inner) => {
+                CONDITIONAL_COMMANDS.contains(&self.working_set.get_decl(inner.decl_id).name())
+            }
+            _ => false,
+        }
+    }
+
+    /// Decide whether every branch of the `if`/`try` chain headed by `call`
+    /// must be expanded because one of them spans several lines (issue #217).
+    fn conditional_branches_need_expansion(&self, call: &nu_protocol::ast::Call) -> bool {
+        if self.config.consistent_branches == ConsistentBranches::Never {
+            return false;
+        }
+
+        let mut branches = Vec::new();
+        self.collect_conditional_branches(call, &mut branches);
+        if branches.len() < 2 {
+            return false;
+        }
+
+        if self.config.consistent_branches == ConsistentBranches::SingleLine {
+            let written_on_one_line = self
+                .source
+                .get(call.head.start..call.span().end)
+                .is_some_and(|text| !text.contains(&b'\n'));
+            // A chain written across lines keeps its layout. When every
+            // branch with a body is already expanded, as a previous run
+            // leaves an expanded chain, a short `catch {|e| ... }` closure
+            // stays expanded too instead of collapsing back.
+            if !written_on_one_line {
+                return self.every_branch_written_expanded(&branches);
+            }
+        }
+
+        branches
+            .iter()
+            .any(|branch| self.branch_renders_multiline(branch))
+    }
+
+    /// Return `true` when every branch with a body is written across
+    /// several lines, and at least one branch has a body. Empty branches
+    /// (`{ }`) keep their layout either way, so they don't count.
+    fn every_branch_written_expanded(&self, branches: &[&Expression]) -> bool {
+        let mut any_body = false;
+        for branch in branches {
+            let (Expr::Block(block_id) | Expr::Closure(block_id)) = &branch.expr else {
+                continue;
+            };
+            if self.working_set.get_block(*block_id).pipelines.is_empty() {
+                continue;
+            }
+            any_body = true;
+            let written_expanded = self
+                .source
+                .get(branch.span.start..branch.span.end)
+                .is_some_and(|text| text.contains(&b'\n'));
+            if !written_expanded {
+                return false;
+            }
+        }
+        any_body
+    }
+
+    /// Collect the block and closure branches of an `if`/`try` chain,
+    /// following `else if`.
+    fn collect_conditional_branches<'c>(
+        &self,
+        call: &'c nu_protocol::ast::Call,
+        branches: &mut Vec<&'c Expression>,
+    ) {
+        let decl_name = self.working_set.get_decl(call.decl_id).name();
+        for (index, arg) in call.arguments.iter().enumerate() {
+            let Some(body) = conditional_branch_body(decl_name, index, arg) else {
+                continue;
+            };
+            match &body.expr {
+                Expr::Block(_) | Expr::Closure(_) => branches.push(body),
+                Expr::Call(inner)
+                    if CONDITIONAL_COMMANDS
+                        .contains(&self.working_set.get_decl(inner.decl_id).name()) =>
+                {
+                    self.collect_conditional_branches(inner.as_ref(), branches);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Return `true` when a block or closure branch will be laid out across
+    /// several lines.
+    fn branch_renders_multiline(&self, branch: &Expression) -> bool {
+        let (Expr::Block(block_id) | Expr::Closure(block_id)) = &branch.expr else {
+            return false;
+        };
+
+        // Decide from the AST when possible, mirroring the layout rules of
+        // `format_block_expression` and `format_closure_expression`. Only a
+        // body that might fit on one line is rendered to find out.
+        let block = self.working_set.get_block(*block_id);
+        // An empty branch keeps its layout (`catch {|e|}` included), so it
+        // doesn't call for expanding the others.
+        if block.pipelines.is_empty()
+            && !self.has_comments_in_span(branch.span.start, branch.span.end)
+        {
+            return false;
+        }
+        let single_simple_element = self.has_single_statement(block)
+            && block.pipelines[0].elements.len() == 1
+            && !self.block_has_nested_structures(block);
+        let certainly_multiline = if self.closure_span_has_params(branch.span) {
+            // `{|x| ...}` keeps a simple body inline even across lines.
+            matches!(branch.expr, Expr::Closure(_)) && !single_simple_element
+        } else {
+            let written_multiline = self
+                .source
+                .get(branch.span.start..branch.span.end)
+                .is_some_and(|text| text.contains(&b'\n'));
+            !block.pipelines.is_empty() && (written_multiline || !single_simple_element)
+        };
+        if certainly_multiline {
+            return true;
+        }
+
+        // Render the branch in the same context the real pass uses for it.
+        // By the time the real pass reaches the branch it has written the
+        // condition and its comments, so the probe starts at the branch.
+        let indent_level = self.indent_level;
+        let conditional_context_depth = self.conditional_context_depth + 1;
+        let preserve_subexpr_parens_depth = self.preserve_subexpr_parens_depth;
+        let force_pipeline_multiline_depth = self.force_pipeline_multiline_depth;
+        let inline_comment_upper_bound = self.inline_comment_upper_bound;
+        self.probe_format(|probe| {
+            probe.last_pos = probe.last_pos.max(branch.span.start);
+            probe.indent_level = indent_level;
+            probe.conditional_context_depth = conditional_context_depth;
+            probe.preserve_subexpr_parens_depth = preserve_subexpr_parens_depth;
+            probe.force_pipeline_multiline_depth = force_pipeline_multiline_depth;
+            probe.inline_comment_upper_bound = inline_comment_upper_bound;
+            probe.format_block_or_expr(branch);
+        })
+        .contains(&b'\n')
+    }
+
+    /// Return `true` when rebuilding `call` (whose expression spans
+    /// `expr_span`) from the AST would delete source text the parser left out
+    /// of it.
+    ///
+    /// Two cases: `export-env` keeps only its first argument (the `extra` in
+    /// `export-env {} extra`), and a flag the command doesn't have is not in
+    /// the AST at all (`do -p { ... }` after `-p` was removed in nushell
+    /// 0.116).
+    pub(super) fn call_drops_source(&self, call: &nu_protocol::ast::Call, expr_span: Span) -> bool {
+        self.export_env_call_drops_source(call, expr_span.end)
+            || self.call_has_unknown_flag(call, expr_span)
+    }
+
+    /// Return `true` when `call` is an `export-env` call with text after its
+    /// first argument.
+    fn export_env_call_drops_source(&self, call: &nu_protocol::ast::Call, expr_end: usize) -> bool {
+        if self.working_set.get_decl(call.decl_id).name() != "export-env" {
+            return false;
+        }
+
+        let parsed_end = call.span().end;
+
+        parsed_end < expr_end
+            && expr_end <= self.source.len()
+            && self.source[parsed_end..expr_end]
+                .iter()
+                .any(|byte| !byte.is_ascii_whitespace())
+    }
+
+    /// Return `true` when the parser reported an unknown flag that belongs to
+    /// `call` itself, not to a call nested in one of its arguments.
+    fn call_has_unknown_flag(&self, call: &nu_protocol::ast::Call, expr_span: Span) -> bool {
+        self.unknown_flags_in(call.head.end, expr_span.end)
+            .any(|flag| {
+                !call
+                    .arguments
+                    .iter()
+                    .any(|arg| arg.span().contains_span(*flag))
+            })
+    }
+
+    /// Format a call to `with-env`, which nufmt knows only so that the
+    /// parser keeps the `FOO=bar cmd` shorthand. Return `false` for any other
+    /// call.
+    ///
+    /// The parser represents the shorthand as a `with-env` call without a
+    /// head, written here as the variables (as authored) and then the
+    /// command. An explicit `with-env {..} {..}` call keeps its braced
+    /// arguments as authored, as it did when the command was unknown.
+    pub(super) fn try_format_with_env_call(&mut self, call: &nu_protocol::ast::Call) -> bool {
+        if self.working_set.get_decl(call.decl_id).name() != "with-env" {
+            return false;
+        }
+        if call.head == Span::unknown() {
+            return self.try_format_env_shorthand(call);
+        }
+
+        self.write_call_head(call, None);
+        for arg in &call.arguments {
+            if !self.argument_belongs_to_call_source(call, arg) {
+                continue;
+            }
+            match arg {
+                Argument::Positional(expr) | Argument::Unknown(expr)
+                    if self.source.get(expr.span.start) == Some(&b'{') =>
+                {
+                    self.space();
+                    self.write_braced_external_argument(expr);
+                }
+                _ => self.format_call_argument(arg, &CommandType::Regular),
+            }
+        }
+        true
+    }
+
+    /// Format `FOO=bar cmd`: the variables as written, then the command.
+    fn try_format_env_shorthand(&mut self, call: &nu_protocol::ast::Call) -> bool {
+        let [Argument::Positional(variables), Argument::Positional(body)] =
+            call.arguments.as_slice()
+        else {
+            return false;
+        };
+        let Expr::Closure(block_id) = body.expr else {
+            return false;
+        };
+        let block = self.working_set.get_block(block_id);
+        let [pipeline] = block.pipelines.as_slice() else {
+            return false;
+        };
+        let [element] = pipeline.elements.as_slice() else {
+            return false;
+        };
+
+        self.write_span(variables.span);
+        self.space();
+        self.format_expression(&element.expr);
+        true
     }
 
     /// Decide if a call should be emitted as a parenthesized multiline call.
@@ -193,19 +500,7 @@ impl<'a> Formatter<'a> {
         let head_text = self.call_head_text(call);
 
         self.write("(");
-        if call.head.end != 0 {
-            // Normalize multi-word command spacing
-            if let Some(ref head) = head_text {
-                if head.contains(' ') && head.split_whitespace().count() > 1 {
-                    let normalized = head.split_whitespace().collect::<Vec<_>>().join(" ");
-                    self.write(&normalized);
-                } else {
-                    self.write_span(call.head);
-                }
-            } else {
-                self.write_span(call.head);
-            }
-        }
+        self.write_call_head(call, head_text.as_deref());
         self.newline();
         self.indent_level += 1;
 
@@ -230,6 +525,32 @@ impl<'a> Formatter<'a> {
         self.indent_level -= 1;
         self.write_indent();
         self.write(")");
+    }
+
+    /// Write the command name of `call`, whose source text is `head_text`,
+    /// with a leading `%` kept and the spacing of a multi-word command
+    /// (`export   def`) normalized.
+    fn write_call_head(&mut self, call: &nu_protocol::ast::Call, head_text: Option<&str>) {
+        if call.head.end == 0 {
+            return;
+        }
+        self.write_prefer_builtin_sigil(call.head.start);
+        match head_text {
+            Some(head) if head.contains(' ') && head.split_whitespace().count() > 1 => {
+                let normalized = head.split_whitespace().collect::<Vec<_>>().join(" ");
+                self.write(&normalized);
+            }
+            _ => self.write_span(call.head),
+        }
+    }
+
+    /// Write the `%` that forces a built-in command (`%ls`) when it sits
+    /// right before the command head at `head_start`. Since nushell 0.116
+    /// the head span no longer includes it.
+    fn write_prefer_builtin_sigil(&mut self, head_start: usize) {
+        if head_start > 0 && self.source.get(head_start - 1) == Some(&b'%') {
+            self.write("%");
+        }
     }
 
     /// Return the raw source text at the call's head span, or `None` if the
@@ -595,7 +916,6 @@ impl<'a> Formatter<'a> {
             Expr::Signature(sig) => {
                 if self.has_comments_in_span(positional.span.start, positional.span.end) {
                     self.write_expr_span(positional);
-                    self.mark_comments_written_in_span(positional.span.start, positional.span.end);
                 } else {
                     self.format_signature(sig, positional.span);
                 }
@@ -680,6 +1000,7 @@ impl<'a> Formatter<'a> {
         if head.span.start > 0 && self.source.get(head.span.start - 1) == Some(&b'^') {
             self.write("^");
         }
+        self.write_prefer_builtin_sigil(head.span.start);
         self.format_expression(head);
 
         let has_injected_prefix_args = args.iter().any(|arg| match arg {
@@ -733,12 +1054,42 @@ impl<'a> Formatter<'a> {
         for arg in args {
             self.space();
             match arg {
+                ExternalArgument::Regular(arg_expr)
+                    if self.source.get(arg_expr.span.start) == Some(&b'{') =>
+                {
+                    self.write_braced_external_argument(arg_expr);
+                }
                 ExternalArgument::Regular(arg_expr) => self.format_expression(arg_expr),
+                ExternalArgument::Spread(spread_expr)
+                    if self.source.get(spread_expr.span.start) == Some(&b'{') =>
+                {
+                    self.write("...");
+                    self.write_braced_external_argument(spread_expr);
+                }
                 ExternalArgument::Spread(spread_expr) => {
                     self.write("...");
                     self.format_expression(spread_expr);
                 }
             }
+        }
+    }
+
+    /// Write a `{...}` argument of an external call as authored, except that
+    /// an empty `{ }` becomes `{}`.
+    ///
+    /// Commands nufmt doesn't know (`each`, `where`, `merge`, ...) parse as
+    /// external calls. Before nushell 0.116 their braced arguments came back
+    /// as raw text; now they are closures, blocks, and records. Writing them
+    /// as authored keeps the dependency upgrade from reformatting them.
+    fn write_braced_external_argument(&mut self, arg_expr: &Expression) {
+        let raw = &self.source[arg_expr.span.start..arg_expr.span.end];
+        if raw.len() >= 2
+            && raw.ends_with(b"}")
+            && raw[1..raw.len() - 1].iter().all(u8::is_ascii_whitespace)
+        {
+            self.write("{}");
+        } else {
+            self.write_expr_span(arg_expr);
         }
     }
 
@@ -829,7 +1180,9 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        if !(trimmed.starts_with(b"(") && trimmed.ends_with(b")") && trimmed.contains(&b'|')) {
+        // The outer parens must wrap the whole RHS: `(a | b) + (c | d)`
+        // starts and ends with a paren but needs both pairs.
+        if !(trimmed.contains(&b'|') && parens_enclose(trimmed)) {
             return false;
         }
 
@@ -912,44 +1265,7 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        let Some(second_pipe) = inner[1..]
-            .iter()
-            .position(|byte| *byte == b'|')
-            .map(|pos| pos + 1)
-        else {
-            return false;
-        };
-
-        let params = &inner[1..second_pipe];
-        let body = inner[second_pipe + 1..].trim_ascii();
-
-        self.write("{|");
-        let mut params_iter = params.split(|&b| b == b',').peekable();
-        while let Some(param) = params_iter.next() {
-            let mut sub_parts = param.splitn(2, |&b| b == b':');
-
-            if let (Some(param_name), Some(type_hint)) = (sub_parts.next(), sub_parts.next()) {
-                self.write_bytes(param_name.trim_ascii());
-                self.write_bytes(b": ");
-                self.write_bytes(type_hint.trim_ascii());
-            } else {
-                self.write_bytes(param.trim_ascii());
-            }
-
-            if params_iter.peek().is_some() {
-                self.write_bytes(b", ");
-            }
-        }
-        self.write("|");
-
-        if !body.is_empty() {
-            self.space();
-            self.write_bytes(body);
-            self.write(" ");
-        }
-
-        self.write("}");
-        true
+        self.write_single_line_closure(inner)
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1234,17 +1550,26 @@ impl<'a> Formatter<'a> {
         }
 
         let body = &self.source[sig_span.start..sig_span.end];
-        // Strip surrounding `[` `]` if present.
-        let inner = if body.first() == Some(&b'[') && body.last() == Some(&b']') {
-            &body[1..body.len() - 1]
-        } else {
-            body
-        };
+        // With input/output types the parser extends the signature span over
+        // `: in -> out`, so take only the leading `[...]` token, the same way
+        // `parse_full_signature` does (issue #236).
+        let (tokens, _) = nu_parser::lex(body, sig_span.start, &[], &[], true);
+        let params_span = tokens.first().map_or(sig_span, |token| token.span);
+        let mut params = &self.source[params_span.start..params_span.end];
+        if params.len() > 1 && params.ends_with(b":") {
+            params = &params[..params.len() - 1];
+        }
 
-        let inner_start = if body.first() == Some(&b'[') && body.last() == Some(&b']') {
-            sig_span.start + 1
+        // Strip surrounding `[` `]` (or `(` `)`) if present.
+        let is_delimited = params.len() >= 2
+            && matches!(
+                (params.first(), params.last()),
+                (Some(b'['), Some(b']')) | (Some(b'('), Some(b')'))
+            );
+        let (inner, inner_start) = if is_delimited {
+            (&params[1..params.len() - 1], params_span.start + 1)
         } else {
-            sig_span.start
+            (params, params_span.start)
         };
 
         let (tokens, _) = nu_parser::lex_signature(inner, inner_start, b"\n\r", b",:=", false);
@@ -1284,6 +1609,13 @@ impl<'a> Formatter<'a> {
                     }
                     mode = Mode::Arg;
                 }
+                // `--namespace (-n)`: the short form of the flag just named,
+                // not a new parameter.
+                _ if matches!(mode, Mode::Arg)
+                    && bytes.starts_with(b"(-")
+                    && current_arg.name.is_some_and(|name| {
+                        self.source[name.start..name.end].starts_with(b"--")
+                    }) => {}
                 _ => match mode {
                     Mode::Arg | Mode::AfterType => {
                         if has_data {
@@ -1356,7 +1688,9 @@ fn token_matches_param(token: &[u8], name: &str, is_flag: bool) -> bool {
         let short = format!("-{name}");
         head == long.as_bytes() || head == short.as_bytes()
     } else {
-        let head = token.strip_suffix(b"?").unwrap_or(token);
+        // `...rest` and `optional?` name the parameter without the markers.
+        let head = token.strip_prefix(b"...").unwrap_or(token);
+        let head = head.strip_suffix(b"?").unwrap_or(head);
         head == name.as_bytes()
     }
 }
@@ -1407,32 +1741,89 @@ impl<'a> Formatter<'a> {
                 }
                 self.write("]");
             }
-            None => {}
+            // Engine-provided completions of built-in commands have no
+            // source syntax, so a user signature never carries one.
+            Some(Completion::Builtin(_)) | None => {}
         }
     }
 
     /// Write a [`SyntaxShape`], normalising special cases (e.g. `closure()`
     /// → `closure`).
     pub(super) fn write_shape(&mut self, shape: &SyntaxShape) {
-        match shape {
-            SyntaxShape::Closure(None) => self.write("closure"),
-            SyntaxShape::Closure(_) => {
-                let rendered = shape.to_string();
-                if rendered == "closure()" {
-                    self.write("closure");
-                } else {
-                    self.write(&rendered);
-                }
-            }
-            other => {
-                let rendered = other.to_string();
-                if rendered.contains("closure()") {
-                    let normalized = rendered.replace("closure()", "closure");
-                    self.write(&normalized);
-                } else {
-                    self.write(&rendered);
-                }
-            }
-        }
+        self.write(&render_shape(shape));
+    }
+}
+
+/// Render a syntax shape the way a signature spells it.
+///
+/// `SyntaxShape`'s `Display` mostly does, but it writes `closure()` for a
+/// closure without parameter types, `external-argument` for `external_arg`
+/// (which the parser rejects), and record and table column names without
+/// the quotes some of them need. Column names are never rewritten, so a
+/// column called `external-argument` keeps its name.
+fn render_shape(shape: &SyntaxShape) -> String {
+    let join = |shapes: &[SyntaxShape]| {
+        shapes
+            .iter()
+            .map(render_shape)
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match shape {
+        SyntaxShape::ExternalArgument => "external_arg".to_string(),
+        SyntaxShape::Closure(None) => "closure".to_string(),
+        SyntaxShape::Closure(Some(args)) if args.is_empty() => "closure".to_string(),
+        SyntaxShape::Closure(Some(args)) => format!("closure({})", join(args)),
+        SyntaxShape::List(item) => format!("list<{}>", render_shape(item)),
+        SyntaxShape::OneOf(shapes) if !shapes.is_empty() => format!("oneof<{}>", join(shapes)),
+        SyntaxShape::Record(columns) => format!("record{}", render_columns(columns)),
+        SyntaxShape::Table(columns) => format!("table{}", render_columns(columns)),
+        other => other.to_string(),
+    }
+}
+
+/// Render the `<name: shape, ...>` columns of a record or table shape.
+fn render_columns(columns: &CollectionColumns<SyntaxShape>) -> String {
+    if columns.is_empty() {
+        return String::new();
+    }
+    let fields = columns
+        .iter()
+        .map(|(name, shape)| format!("{}: {}", render_column_name(name), render_shape(shape)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("<{fields}>")
+}
+
+/// Quote a record or table column name when it would not read back as one
+/// word: `record<a b: int>` means columns `a` and `b`, not `"a b"`.
+fn render_column_name(name: &str) -> String {
+    let needs_quotes = name.is_empty()
+        || name.chars().any(|c| {
+            c.is_whitespace()
+                || matches!(
+                    c,
+                    ':' | ','
+                        | '<'
+                        | '>'
+                        | '"'
+                        | '\''
+                        | '`'
+                        | '#'
+                        | '('
+                        | ')'
+                        | '['
+                        | ']'
+                        | '{'
+                        | '}'
+                        | '|'
+                        | ';'
+                        | '\\'
+                )
+        });
+    if needs_quotes {
+        format!("\"{}\"", name.replace('\\', "\\\\").replace('"', "\\\""))
+    } else {
+        name.to_string()
     }
 }

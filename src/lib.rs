@@ -155,4 +155,18 @@ let x = 1";
     fn remove_leading_whitespace() {
         run_test("   0", "0");
     }
+
+    #[test]
+    fn comment_only_file_is_left_untouched_issue231() {
+        // The exact input from the issue, including the trailing blank line.
+        let contents = "# this file only contains comments\n# just a few comments\n\n# comment comment comment\n\n";
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("comments.nu");
+        std::fs::write(&file, contents).unwrap();
+
+        let (_, diagnostic) = format_single_file(file.clone(), &Config::default(), &Mode::Normal);
+
+        assert_eq!(diagnostic, FileDiagnostic::AlreadyFormatted);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), contents);
+    }
 }

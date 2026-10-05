@@ -6,7 +6,7 @@
 use super::Formatter;
 use nu_protocol::{
     ast::{Expr, Expression, ListItem, MatchPattern, Pattern, RecordItem},
-    Span,
+    Span, Value,
 };
 
 impl<'a> Formatter<'a> {
@@ -17,7 +17,12 @@ impl<'a> Formatter<'a> {
     /// Format a list expression, choosing inline or multiline layout.
     pub(super) fn format_list(&mut self, items: &[ListItem], span: Span) {
         if items.is_empty() {
-            self.write("[]");
+            // A list holding only comments is kept as written.
+            if self.has_comments_in_span(span.start, span.end) {
+                self.write_span(span);
+            } else {
+                self.write("[]");
+            }
             return;
         }
 
@@ -237,7 +242,12 @@ impl<'a> Formatter<'a> {
     /// Format a record expression, choosing inline or multiline layout.
     pub(super) fn format_record(&mut self, items: &[RecordItem], span: Span) {
         if items.is_empty() {
-            self.write("{}");
+            // A record holding only comments is kept as written.
+            if self.has_comments_in_span(span.start, span.end) {
+                self.write_span(span);
+            } else {
+                self.write("{}");
+            }
             return;
         }
 
@@ -418,6 +428,13 @@ impl<'a> Formatter<'a> {
         rows: &[Box<[Expression]>],
         span: Span,
     ) {
+        // Rows are rebuilt from the AST, which has no comments, so a table
+        // with comments is kept as written rather than losing them.
+        if self.has_comments_in_span(span.start, span.end) {
+            self.write_span(span);
+            return;
+        }
+
         let source_has_newline =
             span.end > span.start && self.source[span.start..span.end].contains(&b'\n');
         let uses_row_commas = self.table_uses_row_commas(rows);
@@ -543,7 +560,11 @@ impl<'a> Formatter<'a> {
     // ─────────────────────────────────────────────────────────────────────────
 
     /// Format a match block (`match $val { pattern => expr }`).
-    pub(super) fn format_match_block(&mut self, matches: &[(MatchPattern, Expression)]) {
+    pub(super) fn format_match_block(
+        &mut self,
+        matches: &[(MatchPattern, Expression)],
+        span: Span,
+    ) {
         let rendered_lhs: Vec<Vec<u8>> = matches
             .iter()
             .map(|(pattern, expr)| self.render_match_arm_lhs(pattern, expr))
@@ -573,11 +594,16 @@ impl<'a> Formatter<'a> {
             0
         };
 
+        let closing_brace_pos = span
+            .end
+            .checked_sub(1)
+            .filter(|&pos| pos > span.start && self.source.get(pos) == Some(&b'}'));
+
         self.write("{");
         self.newline();
         self.indent_level += 1;
 
-        for ((pattern, expr), lhs) in matches.iter().zip(rendered_lhs.iter()) {
+        for (index, ((pattern, expr), lhs)) in matches.iter().zip(rendered_lhs.iter()).enumerate() {
             // Emit any standalone comments preceding this arm at the arm
             // boundary, so they are neither dropped nor pulled into a guard.
             self.write_comments_before(pattern.span.start);
@@ -605,7 +631,22 @@ impl<'a> Formatter<'a> {
                 self.format_block_or_expr(expr);
                 self.preserve_subexpr_parens_depth -= 1;
             }
+
+            // Keep a comment on the arm's line with its arm. With several arms
+            // on one line, a comment after a later arm belongs to that arm.
+            let next_arm_start = matches.get(index + 1).map(|(next, _)| next.span.start);
+            self.write_inline_comment_bounded(expr.span.end, next_arm_start.or(closing_brace_pos));
+            // Move past the arm, unless its formatter left a comment inside
+            // it unwritten: that one is emitted before the next arm or `}`
+            // rather than lost.
+            if !self.has_unwritten_comments_in(pattern.span.start, expr.span.end) {
+                self.last_pos = self.last_pos.max(expr.span.end);
+            }
             self.newline();
+        }
+
+        if let Some(closing_brace_pos) = closing_brace_pos {
+            self.write_trailing_body_comments(closing_brace_pos);
         }
 
         self.indent_level -= 1;
@@ -624,7 +665,7 @@ impl<'a> Formatter<'a> {
         let source_has_newline = expr.span.end > expr.span.start
             && self.source[expr.span.start..expr.span.end].contains(&b'\n');
 
-        let is_simple = block.pipelines.len() == 1
+        let is_simple = self.has_single_statement(block)
             && block.pipelines[0].elements.len() == 1
             && !self.block_has_nested_structures(block)
             && !source_has_newline;
@@ -785,9 +826,10 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_match_pattern_for_arm(&mut self, pattern: &MatchPattern, rhs: &Expression) {
-        if let Pattern::Expression(expr) = &pattern.pattern {
-            if self.should_unquote_identifier_safe_match_pattern(expr, rhs) {
-                let raw = self.get_span_content(expr.span);
+        // Nushell 0.116 parses a literal pattern into a value.
+        if let Pattern::Value(Value::String { .. }) = &pattern.pattern {
+            if self.should_unquote_identifier_safe_match_pattern(pattern.span, rhs) {
+                let raw = self.get_span_content(pattern.span);
                 let trimmed = raw.trim_ascii();
                 let inner = &trimmed[1..trimmed.len() - 1];
                 self.write_bytes(inner);
@@ -798,15 +840,9 @@ impl<'a> Formatter<'a> {
         self.format_match_pattern(pattern);
     }
 
-    fn should_unquote_identifier_safe_match_pattern(
-        &self,
-        expr: &Expression,
-        rhs: &Expression,
-    ) -> bool {
-        if !matches!(expr.expr, Expr::String(_)) {
-            return false;
-        }
-
+    /// Return `true` when the string pattern at `span` is a double-quoted
+    /// identifier that reads the same without quotes.
+    fn should_unquote_identifier_safe_match_pattern(&self, span: Span, rhs: &Expression) -> bool {
         if matches!(
             rhs.expr,
             Expr::Subexpression(_) | Expr::Block(_) | Expr::Closure(_)
@@ -820,7 +856,7 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        let raw = self.get_span_content(expr.span);
+        let raw = self.get_span_content(span);
         let trimmed = raw.trim_ascii();
         if trimmed.len() < 3 || trimmed.first() != Some(&b'"') || trimmed.last() != Some(&b'"') {
             return false;
@@ -843,6 +879,9 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        true
+        // Unquoted, these are the wildcard, a bool, null, or a float
+        // (`inf`, `NaN`), which match different values than the string.
+        let word = String::from_utf8_lossy(inner);
+        !(matches!(word.as_ref(), "_" | "true" | "false" | "null") || word.parse::<f64>().is_ok())
     }
 }
