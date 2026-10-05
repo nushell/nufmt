@@ -178,15 +178,23 @@ fn read_config(path: &Path) -> Result<Config, ConfigError> {
 
 /// Format a string passed via stdin and output it directly to stdout
 fn format_stdin(config: &Config) -> ExitCode {
-    let stdin_input: String = io::stdin()
-        .lines()
-        .map_while(Result::ok)
-        .collect::<Vec<_>>()
-        .join("\n");
+    let stdin_input = match io::read_to_string(io::stdin()) {
+        // Line endings are normalized to `\n`, as before; trailing newlines
+        // are kept so that stdin and file mode format the same text.
+        Ok(input) => input.replace("\r\n", "\n"),
+        Err(err) => {
+            eprintln!("{}: {}", Color::LightRed.paint("Could not read stdin"), err);
+            return ExitCode::Failure;
+        }
+    };
 
     match nu_formatter::format_string(&stdin_input, config) {
-        Ok(output) => {
-            println!("{output}");
+        Ok(mut output) => {
+            // End the output with a newline, as file mode does.
+            if !output.ends_with('\n') {
+                output.push('\n');
+            }
+            print!("{output}");
             ExitCode::Success
         }
         Err(err) => {

@@ -22,6 +22,9 @@
           config.allowDeprecatedx86_64Darwin = true;
         }
       );
+      # The nushell 0.116 crates need Rust 1.96.1 or newer, and nixos-26.05
+      # defaults to Rust 1.95.
+      rustPackagesFor = system: pkgsFor.${system}.rustPackages_1_97;
     in
     {
       devShells = forEachSystem (
@@ -37,8 +40,8 @@
 
               # Not included in the package dependencies, but used for development
               rust-analyzer
-              rustfmt
-              clippy
+              (rustPackagesFor system).rustfmt
+              (rustPackagesFor system).clippy
             ];
           };
         }
@@ -72,7 +75,7 @@
                      if default_path.exists() {
               '';
           };
-          nufmt = pkgs.rustPlatform.buildRustPackage {
+          nufmt = (rustPackagesFor system).rustPlatform.buildRustPackage {
             name = "nufmt";
             src = ./.;
             patches = [

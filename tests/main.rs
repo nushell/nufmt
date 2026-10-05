@@ -607,3 +607,43 @@ fn help_includes_all_and_all_recurse_flags_issue182() {
         "help missing --stdin flag: {stdout}"
     );
 }
+
+#[test]
+fn stdin_output_ending_in_comment_has_no_extra_blank_line() {
+    let output = run_stdin("let x = 1\n# trailing comment\n");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "let x = 1\n# trailing comment\n"
+    );
+}
+
+#[test]
+fn stdin_output_matches_file_mode_and_is_stable() {
+    // Trailing blank lines after a comment, and input that nufmt can't
+    // format and returns as written, used to lose a newline on every run.
+    for input in [
+        "let x = 1\n# c\n\n\n",
+        "let x = (1 +\n\n\n",
+        "# a\n# b\n\n# c\n\n",
+    ] {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("input.nu");
+        fs::write(&file, input).unwrap();
+        let status = Command::new(get_test_binary())
+            .arg(&file)
+            .output()
+            .expect("Failed to run nufmt");
+        assert!(status.status.success(), "file mode failed for {input:?}");
+        let file_output = fs::read_to_string(&file).unwrap();
+
+        let first = String::from_utf8(run_stdin(input).stdout).unwrap();
+        assert_eq!(
+            first, file_output,
+            "stdin and file mode differ for {input:?}"
+        );
+        let second = String::from_utf8(run_stdin(&first).stdout).unwrap();
+        assert_eq!(second, first, "stdin output is not stable for {input:?}");
+    }
+}

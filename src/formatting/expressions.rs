@@ -66,13 +66,18 @@ impl<'a> Formatter<'a> {
                 if self.has_comments_in_span(expr.span.start, expr.span.end) {
                     self.write_expr_span(expr);
                     self.last_pos = expr.span.end;
-                    self.mark_comments_written_in_span(expr.span.start, expr.span.end);
                 } else {
                     self.format_signature(sig, expr.span);
                 }
             }
 
-            Expr::Call(call) => self.format_call(call),
+            Expr::Call(call) => {
+                if self.call_drops_source(call, expr.span) {
+                    self.write_expr_span(expr);
+                } else if !self.try_format_with_env_call(call) {
+                    self.format_call(call);
+                }
+            }
             Expr::ExternalCall(head, args) => self.format_external_call(head, args),
             Expr::BinaryOp(lhs, op, rhs) => self.format_binary_op(lhs, op, rhs),
             Expr::UnaryNot(inner) => {
@@ -96,6 +101,14 @@ impl<'a> Formatter<'a> {
                 self.format_subexpression(*block_id, expr.span);
             }
 
+            // Nushell 0.116 recovers a malformed list, record, or table
+            // (`{ a: 2 b }`, `["w"; "a"]`) into items that no longer match
+            // the source, so such a collection is kept as written.
+            Expr::List(_) | Expr::Record(_) | Expr::Table(_)
+                if self.is_recovered_collection(expr.span) =>
+            {
+                self.write_expr_span(expr);
+            }
             Expr::List(items) => self.format_list(items, expr.span),
             Expr::Record(items) => self.format_record(items, expr.span),
             Expr::Table(table) => self.format_table(&table.columns, &table.rows, expr.span),
@@ -120,7 +133,7 @@ impl<'a> Formatter<'a> {
                 self.write_expr_span(expr);
             }
 
-            Expr::MatchBlock(matches) => self.format_match_block(matches),
+            Expr::MatchBlock(matches) => self.format_match_block(matches, expr.span),
 
             Expr::Collect(_, inner) => self.format_expression(inner),
 
@@ -272,6 +285,25 @@ impl<'a> Formatter<'a> {
             return;
         }
 
+        // Set inline comment boundary at the closing paren so that comments
+        // appearing after `)` on the same line are not captured inside
+        // (issues #133, #233).
+        let saved_bound = self.inline_comment_upper_bound;
+        self.inline_comment_upper_bound = Some(span.end.saturating_sub(1));
+        self.format_single_line_subexpression(block, span);
+        self.inline_comment_upper_bound = saved_bound;
+    }
+
+    /// Format a single-line subexpression that was written with explicit
+    /// parentheses, keeping or dropping them depending on context.
+    fn format_single_line_subexpression(&mut self, block: &nu_protocol::ast::Block, span: Span) {
+        // Inside parens a newline is whitespace, so `(let a = 1; $a + 1)`
+        // must keep its `;` rather than put each statement on its own line.
+        if block.pipelines.len() > 1 {
+            self.write_span(span);
+            return;
+        }
+
         if self.conditional_context_depth > 0 {
             if self.preserve_subexpr_parens_depth > 0 {
                 self.write("(");
@@ -304,11 +336,14 @@ impl<'a> Formatter<'a> {
             }
         }
 
-        // Pipelines that start with `$in` can drop outer parens in free
-        // contexts (e.g. def bodies — issue #82). Record values and other
-        // precedence-sensitive spots set `preserve_subexpr_parens_depth` so
-        // `($in | …)` keeps its parentheses (issue #200).
+        // Pipelines that start with `$in` can drop outer parens when they are
+        // a whole pipeline element (e.g. a def body — issue #82). As an
+        // argument (`echo ($in | length) done`, `for x in ($in | lines)`) or
+        // a list item they keep them, or the `|` would end the command.
+        // Record values and other precedence-sensitive spots set
+        // `preserve_subexpr_parens_depth` (issue #200).
         if self.preserve_subexpr_parens_depth == 0
+            && self.pipeline_element_span == Some(span)
             && block.pipelines.len() == 1
             && !block.pipelines[0].elements.is_empty()
         {
@@ -322,16 +357,9 @@ impl<'a> Formatter<'a> {
             }
         }
 
-        // Set inline comment boundary at the closing paren so that comments
-        // appearing after `)` on the same line are not captured inside (issue #133).
-        let saved_bound = self.inline_comment_upper_bound;
-        let closing_paren_pos = span.end.saturating_sub(1);
-        self.inline_comment_upper_bound = Some(closing_paren_pos);
-
         self.write("(");
-        let is_simple = !source_has_newline
-            && block.pipelines.len() == 1
-            && !self.pipeline_requires_multiline(&block.pipelines[0]);
+        let is_simple =
+            block.pipelines.len() == 1 && !self.pipeline_requires_multiline(&block.pipelines[0]);
 
         if is_simple {
             self.format_block(block);
@@ -347,8 +375,6 @@ impl<'a> Formatter<'a> {
             self.write_indent();
         }
         self.write(")");
-
-        self.inline_comment_upper_bound = saved_bound;
     }
 
     /// Return `true` if the token immediately before `span_start` (ignoring
@@ -509,44 +535,11 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        let Some(second_pipe) = inner[1..]
-            .iter()
-            .position(|byte| *byte == b'|')
-            .map(|pos| pos + 1)
-        else {
-            return false;
-        };
-
-        let params = &inner[1..second_pipe];
-        let body = inner[second_pipe + 1..].trim_ascii();
-
-        self.write("{|");
-        let mut params_iter = params.split(|&b| b == b',').peekable();
-        while let Some(param) = params_iter.next() {
-            let mut sub_parts = param.splitn(2, |&b| b == b':');
-
-            if let (Some(param_name), Some(type_hint)) = (sub_parts.next(), sub_parts.next()) {
-                self.write_bytes(param_name.trim_ascii());
-                self.write_bytes(b": ");
-                self.write_bytes(type_hint.trim_ascii());
-            } else {
-                self.write_bytes(param.trim_ascii());
-            }
-
-            if params_iter.peek().is_some() {
-                self.write_bytes(b", ");
-            }
+        let written = self.write_single_line_closure(inner);
+        if written {
+            self.mark_comments_written_in_span(expr.span.start, expr.span.end);
         }
-        self.write("|");
-
-        if !body.is_empty() {
-            self.space();
-            self.write_bytes(body);
-            self.write(" ");
-        }
-
-        self.write("}");
-        true
+        written
     }
 
     /// Check if an expression is a simple primitive (used by collection

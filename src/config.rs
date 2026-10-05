@@ -12,6 +12,22 @@ pub enum IndentChar {
     Tab,
 }
 
+/// When an `if`/`else` or `try`/`catch` chain puts every branch on its own
+/// lines (issue #217).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConsistentBranches {
+    /// Lay out each branch on its own terms, so `{ foo }` can sit next to a
+    /// multiline branch.
+    Never,
+    /// When a chain written on one line has a branch that must span several
+    /// lines, expand every branch. Chains already written across lines keep
+    /// their layout.
+    #[default]
+    SingleLine,
+    /// Whenever any branch spans several lines, expand every branch.
+    Always,
+}
+
 /// Configuration options for the formatter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -35,6 +51,9 @@ pub struct Config {
     pub margin_is_explicit: bool,
     /// Glob patterns for files to exclude from formatting.
     pub excludes: Vec<String>,
+    /// When the branches of an `if`/`else` or `try`/`catch` chain are all
+    /// expanded together (default: `single_line`).
+    pub consistent_branches: ConsistentBranches,
 }
 
 impl Default for Config {
@@ -46,6 +65,7 @@ impl Default for Config {
             margin: 1,
             margin_is_explicit: false,
             excludes: Vec::new(),
+            consistent_branches: ConsistentBranches::default(),
         }
     }
 }
@@ -63,6 +83,7 @@ impl Config {
             margin,
             margin_is_explicit: true,
             excludes: Vec::new(),
+            consistent_branches: ConsistentBranches::default(),
         }
     }
 }
@@ -91,6 +112,9 @@ impl TryFrom<Value> for Config {
                     config.margin_is_explicit = true;
                 }
                 "exclude" => config.excludes = parse_string_list(value)?,
+                "consistent_branches" => {
+                    config.consistent_branches = parse_consistent_branches(value)?;
+                }
                 unknown => return Err(ConfigError::UnknownOption(unknown.to_string())),
             }
         }
@@ -159,6 +183,28 @@ fn parse_indent_char(value: &Value) -> Result<IndentChar, ConfigError> {
     }
 }
 
+/// Parse a value as the [`ConsistentBranches`] mode.
+fn parse_consistent_branches(value: &Value) -> Result<ConsistentBranches, ConfigError> {
+    let Value::String { val, .. } = value else {
+        return Err(ConfigError::InvalidOptionType(
+            "consistent_branches".to_string(),
+            value.get_type().to_string(),
+            "string",
+        ));
+    };
+
+    match val.as_str() {
+        "never" => Ok(ConsistentBranches::Never),
+        "single_line" => Ok(ConsistentBranches::SingleLine),
+        "always" => Ok(ConsistentBranches::Always),
+        _ => Err(ConfigError::InvalidOptionValue(
+            "consistent_branches".to_string(),
+            val.clone(),
+            "never, single_line or always",
+        )),
+    }
+}
+
 /// Parse a `Value` as a `list<string>` and return the strings.
 fn parse_string_list(value: &Value) -> Result<Vec<String>, ConfigError> {
     let Value::List { vals, .. } = value else {
@@ -181,4 +227,46 @@ fn parse_string_list(value: &Value) -> Result<Vec<String>, ConfigError> {
             Ok(val.clone())
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nu_protocol::{record, Span};
+
+    fn config_with(key: &str, value: Value) -> Result<Config, ConfigError> {
+        Config::try_from(Value::test_record(record! { key => value }))
+    }
+
+    #[test]
+    fn consistent_branches_defaults_to_single_line() {
+        assert_eq!(
+            Config::default().consistent_branches,
+            ConsistentBranches::SingleLine
+        );
+    }
+
+    #[test]
+    fn consistent_branches_parses_every_mode() {
+        for (name, mode) in [
+            ("never", ConsistentBranches::Never),
+            ("single_line", ConsistentBranches::SingleLine),
+            ("always", ConsistentBranches::Always),
+        ] {
+            let config = config_with("consistent_branches", Value::test_string(name)).unwrap();
+            assert_eq!(config.consistent_branches, mode);
+        }
+    }
+
+    #[test]
+    fn consistent_branches_rejects_unknown_values() {
+        assert!(matches!(
+            config_with("consistent_branches", Value::test_string("sometimes")),
+            Err(ConfigError::InvalidOptionValue(..))
+        ));
+        assert!(matches!(
+            config_with("consistent_branches", Value::int(1, Span::test_data())),
+            Err(ConfigError::InvalidOptionType(..))
+        ));
+    }
 }

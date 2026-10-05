@@ -114,6 +114,7 @@ Create a `nufmt.nuon` file in your project root:
     line_length: 80
     margin: 1
     exclude: ["vendor/**", "target/**"]
+    consistent_branches: "single_line"
 }
 ```
 
@@ -126,6 +127,7 @@ Configuration options:
 | `line_length` | int | 80 | Maximum line length (advisory) |
 | `margin` | int | 1 | Number of blank lines between top-level items |
 | `exclude` | list\<string\> | [] | Glob patterns for files to exclude |
+| `consistent_branches` | string | `"single_line"` | When one branch of an `if`/`else` or `try`/`catch` chain spans several lines, put every branch on its own lines: `"single_line"` for chains written on one line, `"always"` for every chain, `"never"` to lay out each branch independently |
 
 ### Exit codes
 

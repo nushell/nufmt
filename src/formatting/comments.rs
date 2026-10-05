@@ -4,100 +4,25 @@
 //! boundaries, and provides methods on [`Formatter`] to emit them at the
 //! correct locations in the output.
 
+use super::scan::{scan_regions, RegionKind};
 use super::Formatter;
 use nu_protocol::Span;
 
 /// Extract all comments from source code, returning their spans and content.
 ///
-/// Tracks string state so that `#` characters inside quoted strings are not
-/// treated as comment starts.
+/// `#` characters inside string literals (including the nested expressions
+/// of string interpolations) are not treated as comment starts.
 pub(super) fn extract_comments(source: &[u8]) -> Vec<(Span, Vec<u8>)> {
-    let mut comments = Vec::new();
-    let mut i = 0;
-
-    while i < source.len() {
-        let c = source[i];
-
-        // Raw string: r#'...'# (or r##'...'##, r###'...'###, ...). Skip the whole
-        // literal so that neither the `#` in its delimiters nor any `#` in its
-        // body is ever mistaken for a comment. Without this, the `#` in `r#'`
-        // starts a bogus comment and the closing `'#` opens a phantom string
-        // that swallows every real comment until the next stray apostrophe.
-        if c == b'r' {
-            if let Some(hashes) = raw_string_open_hashes(source, i) {
-                let body_start = i + 1 + hashes + 1; // 'r' + N*'#' + '\''
-                i = find_raw_string_end(source, body_start, hashes).unwrap_or(source.len());
-                continue;
-            }
-        }
-
-        // Quoted string. Single-quoted strings are raw (no escapes); only
-        // double-quoted strings process backslash escapes. Consuming each string
-        // inline (rather than a persistent flag) means an unterminated string can
-        // never bleed across the rest of the file.
-        if c == b'"' || c == b'\'' {
-            let quote = c;
-            i += 1;
-            while i < source.len() {
-                let b = source[i];
-                if quote == b'"' && b == b'\\' && i + 1 < source.len() {
-                    i += 2;
-                    continue;
-                }
-                i += 1;
-                if b == quote {
-                    break;
-                }
-            }
-            continue;
-        }
-
-        // Found a comment
-        if c == b'#' {
-            let start = i;
-            while i < source.len() && source[i] != b'\n' {
-                i += 1;
-            }
-            comments.push((Span::new(start, i), source[start..i].to_vec()));
-            continue;
-        }
-
-        i += 1;
-    }
-
-    comments
-}
-
-/// If `source[i..]` begins a raw-string opener (`r#'`, `r##'`, ...), return the
-/// number of `#` hashes; otherwise `None`. Requires `source[i] == b'r'`.
-fn raw_string_open_hashes(source: &[u8], i: usize) -> Option<usize> {
-    let mut j = i + 1;
-    let mut hashes = 0;
-    while j < source.len() && source[j] == b'#' {
-        hashes += 1;
-        j += 1;
-    }
-    if hashes >= 1 && source.get(j) == Some(&b'\'') {
-        Some(hashes)
-    } else {
-        None
-    }
-}
-
-/// Find the byte index just past a raw-string closer (`'` followed by `hashes`
-/// `#`), scanning from `body_start`. Returns `None` if unterminated.
-fn find_raw_string_end(source: &[u8], body_start: usize, hashes: usize) -> Option<usize> {
-    let mut j = body_start;
-    while j < source.len() {
-        if source[j] == b'\'' {
-            let close = j + 1 + hashes;
-            if source.len() >= close && source[j + 1..close].iter().all(|&b| b == b'#') {
-                return Some(close);
-            }
-        }
-        j += 1;
-    }
-    None
+    scan_regions(source)
+        .into_iter()
+        .filter(|region| region.kind == RegionKind::Comment)
+        .map(|region| {
+            (
+                Span::new(region.start, region.end),
+                source[region.start..region.end].to_vec(),
+            )
+        })
+        .collect()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -220,6 +145,24 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    /// Emit the standalone comments that sit between the last statement of a
+    /// delimited body and its closing delimiter at `close_pos` (issue #232).
+    ///
+    /// Returns `true` when any comment was written. The output is then at the
+    /// start of a fresh line, with no blank line left before the delimiter.
+    pub(super) fn write_trailing_body_comments(&mut self, close_pos: usize) -> bool {
+        let before = self.output.len();
+        self.write_comments_before(close_pos);
+        if self.output.len() == before {
+            return false;
+        }
+
+        while self.output.ends_with(b"\n\n") {
+            self.output.pop();
+        }
+        true
+    }
+
     /// Emit an inline comment (on the same line) that appears after `after_pos`,
     /// optionally bounded by an upper position limit.
     ///
@@ -258,10 +201,43 @@ impl<'a> Formatter<'a> {
             .any(|(span, _)| span.start >= start && span.end <= end)
     }
 
+    /// Move the comment cursor to `body_start`, the first byte inside a
+    /// delimited body, unless that would skip a comment not yet written.
+    ///
+    /// The blank-line check before the body's first comment then looks only
+    /// inside the body, not at the blank lines before the statement that
+    /// holds it.
+    pub(super) fn skip_to_body_start(&mut self, body_start: usize) {
+        if self.last_pos < body_start && !self.has_unwritten_comments_in(self.last_pos, body_start)
+        {
+            self.last_pos = body_start;
+        }
+    }
+
+    /// Return `true` when a comment inside `start..end` has not been written.
+    pub(super) fn has_unwritten_comments_in(&self, start: usize, end: usize) -> bool {
+        let first = self
+            .comments
+            .partition_point(|(span, _)| span.start < start);
+        self.comments[first..]
+            .iter()
+            .zip(&self.written_comments[first..])
+            .take_while(|((span, _), _)| span.start < end)
+            .any(|((span, _), written)| !written && span.end <= end)
+    }
+
     /// Mark all comments within the given span range as already written.
     pub(super) fn mark_comments_written_in_span(&mut self, start: usize, end: usize) {
-        for (i, (span, _)) in self.comments.iter().enumerate() {
-            if span.start >= start && span.end <= end {
+        // Comments are extracted in source order, so the ones inside the
+        // range are contiguous.
+        let first = self
+            .comments
+            .partition_point(|(span, _)| span.start < start);
+        for (i, (span, _)) in self.comments.iter().enumerate().skip(first) {
+            if span.start >= end {
+                break;
+            }
+            if span.end <= end {
                 self.written_comments[i] = true;
             }
         }
