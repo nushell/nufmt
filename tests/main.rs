@@ -1,7 +1,9 @@
-mod ground_truth;
-use ground_truth::get_test_binary;
-use std::{fs, io::Write, path::PathBuf, process::Command};
+use std::{fs, io::Write, process::Command};
 use tempfile::tempdir;
+
+fn get_test_binary() -> &'static str {
+    env!("CARGO_BIN_EXE_nufmt")
+}
 
 const INVALID: &str = "# beginning of script comment
 let   one   =   1
@@ -332,22 +334,6 @@ fn format_closure() {
     assert_eq!(output.status.code(), Some(0));
     let content = fs::read_to_string(&file).unwrap();
     assert!(content.contains("{|x|"));
-}
-
-#[test]
-fn format_fixtures_basic() {
-    // Test that the basic fixture can be formatted without errors
-    let fixture_path = PathBuf::from("tests/fixtures/basic.nu");
-    if fixture_path.exists() {
-        let output = Command::new(get_test_binary())
-            .arg("--dry-run")
-            .arg(fixture_path.to_str().unwrap())
-            .output()
-            .unwrap();
-
-        // Should either succeed or report would-reformat
-        assert!(output.status.code() == Some(0) || output.status.code() == Some(1));
-    }
 }
 
 #[test]

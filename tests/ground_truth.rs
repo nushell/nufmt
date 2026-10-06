@@ -1,932 +1,332 @@
-//! Ground truth tests for nufmt
-//!
-//! These tests compare formatter output against expected ground truth files.
-//! Each construct has a separate input and expected file for easy editing.
+//! Discover fixtures at `fixtures/<category>/<case>` and check each file once.
 
 use std::fs;
-use std::path::PathBuf;
-use std::process::Command;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
-/// Get the path to the test binary
-pub fn get_test_binary() -> PathBuf {
-    let exe_name = if cfg!(windows) { "nufmt.exe" } else { "nufmt" };
+#[derive(Default)]
+struct FixtureResults {
+    fixtures: usize,
+    checks: usize,
+    failures: Vec<String>,
+}
 
-    // Try CARGO_TARGET_DIR first
-    if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
-        let path = PathBuf::from(target_dir).join("debug").join(exe_name);
-        if path.exists() {
-            return path.canonicalize().unwrap_or(path);
+fn directories(path: &Path, failures: &mut Vec<String>) -> Vec<PathBuf> {
+    let entries = match fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(err) => {
+            failures.push(format!("Could not list {}: {err}", path.display()));
+            return Vec::new();
+        }
+    };
+
+    let mut directories = Vec::new();
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                failures.push(format!("Could not read entry in {}: {err}", path.display()));
+                continue;
+            }
+        };
+        match entry.file_type() {
+            Ok(file_type) if file_type.is_dir() => directories.push(entry.path()),
+            Ok(_) => {}
+            Err(err) => failures.push(format!(
+                "Could not inspect {}: {err}",
+                entry.path().display()
+            )),
         }
     }
+    directories.sort();
+    directories
+}
 
-    // Try default target directory
-    let default_path = PathBuf::from("target").join("debug").join(exe_name);
-    if default_path.exists() {
-        default_path.canonicalize().unwrap_or(default_path)
-    } else {
-        panic!(
-            "Test binary not found. Please build the project first to create {:?}",
-            default_path
+fn run_fixtures(
+    root: &Path,
+    mut format: impl FnMut(&[u8], Option<&Path>) -> Result<Vec<u8>, String>,
+) -> FixtureResults {
+    let mut results = FixtureResults::default();
+    for category in directories(root, &mut results.failures) {
+        for fixture in directories(&category, &mut results.failures) {
+            results.fixtures += 1;
+            let mut run = || -> Result<(), String> {
+                let config_path = fixture.join("config.noun");
+                let config = config_path
+                    .try_exists()
+                    .map_err(|err| format!("Could not inspect {}: {err}", config_path.display()))?
+                    .then_some(config_path.as_path());
+                let expected_path = fixture.join("expected.nu");
+                let expected = fs::read(&expected_path)
+                    .map_err(|err| format!("Could not read {}: {err}", expected_path.display()))?;
+
+                let mut check = |source: &Path, input: &[u8], artifact: &str| {
+                    results.checks += 1;
+                    let result = format(input, config).and_then(|actual| {
+                        let artifact_path = fixture.join(artifact);
+                        if actual != expected {
+                            fs::write(&artifact_path, actual).map_err(|err| {
+                                format!("Could not write {}: {err}", artifact_path.display())
+                            })?;
+                            Err(format!(
+                                "differs after one format; see {}",
+                                artifact_path.display()
+                            ))
+                        } else {
+                            match fs::remove_file(&artifact_path) {
+                                Ok(()) => Ok(()),
+                                Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+                                Err(err) => Err(format!(
+                                    "Could not remove {}: {err}",
+                                    artifact_path.display()
+                                )),
+                            }
+                        }
+                    });
+                    if let Err(err) = result {
+                        results
+                            .failures
+                            .push(format!("{}: {err}", source.display()));
+                    }
+                };
+
+                check(&expected_path, &expected, "not_idempotent.nu");
+                let input_path = fixture.join("input.nu");
+                if input_path
+                    .try_exists()
+                    .map_err(|err| format!("Could not inspect {}: {err}", input_path.display()))?
+                {
+                    let input = fs::read(&input_path)
+                        .map_err(|err| format!("Could not read {}: {err}", input_path.display()))?;
+                    check(&input_path, &input, "unexpected.nu");
+                }
+                Ok(())
+            };
+            if let Err(err) = run() {
+                results.failures.push(err);
+            }
+        }
+    }
+    if results.fixtures == 0 {
+        results.failures.push(format!(
+            "No fixture directories found under {}",
+            root.display()
+        ));
+    }
+    results
+}
+
+fn format_via_stdin(input: &[u8], config: Option<&Path>) -> Result<Vec<u8>, String> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_nufmt"));
+    command
+        .arg("--stdin")
+        .current_dir(env!("CARGO_MANIFEST_DIR"));
+    if let Some(config) = config {
+        command.arg("--config").arg(config);
+    }
+
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| format!("Could not spawn nufmt: {err}"))?;
+    let write_result = child
+        .stdin
+        .take()
+        .expect("stdin should be piped")
+        .write_all(input);
+    let output = child
+        .wait_with_output()
+        .map_err(|err| format!("Could not wait for nufmt: {err}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "nufmt exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    write_result.map_err(|err| format!("Could not write stdin: {err}"))?;
+    Ok(output.stdout)
+}
+
+#[test]
+fn fixtures() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let results = run_fixtures(&root, format_via_stdin);
+    eprintln!(
+        "Checked {} fixtures ({} format calls)",
+        results.fixtures, results.checks
+    );
+    assert!(
+        results.failures.is_empty(),
+        "{} fixture checks failed:\n{}",
+        results.failures.len(),
+        results.failures.join("\n")
+    );
+}
+
+#[test]
+fn fixture_runner_discovers_cases_and_updates_artifacts() {
+    let root = tempfile::tempdir().unwrap();
+    let passing = root.path().join("category/a_passing");
+    let failing = root.path().join("category/b_failing");
+    let expected_only = root.path().join("category/c_expected_only");
+    for fixture in [&passing, &failing, &expected_only] {
+        fs::create_dir_all(fixture).unwrap();
+        fs::write(fixture.join("not_idempotent.nu"), b"stale").unwrap();
+        fs::write(fixture.join("unexpected.nu"), b"stale").unwrap();
+    }
+    fs::write(passing.join("expected.nu"), b"passing\n").unwrap();
+    fs::write(passing.join("input.nu"), b"input\n").unwrap();
+    fs::write(passing.join("config.noun"), b"{indent: 2}").unwrap();
+    fs::write(failing.join("expected.nu"), b"failing").unwrap();
+    fs::write(failing.join("input.nu"), b"wrong\r\n").unwrap();
+    fs::write(expected_only.join("expected.nu"), b"only\n").unwrap();
+    fs::create_dir_all(expected_only.join("nested")).unwrap();
+    fs::write(expected_only.join("nested/expected.nu"), b"ignored").unwrap();
+    fs::write(root.path().join("category/not_a_case.nu"), b"ignored").unwrap();
+
+    let mut calls = Vec::new();
+    let results = run_fixtures(root.path(), |input, config| {
+        calls.push((input.to_vec(), config.map(Path::to_path_buf)));
+        Ok(match input {
+            b"input\n" => b"passing\n".to_vec(),
+            b"failing" => b"failing\n".to_vec(),
+            b"wrong\r\n" => b"actual\r\n\n".to_vec(),
+            _ => input.to_vec(),
+        })
+    });
+    assert_eq!(results.fixtures, 3);
+    assert_eq!(results.checks, 5);
+    assert_eq!(results.failures.len(), 2);
+    assert_eq!(
+        calls,
+        vec![
+            (b"passing\n".to_vec(), Some(passing.join("config.noun"))),
+            (b"input\n".to_vec(), Some(passing.join("config.noun"))),
+            (b"failing".to_vec(), None),
+            (b"wrong\r\n".to_vec(), None),
+            (b"only\n".to_vec(), None),
+        ]
+    );
+    assert!(!passing.join("not_idempotent.nu").exists());
+    assert!(!passing.join("unexpected.nu").exists());
+    assert_eq!(
+        fs::read(failing.join("not_idempotent.nu")).unwrap(),
+        b"failing\n"
+    );
+    assert_eq!(
+        fs::read(failing.join("unexpected.nu")).unwrap(),
+        b"actual\r\n\n"
+    );
+    assert!(!expected_only.join("not_idempotent.nu").exists());
+    assert_eq!(
+        fs::read(expected_only.join("unexpected.nu")).unwrap(),
+        b"stale"
+    );
+}
+
+#[test]
+fn fixture_runner_continues_after_errors() {
+    let root = tempfile::tempdir().unwrap();
+    for name in [
+        "a_missing_expected",
+        "b_formatter_error",
+        "c_write_error",
+        "d_remove_error",
+        "e_after",
+    ] {
+        let fixture = root.path().join("category").join(name);
+        fs::create_dir_all(&fixture).unwrap();
+        if name != "a_missing_expected" {
+            fs::write(fixture.join("expected.nu"), name).unwrap();
+        }
+    }
+    let formatter_error = root.path().join("category/b_formatter_error");
+    fs::write(formatter_error.join("input.nu"), b"input").unwrap();
+    fs::write(formatter_error.join("not_idempotent.nu"), b"stale").unwrap();
+    let write_error = root.path().join("category/c_write_error");
+    fs::create_dir(write_error.join("not_idempotent.nu")).unwrap();
+    let remove_error = root.path().join("category/d_remove_error");
+    fs::create_dir(remove_error.join("not_idempotent.nu")).unwrap();
+
+    let mut calls = Vec::new();
+    let results = run_fixtures(root.path(), |input, _| {
+        calls.push(input.to_vec());
+        if input == b"b_formatter_error" {
+            Err("formatter error".into())
+        } else if input == b"c_write_error" {
+            Ok(b"changed".to_vec())
+        } else if input == b"input" {
+            Ok(b"b_formatter_error".to_vec())
+        } else {
+            Ok(input.to_vec())
+        }
+    });
+    assert_eq!(results.fixtures, 5);
+    assert_eq!(results.failures.len(), 4);
+    assert_eq!(
+        calls,
+        vec![
+            b"b_formatter_error".to_vec(),
+            b"input".to_vec(),
+            b"c_write_error".to_vec(),
+            b"d_remove_error".to_vec(),
+            b"e_after".to_vec()
+        ]
+    );
+    assert_eq!(
+        fs::read(formatter_error.join("not_idempotent.nu")).unwrap(),
+        b"stale"
+    );
+}
+
+#[test]
+fn fixture_runner_compares_bytes_without_normalizing_whitespace() {
+    let root = tempfile::tempdir().unwrap();
+    for (name, expected) in [
+        ("leading_space", b" echo hello\n".as_slice()),
+        ("trailing_space", b"echo hello \n".as_slice()),
+        ("crlf", b"echo hello\r\n".as_slice()),
+        ("missing_newline", b"echo hello".as_slice()),
+    ] {
+        let fixture = root.path().join("category").join(name);
+        fs::create_dir_all(&fixture).unwrap();
+        fs::write(fixture.join("expected.nu"), expected).unwrap();
+    }
+    let results = run_fixtures(root.path(), |_, _| Ok(b"echo hello\n".to_vec()));
+    assert_eq!(results.checks, 4);
+    assert_eq!(results.failures.len(), 4);
+    for fixture in directories(&root.path().join("category"), &mut Vec::new()) {
+        assert_eq!(
+            fs::read(fixture.join("not_idempotent.nu")).unwrap(),
+            b"echo hello\n"
         );
     }
 }
 
-/// Helper to run the formatter on input and compare with expected output
-fn run_ground_truth_test(test_binary: &PathBuf, name: &str) {
-    let input_path = PathBuf::from(format!("tests/fixtures/input/{}.nu", name));
-    let expected_path = PathBuf::from(format!("tests/fixtures/expected/{}.nu", name));
-    let config_path = PathBuf::from(format!("tests/fixtures/config/{}.nuon", name));
-    let config = config_path.exists().then_some(config_path.as_path());
-
-    // Ensure files exist
-    assert!(
-        input_path.exists(),
-        "Input file not found: {:?}",
-        input_path
-    );
-    assert!(
-        expected_path.exists(),
-        "Expected file not found: {:?}",
-        expected_path
-    );
-
-    // Read input
-    let input = fs::read_to_string(&input_path).expect("Failed to read input file");
-
-    // Run formatter via stdin
-    let formatted = match format_via_stdin(test_binary, &input, config) {
-        Ok(output) => output,
-        Err(err) => panic!("Formatter failed for {}: {}", name, err),
-    };
-
-    // Read expected output
-    let expected = fs::read_to_string(&expected_path).expect("Failed to read expected file");
-
-    // Compare (normalize line endings)
-    let formatted_normalized = formatted.trim().replace("\r\n", "\n");
-    let expected_normalized = expected.trim().replace("\r\n", "\n");
-
-    if formatted_normalized != expected_normalized {
-        // Print detailed diff
-        eprintln!("=== Ground truth test failed for: {} ===", name);
-        eprintln!("\n--- Expected ---");
-        eprintln!("{}", expected_normalized);
-        eprintln!("\n--- Got ---");
-        eprintln!("{}", formatted_normalized);
-        eprintln!("\n--- Diff ---");
-
-        // Line by line diff
-        let expected_lines: Vec<&str> = expected_normalized.lines().collect();
-        let formatted_lines: Vec<&str> = formatted_normalized.lines().collect();
-
-        let max_lines = expected_lines.len().max(formatted_lines.len());
-        for i in 0..max_lines {
-            let exp = expected_lines.get(i).unwrap_or(&"<missing>");
-            let got = formatted_lines.get(i).unwrap_or(&"<missing>");
-            if exp != got {
-                eprintln!("Line {}: ", i + 1);
-                eprintln!("  expected: {:?}", exp);
-                eprintln!("  got:      {:?}", got);
-            }
-        }
-
-        panic!("Ground truth mismatch for {}. See diff above.", name);
-    }
-}
-
-/// Test that formatting is idempotent (formatting twice gives same result)
-fn run_idempotency_test(test_binary: &PathBuf, name: &str) {
-    let input_path = PathBuf::from(format!("tests/fixtures/input/{}.nu", name));
-    let config_path = PathBuf::from(format!("tests/fixtures/config/{}.nuon", name));
-    let config = config_path.exists().then_some(config_path.as_path());
-
-    if !input_path.exists() {
-        return; // Skip if input doesn't exist
-    }
-
-    let input = fs::read_to_string(&input_path).expect("Failed to read input file");
-
-    // First format
-    let first_output = format_via_stdin(test_binary, &input, config);
-    if first_output.is_err() {
-        return; // Skip if formatting fails
-    }
-    let first = first_output.unwrap();
-
-    // Second format
-    let second_output = format_via_stdin(test_binary, &first, config);
-    if second_output.is_err() {
-        panic!("Second format failed for {}, but first succeeded", name);
-    }
-    let second = second_output.unwrap();
-
-    if first != second {
-        eprintln!("=== Idempotency test failed for: {} ===", name);
-        eprintln!("\n--- First format ---");
-        eprintln!("{}", first);
-        eprintln!("\n--- Second format ---");
-        eprintln!("{}", second);
-        panic!("Formatting is not idempotent for {}", name);
-    }
-}
-
-fn format_via_stdin(
-    test_binary: &PathBuf,
-    input: &str,
-    config: Option<&std::path::Path>,
-) -> Result<String, String> {
-    let mut command = Command::new(test_binary);
-    command.arg("--stdin");
-
-    if let Some(config_path) = config {
-        command.arg("--config").arg(config_path);
-    }
-
-    let output = command
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("Failed to spawn nufmt");
-
-    use std::io::Write;
-    output
-        .stdin
-        .as_ref()
-        .unwrap()
-        .write_all(input.as_bytes())
-        .expect("Failed to write to stdin");
-
-    let output = output.wait_with_output().expect("Failed to wait for nufmt");
-
-    if output.status.success() {
-        Ok(String::from_utf8(output.stdout).expect("Invalid UTF-8"))
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
-
-// ============================================================================
-// Fixture test macros — generate paired ground truth + idempotency tests
-// ============================================================================
-
-/// Generate a ground-truth test and an idempotency test for each fixture.
-macro_rules! fixture_tests {
-    ($(($fixture:literal, $ground_truth_test:ident, $idempotency_test:ident)),+ $(,)?) => {
-        $(
-            #[test]
-            fn $ground_truth_test() {
-                let test_binary = get_test_binary();
-                run_ground_truth_test(&test_binary, $fixture);
-            }
-
-            #[test]
-            fn $idempotency_test() {
-                let test_binary = get_test_binary();
-                run_idempotency_test(&test_binary, $fixture);
-            }
-        )+
-    };
-}
-
-// Core language constructs
-fixture_tests!(
-    (
-        "let_statement",
-        ground_truth_let_statement,
-        idempotency_let_statement
-    ),
-    (
-        "mut_statement",
-        ground_truth_mut_statement,
-        idempotency_mut_statement
-    ),
-    (
-        "const_statement",
-        ground_truth_const_statement,
-        idempotency_const_statement
-    ),
-    (
-        "def_statement",
-        ground_truth_def_statement,
-        idempotency_def_statement
-    ),
-    (
-        "wrapped_signature",
-        ground_truth_wrapped_signature,
-        idempotency_wrapped_signature
-    ),
-    (
-        "invalid_default_flag_issue228",
-        ground_truth_invalid_default_flag_issue228,
-        idempotency_invalid_default_flag_issue228
-    ),
-    (
-        "signature_default_association",
-        ground_truth_signature_default_association,
-        idempotency_signature_default_association
-    ),
-    (
-        "environment_key_with_parentheses",
-        ground_truth_environment_key_with_parentheses,
-        idempotency_environment_key_with_parentheses
-    ),
-    (
-        "quoted_cell_path_keys_not_unquoted_into_indexes",
-        ground_truth_quoted_cell_path_keys_not_unquoted_into_indexes,
-        idempotency_quoted_cell_path_keys_not_unquoted_into_indexes
-    ),
-    (
-        "mixed_record_fields",
-        ground_truth_mixed_record_fields,
-        idempotency_mixed_record_fields
-    ),
-    (
-        "valid_multiline_record",
-        ground_truth_valid_multiline_record,
-        idempotency_valid_multiline_record
-    ),
-    (
-        "record_comma_not_added_near_other_repairs",
-        ground_truth_record_comma_not_added_near_other_repairs,
-        idempotency_record_comma_not_added_near_other_repairs
-    ),
-);
-
-// Control flow
-fixture_tests!(
-    ("if_else", ground_truth_if_else, idempotency_if_else),
-    ("for_loop", ground_truth_for_loop, idempotency_for_loop),
-    (
-        "while_loop",
-        ground_truth_while_loop,
-        idempotency_while_loop
-    ),
-    (
-        "loop_statement",
-        ground_truth_loop_statement,
-        idempotency_loop_statement
-    ),
-    (
-        "match_expr",
-        ground_truth_match_expr,
-        idempotency_match_expr
-    ),
-    ("try_catch", ground_truth_try_catch, idempotency_try_catch),
-    (
-        "break_continue",
-        ground_truth_break_continue,
-        idempotency_break_continue
-    ),
-    (
-        "return_statement",
-        ground_truth_return_statement,
-        idempotency_return_statement
-    ),
-);
-
-// Data structures
-fixture_tests!(
-    ("list", ground_truth_list, idempotency_list),
-    ("record", ground_truth_record, idempotency_record),
-    ("table", ground_truth_table, idempotency_table),
-    (
-        "nested_structures",
-        ground_truth_nested_structures,
-        idempotency_nested_structures
-    ),
-);
-
-// Pipelines, expressions, and operators
-fixture_tests!(
-    ("pipeline", ground_truth_pipeline, idempotency_pipeline),
-    (
-        "multiline_pipeline",
-        ground_truth_multiline_pipeline,
-        idempotency_multiline_pipeline
-    ),
-    (
-        "multiline_pipeline_inline_comment_preserved",
-        ground_truth_multiline_pipeline_inline_comment_preserved,
-        idempotency_multiline_pipeline_inline_comment_preserved
-    ),
-    (
-        "multiline_pipeline_standalone_comment_preserved",
-        ground_truth_multiline_pipeline_standalone_comment_preserved,
-        idempotency_multiline_pipeline_standalone_comment_preserved
-    ),
-    ("closure", ground_truth_closure, idempotency_closure),
-    (
-        "subexpression",
-        ground_truth_subexpression,
-        idempotency_subexpression
-    ),
-    (
-        "binary_ops",
-        ground_truth_binary_ops,
-        idempotency_binary_ops
-    ),
-    ("range", ground_truth_range, idempotency_range),
-    (
-        "cell_path_literals",
-        ground_truth_cell_path_literals,
-        idempotency_cell_path_literals
-    ),
-    ("cell_path", ground_truth_cell_path, idempotency_cell_path),
-    ("spread", ground_truth_spread, idempotency_spread),
-);
-
-// Strings, comments, types, and values
-fixture_tests!(
-    (
-        "string_interpolation",
-        ground_truth_string_interpolation,
-        idempotency_string_interpolation
-    ),
-    ("comment", ground_truth_comment, idempotency_comment),
-    (
-        "value_with_unit",
-        ground_truth_value_with_unit,
-        idempotency_value_with_unit
-    ),
-    ("datetime", ground_truth_datetime, idempotency_datetime),
-    ("nothing", ground_truth_nothing, idempotency_nothing),
-    (
-        "glob_pattern",
-        ground_truth_glob_pattern,
-        idempotency_glob_pattern
-    ),
-);
-
-// Modules and imports
-fixture_tests!(
-    ("module", ground_truth_module, idempotency_module),
-    (
-        "use_statement",
-        ground_truth_use_statement,
-        idempotency_use_statement
-    ),
-    ("export", ground_truth_export, idempotency_export),
-    ("source", ground_truth_source, idempotency_source),
-    ("hide", ground_truth_hide, idempotency_hide),
-    ("overlay", ground_truth_overlay, idempotency_overlay),
-);
-
-// Commands, definitions, and special constructs
-fixture_tests!(
-    ("alias", ground_truth_alias, idempotency_alias),
-    ("extern", ground_truth_extern, idempotency_extern),
-    (
-        "external_call",
-        ground_truth_external_call,
-        idempotency_external_call
-    ),
-    ("do_block", ground_truth_do_block, idempotency_do_block),
-    (
-        "where_clause",
-        ground_truth_where_clause,
-        idempotency_where_clause
-    ),
-    (
-        "error_make",
-        ground_truth_error_make,
-        idempotency_error_make
-    ),
-    (
-        "inline_param_comment",
-        ground_truth_inline_param_comment_issue77,
-        idempotency_inline_param_comment_issue77
-    ),
-);
-
-// Ground-truth-only tests (no idempotency pair)
 #[test]
-fn ground_truth_def_with_pipeline() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "def_with_pipeline_double_parens_issue82");
+fn invalid_config_fails_both_checks_and_continues_to_other_fixtures() {
+    let root = tempfile::tempdir().unwrap();
+    let invalid = root.path().join("category/a_invalid");
+    let valid = root.path().join("category/b_valid");
+    for fixture in [&invalid, &valid] {
+        fs::create_dir_all(fixture).unwrap();
+        fs::write(fixture.join("expected.nu"), b"let x = 1\n").unwrap();
+        fs::write(fixture.join("not_idempotent.nu"), b"stale").unwrap();
+    }
+    fs::write(invalid.join("input.nu"), b"let  x = 1\n").unwrap();
+    fs::write(invalid.join("config.noun"), b"{unknown: 1}").unwrap();
+    let results = run_fixtures(root.path(), format_via_stdin);
+    assert_eq!(results.fixtures, 2);
+    assert_eq!(results.checks, 3);
+    assert_eq!(results.failures.len(), 2);
+    assert!(results.failures.iter().all(|err| err.contains("unknown")));
+    assert_eq!(
+        fs::read(invalid.join("not_idempotent.nu")).unwrap(),
+        b"stale"
+    );
+    assert!(!valid.join("not_idempotent.nu").exists());
 }
-
-#[test]
-fn ground_truth_double_parentheses_for_subexpression_issue76() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "double_parentheses_for_subexpression_issue76");
-}
-
-// Issue regression tests
-fixture_tests!(
-    (
-        "custom_completion_signature_preserved_issue81",
-        ground_truth_custom_completion_signature_preserved_issue81,
-        idempotency_custom_completion_signature_preserved_issue81
-    ),
-    (
-        "optional_access_question_mark_position_preserved_issue85",
-        ground_truth_optional_access_question_mark_position_preserved_issue85,
-        idempotency_optional_access_question_mark_position_preserved_issue85
-    ),
-    (
-        "closure_type_hint_not_rewritten_as_call_issue86",
-        ground_truth_closure_type_hint_not_rewritten_as_call_issue86,
-        idempotency_closure_type_hint_not_rewritten_as_call_issue86
-    ),
-    (
-        "extern_completion_annotations_preserved_issue87",
-        ground_truth_extern_completion_annotations_preserved_issue87,
-        idempotency_extern_completion_annotations_preserved_issue87
-    ),
-    (
-        "pipeline_io_signature_preserved_issue92",
-        ground_truth_pipeline_io_signature_preserved_issue92,
-        idempotency_pipeline_io_signature_preserved_issue92
-    ),
-    (
-        "if_pipeline_condition_parentheses_preserved_issue93",
-        ground_truth_if_pipeline_condition_parentheses_preserved_issue93,
-        idempotency_if_pipeline_condition_parentheses_preserved_issue93
-    ),
-    (
-        "variable_type_annotations_preserved_issue94",
-        ground_truth_variable_type_annotations_preserved_issue94,
-        idempotency_variable_type_annotations_preserved_issue94
-    ),
-    (
-        "flag_equals_subexpression_syntax_preserved_issue95",
-        ground_truth_flag_equals_subexpression_syntax_preserved_issue95,
-        idempotency_flag_equals_subexpression_syntax_preserved_issue95
-    ),
-    (
-        "optional_access_order_preserved_issue97",
-        ground_truth_optional_access_order_preserved_issue97,
-        idempotency_optional_access_order_preserved_issue97
-    ),
-    (
-        "at_category_attribute_preserved_issue100",
-        ground_truth_at_category_attribute_preserved_issue100,
-        idempotency_at_category_attribute_preserved_issue100
-    ),
-    (
-        "where_in_def_does_not_emit_parser_errors_issue101",
-        ground_truth_where_in_def_does_not_emit_parser_errors_issue101,
-        idempotency_where_in_def_does_not_emit_parser_errors_issue101
-    ),
-    (
-        "space_separated_list_literals_preserved_issue108",
-        ground_truth_space_separated_list_literals_preserved_issue108,
-        idempotency_space_separated_list_literals_preserved_issue108
-    ),
-    (
-        "for_loop_multiline_block_body_preserved_issue109",
-        ground_truth_for_loop_multiline_block_body_preserved_issue109,
-        idempotency_for_loop_multiline_block_body_preserved_issue109
-    ),
-    (
-        "multiline_call_arguments_preserved_issue110",
-        ground_truth_multiline_call_arguments_preserved_issue110,
-        idempotency_multiline_call_arguments_preserved_issue110
-    ),
-    (
-        "let_rhs_pipeline_parentheses_preserved_issue116",
-        ground_truth_let_rhs_pipeline_parentheses_preserved_issue116,
-        idempotency_let_rhs_pipeline_parentheses_preserved_issue116
-    ),
-    (
-        "if_pipeline_condition_avoids_parser_noise_issue119",
-        ground_truth_if_pipeline_condition_avoids_parser_noise_issue119,
-        idempotency_if_pipeline_condition_avoids_parser_noise_issue119
-    ),
-    (
-        "tightly_packed_if_else_spacing_normalized_issue120",
-        ground_truth_tightly_packed_if_else_spacing_normalized_issue120,
-        idempotency_tightly_packed_if_else_spacing_normalized_issue120
-    ),
-    (
-        "invalid_if_else_parse_recovery_is_safe_issue121",
-        ground_truth_invalid_if_else_parse_recovery_is_safe_issue121,
-        idempotency_invalid_if_else_parse_recovery_is_safe_issue121
-    ),
-    (
-        "parse_recovery_preserves_record_strings_issue122",
-        ground_truth_parse_recovery_preserves_record_strings_issue122,
-        idempotency_parse_recovery_preserves_record_strings_issue122
-    ),
-    (
-        "margin_two_keeps_adjacent_use_statements_tight_issue126",
-        ground_truth_margin_two_keeps_adjacent_use_statements_tight_issue126,
-        idempotency_margin_two_keeps_adjacent_use_statements_tight_issue126
-    ),
-    (
-        "margin_one_preserves_vertical_spacing_groups_issue127",
-        ground_truth_margin_one_preserves_vertical_spacing_groups_issue127,
-        idempotency_margin_one_preserves_vertical_spacing_groups_issue127
-    ),
-    (
-        "module_doc_comment_spacing_preserved_issue128",
-        ground_truth_module_doc_comment_spacing_preserved_issue128,
-        idempotency_module_doc_comment_spacing_preserved_issue128
-    ),
-    (
-        "single_line_record_literals_preserved_issue129",
-        ground_truth_single_line_record_literals_preserved_issue129,
-        idempotency_single_line_record_literals_preserved_issue129
-    ),
-    (
-        "empty_record_literals_normalized_issue130",
-        ground_truth_empty_record_literals_normalized_issue130,
-        idempotency_empty_record_literals_normalized_issue130
-    ),
-    (
-        "return_subexpression_parentheses_preserved_issue131",
-        ground_truth_return_subexpression_parentheses_preserved_issue131,
-        idempotency_return_subexpression_parentheses_preserved_issue131
-    ),
-    (
-        "for_loop_type_annotation_preserved_issue132",
-        ground_truth_for_loop_type_annotation_preserved_issue132,
-        idempotency_for_loop_type_annotation_preserved_issue132
-    ),
-    (
-        "inline_comment_after_subexpression_preserved_issue133",
-        ground_truth_inline_comment_after_subexpression_preserved_issue133,
-        idempotency_inline_comment_after_subexpression_preserved_issue133
-    ),
-    (
-        "pipeline_subexpression_parentheses_and_layout_preserved_issue134",
-        ground_truth_pipeline_subexpression_parentheses_and_layout_preserved_issue134,
-        idempotency_pipeline_subexpression_parentheses_and_layout_preserved_issue134
-    ),
-    (
-        "mixed_use_and_def_does_not_emit_parser_errors_issue136",
-        ground_truth_mixed_use_and_def_does_not_emit_parser_errors_issue136,
-        idempotency_mixed_use_and_def_does_not_emit_parser_errors_issue136
-    ),
-    (
-        "export_const_type_annotation_preserved_issue137",
-        ground_truth_export_const_type_annotation_preserved_issue137,
-        idempotency_export_const_type_annotation_preserved_issue137
-    ),
-    (
-        "compact_function_parameter_list_preserved_issue138",
-        ground_truth_compact_function_parameter_list_preserved_issue138,
-        idempotency_compact_function_parameter_list_preserved_issue138
-    ),
-    (
-        "match_guards_preserved_issue139",
-        ground_truth_match_guards_preserved_issue139,
-        idempotency_match_guards_preserved_issue139
-    ),
-    (
-        "match_guard_paren_does_not_hoist_comments",
-        ground_truth_match_guard_paren_does_not_hoist_comments,
-        idempotency_match_guard_paren_does_not_hoist_comments
-    ),
-    (
-        "match_inter_arm_comment_not_hoisted_into_guard",
-        ground_truth_match_inter_arm_comment_not_hoisted_into_guard,
-        idempotency_match_inter_arm_comment_not_hoisted_into_guard
-    ),
-    (
-        "match_in_pipeline_parens_preserved",
-        ground_truth_match_in_pipeline_parens_preserved,
-        idempotency_match_in_pipeline_parens_preserved
-    ),
-    (
-        "nested_record_comments_preserved",
-        ground_truth_nested_record_comments_preserved,
-        idempotency_nested_record_comments_preserved
-    ),
-    (
-        "raw_string_hash_delimiter_preserves_comments",
-        ground_truth_raw_string_hash_delimiter_preserves_comments,
-        idempotency_raw_string_hash_delimiter_preserves_comments
-    ),
-    (
-        "catch_block_indentation_and_closing_brace_preserved_issue140",
-        ground_truth_catch_block_indentation_and_closing_brace_preserved_issue140,
-        idempotency_catch_block_indentation_and_closing_brace_preserved_issue140
-    ),
-    (
-        "cell_path_in_def_block_does_not_emit_parser_errors_issue141",
-        ground_truth_cell_path_in_def_block_does_not_emit_parser_errors_issue141,
-        idempotency_cell_path_in_def_block_does_not_emit_parser_errors_issue141
-    ),
-    (
-        "compact_cell_path_lists_preserved_issue142",
-        ground_truth_compact_cell_path_lists_preserved_issue142,
-        idempotency_compact_cell_path_lists_preserved_issue142
-    ),
-    (
-        "if_condition_call_parentheses_preserved_issue143",
-        ground_truth_if_condition_call_parentheses_preserved_issue143,
-        idempotency_if_condition_call_parentheses_preserved_issue143
-    ),
-    (
-        "long_command_calls_wrap_to_line_length_issue144",
-        ground_truth_long_command_calls_wrap_to_line_length_issue144,
-        idempotency_long_command_calls_wrap_to_line_length_issue144
-    ),
-    (
-        "redundant_pipeline_parentheses_simplified_issue145",
-        ground_truth_redundant_pipeline_parentheses_simplified_issue145,
-        idempotency_redundant_pipeline_parentheses_simplified_issue145
-    ),
-    (
-        "if_else_comment_and_statement_placement_preserved_issue146",
-        ground_truth_if_else_comment_and_statement_placement_preserved_issue146,
-        idempotency_if_else_comment_and_statement_placement_preserved_issue146
-    ),
-    (
-        "match_arm_alignment_preserved_issue106",
-        ground_truth_match_arm_alignment_preserved_issue106,
-        idempotency_match_arm_alignment_preserved_issue106
-    ),
-    (
-        "comment_spacing_before_toplevel_statements_issue150",
-        ground_truth_comment_spacing_before_toplevel_statements_issue150,
-        idempotency_comment_spacing_before_toplevel_statements_issue150
-    ),
-    (
-        "side_comments_in_multiline_lists_preserved_issue195",
-        ground_truth_side_comments_in_multiline_lists_preserved_issue195,
-        idempotency_side_comments_in_multiline_lists_preserved_issue195
-    ),
-    (
-        "list_flag_value_pairing_preserved_issue151",
-        ground_truth_list_flag_value_pairing_preserved_issue151,
-        idempotency_list_flag_value_pairing_preserved_issue151
-    ),
-    (
-        "multiline_list_layout_preserved_issue152",
-        ground_truth_multiline_list_layout_preserved_issue152,
-        idempotency_multiline_list_layout_preserved_issue152
-    ),
-    (
-        "consecutive_let_const_grouping_normalized_issue153",
-        ground_truth_consecutive_let_const_grouping_normalized_issue153,
-        idempotency_consecutive_let_const_grouping_normalized_issue153
-    ),
-    (
-        "margin_respected_inside_nested_blocks_issue154",
-        ground_truth_margin_respected_inside_nested_blocks_issue154,
-        idempotency_margin_respected_inside_nested_blocks_issue154
-    ),
-    (
-        "nested_pipeline_expansion_rules_applied_issue155",
-        ground_truth_nested_pipeline_expansion_rules_applied_issue155,
-        idempotency_nested_pipeline_expansion_rules_applied_issue155
-    ),
-    (
-        "assignment_pipeline_redundant_parens_removed_issue156",
-        ground_truth_assignment_pipeline_redundant_parens_removed_issue156,
-        idempotency_assignment_pipeline_redundant_parens_removed_issue156
-    ),
-    (
-        "identifier_safe_match_patterns_unquoted_issue157",
-        ground_truth_identifier_safe_match_patterns_unquoted_issue157,
-        idempotency_identifier_safe_match_patterns_unquoted_issue157
-    ),
-    (
-        "single_item_list_inline_and_if_layout_preserved_issue158",
-        ground_truth_single_item_list_inline_and_if_layout_preserved_issue158,
-        idempotency_single_item_list_inline_and_if_layout_preserved_issue158
-    ),
-    (
-        "nested_closure_indentation_normalized_issue159",
-        ground_truth_nested_closure_indentation_normalized_issue159,
-        idempotency_nested_closure_indentation_normalized_issue159
-    ),
-    (
-        "closure_argument_pipe_spacing_normalized_issue160",
-        ground_truth_closure_argument_pipe_spacing_normalized_issue160,
-        idempotency_closure_argument_pipe_spacing_normalized_issue160
-    ),
-    (
-        "parens_stripping_boolean_exprs_issue162",
-        ground_truth_parens_stripping_boolean_exprs_issue162,
-        idempotency_parens_stripping_boolean_exprs_issue162
-    ),
-    (
-        "empty_lines_between_comments_and_blocks_preserved_issue165",
-        ground_truth_empty_lines_between_comments_and_blocks_preserved_issue165,
-        idempotency_empty_lines_between_comments_and_blocks_preserved_issue165
-    ),
-    (
-        "alias_references_do_not_duplicate_rhs_issue167",
-        ground_truth_alias_references_do_not_duplicate_rhs_issue167,
-        idempotency_alias_references_do_not_duplicate_rhs_issue167
-    ),
-    (
-        "multiline_record_comments_preserved_issue168",
-        ground_truth_multiline_record_comments_preserved_issue168,
-        idempotency_multiline_record_comments_preserved_issue168
-    ),
-    (
-        "margin_one_sets_single_blank_line_issue169",
-        ground_truth_margin_one_sets_single_blank_line_issue169,
-        idempotency_margin_one_sets_single_blank_line_issue169
-    ),
-    (
-        "margin_zero_allows_no_blank_line_issue169",
-        ground_truth_margin_zero_allows_no_blank_line_issue169,
-        idempotency_margin_zero_allows_no_blank_line_issue169
-    ),
-    (
-        "alias_invocation_in_def_does_not_duplicate_expanded_rhs_issue171",
-        ground_truth_alias_invocation_in_def_does_not_duplicate_expanded_rhs_issue171,
-        idempotency_alias_invocation_in_def_does_not_duplicate_expanded_rhs_issue171
-    ),
-    (
-        "unary_not_condition_keeps_required_subexpression_parens_issue172",
-        ground_truth_unary_not_condition_keeps_required_subexpression_parens_issue172,
-        idempotency_unary_not_condition_keeps_required_subexpression_parens_issue172
-    ),
-    (
-        "if_call_parentheses_preserved_after_if_issue176",
-        ground_truth_if_call_parentheses_preserved_after_if_issue176,
-        idempotency_if_call_parentheses_preserved_after_if_issue176
-    ),
-    (
-        "try_block_comment_spacing_preserved_issue178",
-        ground_truth_try_block_comment_spacing_preserved_issue178,
-        idempotency_try_block_comment_spacing_preserved_issue178
-    ),
-    (
-        "signature_default_string_quotes_preserved_issue179",
-        ground_truth_signature_default_string_quotes_preserved_issue179,
-        idempotency_signature_default_string_quotes_preserved_issue179
-    ),
-    (
-        "alias_invocation_in_def_keeps_authored_tokens_issue180",
-        ground_truth_alias_invocation_in_def_keeps_authored_tokens_issue180,
-        idempotency_alias_invocation_in_def_keeps_authored_tokens_issue180
-    ),
-    (
-        "stderr_pipeline_redirection_pipe_not_duplicated_issue181",
-        ground_truth_stderr_pipeline_redirection_pipe_not_duplicated_issue181,
-        idempotency_stderr_pipeline_redirection_pipe_not_duplicated_issue181
-    ),
-    (
-        "list_closure_type_annotation_issue187",
-        ground_truth_list_closure_type_annotation_issue187,
-        idempotency_list_closure_type_annotation_issue187
-    ),
-    (
-        "extraneous_spaces_in_multi_word_function_stripped_issue188",
-        ground_truth_extraneous_spaces_in_multi_word_function_stripped_issue188,
-        idempotency_extraneous_spaces_in_multi_word_function_stripped_issue188
-    ),
-    (
-        "match_arm_formatting_is_idempotent_issue189",
-        ground_truth_match_arm_formatting_is_idempotent_issue189,
-        idempotency_match_arm_formatting_is_idempotent_issue189
-    ),
-    (
-        "tab_indentation_via_config_issue196",
-        ground_truth_tab_indentation_via_config_issue196,
-        idempotency_tab_indentation_via_config_issue196
-    ),
-    (
-        "single_quoted_double_quote_does_not_break_interpolation_issue201",
-        ground_truth_single_quoted_double_quote_does_not_break_interpolation_issue201,
-        idempotency_single_quoted_double_quote_does_not_break_interpolation_issue201
-    ),
-    (
-        "comment_apostrophe_does_not_break_interpolation_issue201",
-        ground_truth_comment_apostrophe_does_not_break_interpolation_issue201,
-        idempotency_comment_apostrophe_does_not_break_interpolation_issue201
-    ),
-    (
-        "mid_file_comment_apostrophe_does_not_break_interpolation_issue201",
-        ground_truth_mid_file_comment_apostrophe_does_not_break_interpolation_issue201,
-        idempotency_mid_file_comment_apostrophe_does_not_break_interpolation_issue201
-    ),
-    (
-        "multiple_apostrophes_in_comment_does_not_break_interpolation_issue201",
-        ground_truth_multiple_apostrophes_in_comment_does_not_break_interpolation_issue201,
-        idempotency_multiple_apostrophes_in_comment_does_not_break_interpolation_issue201
-    ),
-    (
-        "multiline_tables_preserved_issue198",
-        ground_truth_multiline_tables_preserved_issue198,
-        idempotency_multiline_tables_preserved_issue198
-    ),
-    (
-        "list_closure_trailing_comments_preserved_issue199",
-        ground_truth_list_closure_trailing_comments_preserved_issue199,
-        idempotency_list_closure_trailing_comments_preserved_issue199
-    ),
-    (
-        "record_pipeline_subexpr_parens_preserved_issue200",
-        ground_truth_record_pipeline_subexpr_parens_preserved_issue200,
-        idempotency_record_pipeline_subexpr_parens_preserved_issue200
-    ),
-    (
-        "signature_defaults_preserved_issue204",
-        ground_truth_signature_defaults_preserved_issue204,
-        idempotency_signature_defaults_preserved_issue204
-    ),
-    (
-        "alias_prefer_builtin_percent_preserved_issue211",
-        ground_truth_alias_prefer_builtin_percent_preserved_issue211,
-        idempotency_alias_prefer_builtin_percent_preserved_issue211
-    ),
-    (
-        "signature_default_backtick_string_preserved",
-        ground_truth_signature_default_backtick_string_preserved,
-        idempotency_signature_default_backtick_string_preserved
-    ),
-    (
-        "signature_default_raw_string_preserved",
-        ground_truth_signature_default_raw_string_preserved,
-        idempotency_signature_default_raw_string_preserved
-    ),
-    (
-        "signature_default_flag_name_in_string_not_matched",
-        ground_truth_signature_default_flag_name_in_string_not_matched,
-        idempotency_signature_default_flag_name_in_string_not_matched
-    ),
-    (
-        "optional_positional_unresolvable_default_preserved",
-        ground_truth_optional_positional_unresolvable_default_preserved,
-        idempotency_optional_positional_unresolvable_default_preserved
-    ),
-    (
-        "signature_default_param_name_matches_type",
-        ground_truth_signature_default_param_name_matches_type,
-        idempotency_signature_default_param_name_matches_type
-    ),
-    (
-        "signature_default_glued_short_flag",
-        ground_truth_signature_default_glued_short_flag,
-        idempotency_signature_default_glued_short_flag
-    ),
-    (
-        "signature_custom_completions",
-        ground_truth_signature_custom_completions,
-        idempotency_signature_custom_completions
-    ),
-    (
-        "comment_only_file_preserved_issue231",
-        ground_truth_comment_only_file_preserved_issue231,
-        idempotency_comment_only_file_preserved_issue231
-    ),
-    (
-        "signature_default_with_io_types_issue236",
-        ground_truth_signature_default_with_io_types_issue236,
-        idempotency_signature_default_with_io_types_issue236
-    ),
-    (
-        "export_env_block_formatted_issue233",
-        ground_truth_export_env_block_formatted_issue233,
-        idempotency_export_env_block_formatted_issue233
-    ),
-    (
-        "trailing_block_comments_preserved_issue232",
-        ground_truth_trailing_block_comments_preserved_issue232,
-        idempotency_trailing_block_comments_preserved_issue232
-    ),
-    (
-        "nested_quotes_in_interpolation_issue220",
-        ground_truth_nested_quotes_in_interpolation_issue220,
-        idempotency_nested_quotes_in_interpolation_issue220
-    ),
-    (
-        "redundant_pipeline_parens_kept_when_required",
-        ground_truth_redundant_pipeline_parens_kept_when_required,
-        idempotency_redundant_pipeline_parens_kept_when_required
-    ),
-    (
-        "conditional_subexpression_inline_comment_outside_parens",
-        ground_truth_conditional_subexpression_inline_comment_outside_parens,
-        idempotency_conditional_subexpression_inline_comment_outside_parens
-    ),
-    (
-        "consistent_branches_single_line_issue217",
-        ground_truth_consistent_branches_single_line_issue217,
-        idempotency_consistent_branches_single_line_issue217
-    ),
-    (
-        "consistent_branches_always_issue217",
-        ground_truth_consistent_branches_always_issue217,
-        idempotency_consistent_branches_always_issue217
-    ),
-    (
-        "consistent_branches_never_issue217",
-        ground_truth_consistent_branches_never_issue217,
-        idempotency_consistent_branches_never_issue217
-    ),
-    (
-        "postprocess_keeps_required_parens_and_string_text",
-        ground_truth_postprocess_keeps_required_parens_and_string_text,
-        idempotency_postprocess_keeps_required_parens_and_string_text
-    ),
-    (
-        "comment_in_multiline_subexpression_not_duplicated",
-        ground_truth_comment_in_multiline_subexpression_not_duplicated,
-        idempotency_comment_in_multiline_subexpression_not_duplicated
-    ),
-    (
-        "nushell_0116_parser_compatibility",
-        ground_truth_nushell_0116_parser_compatibility,
-        idempotency_nushell_0116_parser_compatibility
-    ),
-);
