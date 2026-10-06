@@ -1174,6 +1174,53 @@ mod tests {
     }
 
     #[test]
+    fn declaration_spacing_uses_formatted_layout() {
+        let table = concat!(
+            "let report = [\n",
+            "    [name, department, salary];\n",
+            "    [\"Alice\", \"Engineering\", 100000]\n",
+            "    [\"Bob\", \"Marketing\", 80000]\n",
+            "] # table",
+        );
+        for config in [
+            Config::default(),
+            Config::new(4, 80, 0),
+            Config::new(4, 80, 1),
+            Config::new(4, 80, 2),
+        ] {
+            for (before_comment, after_comment) in [("", ""), ("# report\n", "# after\n")] {
+                let input = format!(
+                    "let before = 1\n{before_comment}\
+                     let report = [[name, department, salary]; \
+                     [\"Alice\", \"Engineering\", 100000], [\"Bob\", \"Marketing\", 80000]] # table\n\
+                     {after_comment}let after = 2\nlet end = 3"
+                );
+                let separator = "\n".repeat(config.margin + 1);
+                let expected = format!(
+                    "let before = 1{separator}{before_comment}{table}{separator}\
+                     {after_comment}let after = 2\nlet end = 3"
+                );
+                assert_eq!(format_with(&input, &config), expected, "input:\n{input}");
+                assert_eq!(
+                    format_with(&expected, &config),
+                    expected,
+                    "not idempotent:\n{expected}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn collapsed_declarations_stay_in_the_same_group() {
+        for (input, expected) in [("[\n]", "[]"), ("{\n}", "{}"), ("[\n    1\n]", "[1]")] {
+            assert_formats_to(
+                &format!("let before = 1\nlet value = {input}\nlet after = 2"),
+                &format!("let before = 1\nlet value = {expected}\nlet after = 2"),
+            );
+        }
+    }
+
+    #[test]
     fn margin_setting_inserts_expected_toplevel_spacing_issue98() {
         let input = "def foo [] {\n    let out = 1\n    out\n}\n\ndef bar [] {\n    let out = 1\n    out\n}";
         let config = Config::new(4, 80, 2);

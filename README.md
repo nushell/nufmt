@@ -170,110 +170,74 @@ The formatter walks the AST and emits properly formatted code with consistent:
 
 ## Testing
 
-`nufmt` has a comprehensive ground truth testing system that verifies the formatter produces correct output for all supported Nushell constructs.
+The Rust tests and Nushell runner automatically discover fixture directories exactly two levels below `tests/fixtures/`:
 
-### Ground Truth Tests
+```text
+tests/fixtures/<category>/<case>/
+├── expected.nu       # Required reference output
+├── input.nu          # Optional input with formatting issues
+└── config.noun       # Optional formatter configuration for this case
+```
 
-The testing system uses two sets of fixture files:
+Each case first formats `expected.nu` **once** and compares the result byte for byte with the original file. A mismatch fails the idempotency check and saves the actual output to `not_idempotent.nu`; a match removes that file if it exists.
 
-- **Input files** (`tests/fixtures/input/`): Contain valid Nushell code with intentional formatting issues (extra spaces, inconsistent indentation, etc.)
-- **Expected files** (`tests/fixtures/expected/`): Contain the correctly formatted version of each input file
+If `input.nu` exists, the runner then formats it **once** and compares the result byte for byte with the original `expected.nu`. A mismatch saves the actual output to `unexpected.nu`; a match removes that file if it exists. Cases without an input only run the expected-file check and leave any existing `unexpected.nu` untouched.
 
-When tests run, the formatter processes each input file and compares the output against the corresponding expected file. This ensures:
-
-1. The formatter produces consistent, correct output
-2. Formatting changes are intentional and reviewed
-3. Regressions are caught immediately
-
-**Important**: Input files should always differ from expected files. Input files represent "what not to do" - poorly formatted but valid Nushell code that the formatter should fix.
-
-### Test Categories
-
-Tests are organized by Nushell construct category:
-
-| Category | Constructs |
-|----------|------------|
-| `core` | `let_statement`, `mut_statement`, `const_statement`, `def_statement` |
-| `control_flow` | `if_else`, `for_loop`, `while_loop`, `loop_statement`, `match_expr`, `try_catch`, `break_continue`, `return_statement` |
-| `data_structures` | `list`, `record`, `table`, `nested_structures` |
-| `pipelines_expressions` | `pipeline`, `multiline_pipeline`, `closure`, `subexpression`, `binary_ops`, `range`, `cell_path`, `spread` |
-| `strings_interpolation` | `string_interpolation`, `comment` |
-| `types_values` | `value_with_unit`, `datetime`, `nothing`, `glob_pattern` |
-| `modules_imports` | `module`, `use_statement`, `export`, `source`, `hide`, `overlay` |
-| `commands_definitions` | `alias`, `extern`, `external_call` |
-| `special_constructs` | `do_block`, `where_clause`, `error_make` |
+Both checks use the case's `config.noun` when present. Comparisons preserve whitespace and line endings, including the final newline. All cases run before failures are reported, and known non-idempotent cases fail normally.
 
 ### Running Tests
 
 #### Rust Tests
 
 ```bash
-# Run all tests (unit + ground truth + idempotency)
-cargo test
+# Run all tests and continue to other test binaries after a failure
+cargo test --no-fail-fast
 
-# Run only ground truth tests
+# Run fixture checks
 cargo test --test ground_truth
 
-# Run with verbose output
-cargo test -- --nocapture
+# Show detailed output
+cargo test --test ground_truth -- --nocapture
 ```
 
 #### Nushell Test Runner
-
-A Nushell script (`tests/run_ground_truth_tests.nu`) provides a more interactive testing experience:
 
 ```bash
 # Build the release binary first
 cargo build --release
 
-# Run all tests
+# Run all fixture checks
 nu tests/run_ground_truth_tests.nu
 
-# Run with verbose output (show diffs on failure)
+# Show failure details
 nu tests/run_ground_truth_tests.nu --verbose
 
-# Run only ground truth tests (skip idempotency)
+# Only check existing input.nu files against expected.nu
 nu tests/run_ground_truth_tests.nu --ground-truth
 
-# Run only idempotency tests
+# Only check expected.nu for idempotency
 nu tests/run_ground_truth_tests.nu --idempotency
 
-# Run tests for a specific category
+# Filter by category directory
 nu tests/run_ground_truth_tests.nu --category control_flow
 
-# Run a single test
+# Filter by category/case, or by a unique case name
+nu tests/run_ground_truth_tests.nu --test core_language_constructs/let_statement
 nu tests/run_ground_truth_tests.nu --test let_statement
 
-# List all available tests
+# Discover available cases and categories without building the binary
 nu tests/run_ground_truth_tests.nu --list
-
-# List available categories
 nu tests/run_ground_truth_tests.nu --list-categories
 
-# Check which test files exist
+# Check required files; input.nu is optional
 nu tests/run_ground_truth_tests.nu --check-files
 ```
 
+The two check-only flags are mutually exclusive. Ambiguous case names must be qualified with their category.
+
 ### Adding New Tests
 
-To add a test for a new construct:
-
-1. Create an input file at `tests/fixtures/input/<construct_name>.nu` with poorly-formatted but valid Nushell code
-2. Create an expected file at `tests/fixtures/expected/<construct_name>.nu` with the correctly formatted version
-3. Add the construct name to the appropriate category in `tests/run_ground_truth_tests.nu`
-4. Run the tests to verify
-
-Example input file (`tests/fixtures/input/my_construct.nu`):
-```nu
-let x  =  1
-let y   =   2
-```
-
-Example expected file (`tests/fixtures/expected/my_construct.nu`):
-```nu
-let x = 1
-let y = 2
-```
+Create `tests/fixtures/<category>/<case>/expected.nu` with the reference output, including its final newline. Add `input.nu` when a distinct input is useful, and `config.noun` when the case needs custom settings. No test registration or code changes are required. Deeper directories are not discovered as additional cases.
 
 ## Contributing
 
