@@ -64,6 +64,7 @@ let report = [
     ["Bob", "Marketing", 80000]
     ["Carol", "Engineering", 95000]
 ]
+
 # String with multiple interpolations
 let message = $"User ($complex_data.users.0.name) has scores: ($complex_data.users.0.scores | str join ', ')"
 # Range operations
