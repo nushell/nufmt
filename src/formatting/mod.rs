@@ -28,9 +28,9 @@ use crate::format_error::FormatError;
 use log::{debug, trace};
 use nu_parser::parse;
 use nu_protocol::{
+    ParseError, Span,
     ast::{Block, Expr, Expression, Traverse},
     engine::StateWorkingSet,
-    ParseError, Span,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -40,11 +40,11 @@ use comments::extract_comments;
 use engine::get_engine_state;
 use garbage::block_contains_garbage;
 use repair::{
-    detect_compact_if_else_spans, detect_missing_record_comma_spans,
-    detect_redundant_pipeline_subexpr_spans, is_collection_error, is_fatal_parse_error,
-    is_syntax_error, try_repair_parse_errors, ErrorSpans, ParseRepairOutcome,
+    ErrorSpans, ParseRepairOutcome, detect_compact_if_else_spans,
+    detect_missing_record_comma_spans, detect_redundant_pipeline_subexpr_spans,
+    is_collection_error, is_fatal_parse_error, is_syntax_error, try_repair_parse_errors,
 };
-use scan::{has_code_byte, parens_enclose, region_at, scan_regions, Region, RegionKind};
+use scan::{Region, RegionKind, has_code_byte, parens_enclose, region_at, scan_regions};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Formatter struct
@@ -230,12 +230,12 @@ impl<'a> Formatter<'a> {
     /// Write a space if not at line start and not already following whitespace
     /// or an opener.
     pub(crate) fn space(&mut self) {
-        if !self.at_line_start && !self.output.is_empty() {
-            if let Some(&last) = self.output.last() {
-                if !matches!(last, b' ' | b'\n' | b'\t' | b'(' | b'[') {
-                    self.output.push(b' ');
-                }
-            }
+        if !self.at_line_start
+            && !self.output.is_empty()
+            && let Some(&last) = self.output.last()
+            && !matches!(last, b' ' | b'\n' | b'\t' | b'(' | b'[')
+        {
+            self.output.push(b' ');
         }
     }
 
@@ -454,20 +454,19 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
     let has_garbage = block_contains_garbage(&working_set, &parsed_block);
     let has_fatal_parse_error = working_set.parse_errors.iter().any(is_fatal_parse_error);
 
-    if !malformed_spans.is_empty() || has_garbage {
-        if let Some(repaired) =
+    if (!malformed_spans.is_empty() || has_garbage)
+        && let Some(repaired) =
             try_repair_parse_errors(contents, &malformed_spans, &parse_error_spans)
-        {
-            debug!(
-                "retrying formatting after targeted parse-error repair ({} parse errors)",
-                working_set.parse_errors.len()
-            );
-            return match repaired {
-                ParseRepairOutcome::Reformat(repaired_source) => {
-                    format_inner_with_options(&repaired_source, config)
-                }
-            };
-        }
+    {
+        debug!(
+            "retrying formatting after targeted parse-error repair ({} parse errors)",
+            working_set.parse_errors.len()
+        );
+        return match repaired {
+            ParseRepairOutcome::Reformat(repaired_source) => {
+                format_inner_with_options(&repaired_source, config)
+            }
+        };
     }
 
     if has_fatal_parse_error && has_garbage {
@@ -501,10 +500,10 @@ fn format_inner_with_options(contents: &[u8], config: &Config) -> Result<Vec<u8>
         .unwrap_or(&parsed_block);
 
     // Write leading comments
-    if let Some(first_pipeline) = body.pipelines.first() {
-        if let Some(first_elem) = first_pipeline.elements.first() {
-            formatter.write_comments_before(first_elem.expr.span.start);
-        }
+    if let Some(first_pipeline) = body.pipelines.first()
+        && let Some(first_elem) = first_pipeline.elements.first()
+    {
+        formatter.write_comments_before(first_elem.expr.span.start);
     }
 
     formatter.format_block(&parsed_block);
@@ -842,8 +841,7 @@ mod tests {
 
     #[test]
     fn signature_types_keep_column_names() {
-        let input =
-            "def f [x: record<external-argument: int>, y: record<\"a b\": int>, z: list<external_arg>] { $x }";
+        let input = "def f [x: record<external-argument: int>, y: record<\"a b\": int>, z: list<external_arg>] { $x }";
         assert_eq!(format(input), input);
     }
 

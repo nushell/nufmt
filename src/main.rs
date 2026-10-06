@@ -9,13 +9,13 @@
 )]
 
 use clap::{CommandFactory, Parser};
-use ignore::{overrides::OverrideBuilder, DirEntry, WalkBuilder};
+use ignore::{DirEntry, WalkBuilder, overrides::OverrideBuilder};
 use log::{info, trace};
 use nu_ansi_term::{Color, Style};
-use nu_formatter::config::Config;
-use nu_formatter::config_error::ConfigError;
 use nu_formatter::FileDiagnostic;
 use nu_formatter::Mode;
+use nu_formatter::config::Config;
+use nu_formatter::config_error::ConfigError;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::convert::TryFrom;
 use std::{
@@ -371,11 +371,7 @@ impl FormattingStats {
 
 /// Return "s" for plural, empty string for singular
 fn plural(count: usize) -> &'static str {
-    if count == 1 {
-        ""
-    } else {
-        "s"
-    }
+    if count == 1 { "" } else { "s" }
 }
 
 /// Return the different files to analyze, filtering by .nu extension and config excludes
