@@ -1,2 +1,0 @@
-@category a
-def a [] { }

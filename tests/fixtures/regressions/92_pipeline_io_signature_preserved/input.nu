@@ -1,1 +1,0 @@
-def a []: nothing -> nothing { }
