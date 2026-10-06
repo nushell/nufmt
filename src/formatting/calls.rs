@@ -7,8 +7,8 @@ use super::scan::parens_enclose;
 use super::{BranchExpansionKey, CommandType, Formatter};
 use crate::config::ConsistentBranches;
 use nu_protocol::{
-    ast::{Argument, Expr, Expression, ExternalArgument},
     CollectionColumns, Completion, Signature, Span, SyntaxShape,
+    ast::{Argument, Expr, Expression, ExternalArgument},
 };
 use nu_utils::NuCow;
 
@@ -971,17 +971,16 @@ impl<'a> Formatter<'a> {
             let pipeline = &block.pipelines[0];
             if pipeline.elements.len() > 1
                 && matches!(pipeline.elements[0].expr.expr, Expr::Subexpression(_))
+                && let Expr::Subexpression(inner_id) = &pipeline.elements[0].expr.expr
             {
-                if let Expr::Subexpression(inner_id) = &pipeline.elements[0].expr.expr {
-                    let inner = self.working_set.get_block(*inner_id);
-                    if inner.pipelines.len() == 1 && inner.pipelines[0].elements.len() == 1 {
-                        self.format_pipeline_element(&inner.pipelines[0].elements[0]);
-                        for element in pipeline.elements.iter().skip(1) {
-                            self.write(" | ");
-                            self.format_pipeline_element(element);
-                        }
-                        return;
+                let inner = self.working_set.get_block(*inner_id);
+                if inner.pipelines.len() == 1 && inner.pipelines[0].elements.len() == 1 {
+                    self.format_pipeline_element(&inner.pipelines[0].elements[0]);
+                    for element in pipeline.elements.iter().skip(1) {
+                        self.write(" | ");
+                        self.format_pipeline_element(element);
                     }
+                    return;
                 }
             }
 

@@ -5,7 +5,7 @@
 //! source text so a second parse succeeds cleanly. Repairs are
 //! region-scoped and never mutate string-literal contents.
 
-use super::scan::{has_code_byte, parens_enclose, region_at, scan_regions, Region, RegionKind};
+use super::scan::{Region, RegionKind, has_code_byte, parens_enclose, region_at, scan_regions};
 use nu_protocol::{ParseError, Span};
 
 /// Whether a parse error is fatal enough that formatting should be skipped.
@@ -341,11 +341,7 @@ fn is_declaration_target(target: &str) -> bool {
         .filter(|rest| rest.starts_with(char::is_whitespace))
         .map_or(target, |rest| {
             let rest = rest.trim_start();
-            if rest.starts_with("const") {
-                rest
-            } else {
-                ""
-            }
+            if rest.starts_with("const") { rest } else { "" }
         });
     let Some(rest) = ["let-env", "let", "mut", "const"]
         .iter()
@@ -468,21 +464,23 @@ fn add_brace_padding_segment(segment: &str) -> (String, bool) {
     for (idx, &byte) in bytes.iter().enumerate() {
         if byte == b'{' {
             output.push(byte);
-            if let Some(next) = bytes.get(idx + 1) {
-                if !next.is_ascii_whitespace() && *next != b'}' {
-                    output.push(b' ');
-                    changed = true;
-                }
+            if let Some(next) = bytes.get(idx + 1)
+                && !next.is_ascii_whitespace()
+                && *next != b'}'
+            {
+                output.push(b' ');
+                changed = true;
             }
             continue;
         }
 
         if byte == b'}' {
-            if let Some(last) = output.last() {
-                if !last.is_ascii_whitespace() && *last != b'{' {
-                    output.push(b' ');
-                    changed = true;
-                }
+            if let Some(last) = output.last()
+                && !last.is_ascii_whitespace()
+                && *last != b'{'
+            {
+                output.push(b' ');
+                changed = true;
             }
             output.push(byte);
             continue;
@@ -523,11 +521,11 @@ fn merge_spans(spans: &[Span], len: usize) -> Vec<Span> {
 
     let mut merged: Vec<Span> = Vec::new();
     for span in normalised {
-        if let Some(last) = merged.last_mut() {
-            if span.start <= last.end {
-                last.end = last.end.max(span.end);
-                continue;
-            }
+        if let Some(last) = merged.last_mut()
+            && span.start <= last.end
+        {
+            last.end = last.end.max(span.end);
+            continue;
         }
         merged.push(span);
     }

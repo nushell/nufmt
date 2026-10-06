@@ -5,8 +5,8 @@
 
 use super::Formatter;
 use nu_protocol::{
-    ast::{Expr, Expression, ListItem, MatchPattern, Pattern, RecordItem},
     Span, Value,
+    ast::{Expr, Expression, ListItem, MatchPattern, Pattern, RecordItem},
 };
 
 impl<'a> Formatter<'a> {
@@ -827,14 +827,14 @@ impl<'a> Formatter<'a> {
 
     fn format_match_pattern_for_arm(&mut self, pattern: &MatchPattern, rhs: &Expression) {
         // Nushell 0.116 parses a literal pattern into a value.
-        if let Pattern::Value(Value::String { .. }) = &pattern.pattern {
-            if self.should_unquote_identifier_safe_match_pattern(pattern.span, rhs) {
-                let raw = self.get_span_content(pattern.span);
-                let trimmed = raw.trim_ascii();
-                let inner = &trimmed[1..trimmed.len() - 1];
-                self.write_bytes(inner);
-                return;
-            }
+        if let Pattern::Value(Value::String { .. }) = &pattern.pattern
+            && self.should_unquote_identifier_safe_match_pattern(pattern.span, rhs)
+        {
+            let raw = self.get_span_content(pattern.span);
+            let trimmed = raw.trim_ascii();
+            let inner = &trimmed[1..trimmed.len() - 1];
+            self.write_bytes(inner);
+            return;
         }
 
         self.format_match_pattern(pattern);

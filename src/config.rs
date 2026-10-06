@@ -232,7 +232,7 @@ fn parse_string_list(value: &Value) -> Result<Vec<String>, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nu_protocol::{record, Span};
+    use nu_protocol::{Span, record};
 
     fn config_with(key: &str, value: Value) -> Result<Config, ConfigError> {
         Config::try_from(Value::test_record(record! { key => value }))

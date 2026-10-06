@@ -56,7 +56,9 @@ pub fn format_single_file(
     }
 
     if *mode == Mode::DryRun {
-        debug!("File not formatted because running in dry run, but would be reformatted in normal mode.");
+        debug!(
+            "File not formatted because running in dry run, but would be reformatted in normal mode."
+        );
         return (file, FileDiagnostic::Reformatted);
     }
 

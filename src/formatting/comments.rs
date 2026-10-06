@@ -4,8 +4,8 @@
 //! boundaries, and provides methods on [`Formatter`] to emit them at the
 //! correct locations in the output.
 
-use super::scan::{scan_regions, RegionKind};
 use super::Formatter;
+use super::scan::{RegionKind, scan_regions};
 use nu_protocol::Span;
 
 /// Extract all comments from source code, returning their spans and content.
@@ -121,12 +121,11 @@ impl<'a> Formatter<'a> {
                 self.ensure_trailing_newlines(between_newlines);
             }
 
-            if !self.at_line_start {
-                if let Some(&last) = self.output.last() {
-                    if last != b'\n' {
-                        self.newline();
-                    }
-                }
+            if !self.at_line_start
+                && let Some(&last) = self.output.last()
+                && last != b'\n'
+            {
+                self.newline();
             }
             self.write_indent();
             self.output.extend(content);
