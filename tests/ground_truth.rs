@@ -934,4 +934,9 @@ fixture_tests!(
         ground_truth_long_record_wraps_to_line_length_issue241,
         idempotency_long_record_wraps_to_line_length_issue241
     ),
+    (
+        "call_with_multiline_record_wraps_idempotently_issue242",
+        ground_truth_call_with_multiline_record_wraps_idempotently_issue242,
+        idempotency_call_with_multiline_record_wraps_idempotently_issue242
+    ),
 );
