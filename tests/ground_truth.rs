@@ -929,4 +929,9 @@ fixture_tests!(
         ground_truth_nushell_0116_parser_compatibility,
         idempotency_nushell_0116_parser_compatibility
     ),
+    (
+        "long_record_wraps_to_line_length_issue241",
+        ground_truth_long_record_wraps_to_line_length_issue241,
+        idempotency_long_record_wraps_to_line_length_issue241
+    ),
 );
