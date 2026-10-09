@@ -469,22 +469,21 @@ impl<'a> Formatter<'a> {
             return false;
         }
 
-        let end = source_args
-            .iter()
-            .map(|arg| argument_end_pos(arg))
-            .max()
-            .unwrap_or(call.head.end);
-
-        if call.head.start >= end || end > self.source.len() {
+        // Measure the formatted call, not the source, so a second pass decides the same (#242).
+        let head_text = self.call_head_text(call);
+        let indent_level = self.indent_level;
+        let rendered = self.probe_format(|probe| {
+            probe.indent_level = indent_level;
+            probe.write_call_head(call, head_text.as_deref());
+            for arg in &source_args {
+                probe.format_call_argument(arg, &CommandType::Regular);
+            }
+        });
+        if rendered.contains(&b'\n') {
             return false;
         }
 
-        let source_span = &self.source[call.head.start..end];
-        if source_span.contains(&b'\n') {
-            return false;
-        }
-
-        source_span.len() + (self.config.indent * self.indent_level) > self.config.line_length
+        rendered.len() + (self.config.indent * self.indent_level) > self.config.line_length
     }
 
     /// Format a long regular call as:
