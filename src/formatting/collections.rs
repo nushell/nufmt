@@ -290,29 +290,9 @@ impl<'a> Formatter<'a> {
             && !nested_multiline
             && !preserve_multiline_top_level
             && !has_comments_in_record
+            && self.inline_record_fits_on_line(items, preserve_compact)
         {
-            // Inline format
-            let record_start = self.output.len();
-            self.write("{");
-            if preserve_compact {
-                self.write(" ");
-            }
-            for (i, item) in items.iter().enumerate() {
-                if i > 0 {
-                    self.write(", ");
-                }
-                self.format_record_item(item, preserve_compact);
-            }
-            if !preserve_compact
-                && self.output.len() > record_start + 1
-                && self.output[record_start + 1] == b' '
-            {
-                self.output.remove(record_start + 1);
-            }
-            if preserve_compact {
-                self.write(" ");
-            }
-            self.write("}");
+            self.write_inline_record(items, preserve_compact);
         } else {
             // Multiline format
             self.write("{");
@@ -349,6 +329,36 @@ impl<'a> Formatter<'a> {
             self.write_indent();
             self.write("}");
         }
+    }
+
+    fn write_inline_record(&mut self, items: &[RecordItem], preserve_compact: bool) {
+        let record_start = self.output.len();
+        self.write("{");
+        if preserve_compact {
+            self.write(" ");
+        }
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                self.write(", ");
+            }
+            self.format_record_item(item, preserve_compact);
+        }
+        if !preserve_compact
+            && self.output.len() > record_start + 1
+            && self.output[record_start + 1] == b' '
+        {
+            self.output.remove(record_start + 1);
+        }
+        if preserve_compact {
+            self.write(" ");
+        }
+        self.write("}");
+    }
+
+    fn inline_record_fits_on_line(&self, items: &[RecordItem], preserve_compact: bool) -> bool {
+        let rendered = self.probe_format(|p| p.write_inline_record(items, preserve_compact));
+        let indent_len = self.config.indent * self.indent_level;
+        indent_len + rendered.len() <= self.config.line_length
     }
 
     /// Determine whether a record should preserve compact colon style
