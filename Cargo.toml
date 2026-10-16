@@ -47,3 +47,8 @@ required-features = ["bin"]
 [[bench]]
 name = "file-format-bench"
 harness = false
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
