@@ -8,7 +8,8 @@ use super::scan::{RegionKind, closing_param_pipe, scan_regions, top_level_positi
 use nu_protocol::{
     Span,
     ast::{
-        Argument, Block, Expr, Expression, PipelineElement, PipelineRedirection, RedirectionTarget,
+        Argument, Block, Expr, Expression, ListItem, PipelineElement, PipelineRedirection,
+        RedirectionTarget,
     },
 };
 
@@ -585,8 +586,18 @@ impl<'a> Formatter<'a> {
     pub(super) fn expr_is_complex(&self, expr: &Expression) -> bool {
         match &expr.expr {
             Expr::Block(_) | Expr::Closure(_) => true,
-            Expr::List(items) => items.len() > 3,
+            // `format_list` breaks any list holding a non-simple item, so such a
+            // list must not be judged simple here or the block is laid out inline
+            // on the first pass and expanded on the second.
+            Expr::List(items) => {
+                items.len() > 3
+                    || items.iter().any(|item| match item {
+                        ListItem::Item(e) | ListItem::Spread(_, e) => !self.is_simple_expr(e),
+                    })
+            }
             Expr::Record(items) => items.len() > 2,
+            // The parser wraps a list literal in a cell path with no members.
+            Expr::FullCellPath(path) => self.expr_is_complex(&path.head),
             Expr::Call(call) => call.arguments.iter().any(|arg| match arg {
                 Argument::Positional(e) | Argument::Unknown(e) | Argument::Spread(e) => {
                     self.expr_is_complex(e)
