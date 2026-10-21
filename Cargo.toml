@@ -1,6 +1,6 @@
 [package]
 name = "nufmt"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 license = "MIT"
 description = "Formats nushell extremely fast"
