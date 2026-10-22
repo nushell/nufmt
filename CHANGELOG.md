@@ -4,6 +4,17 @@ All notable changes to nufmt are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- A block (or a closure without parameters) that stays on one line formats the same on every
+  pass. The formatter now renders the statement to decide, instead of guessing from its shape, so
+  a parenthesised pipeline or a list that is laid out across lines no longer leaves `{ ... }`
+  inline on the first pass and expands it on the second. This covers unknown commands
+  (`ansi -e [...]`), operators, `not`, and `$in`, for example
+  `{ return (ls | get name | each {|it| $it} | prepend "x") }`.
+
 ## [0.1.6] - 2026-10-21
 
 ### Added
