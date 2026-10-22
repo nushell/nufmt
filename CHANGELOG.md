@@ -4,6 +4,14 @@ All notable changes to nufmt are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- A one-line block holding a parenthesised pipeline that is laid out across lines, such as
+  `{ return (ls | get name | each {|it| $it} | prepend "x") }` or a multiline list piped on
+  inside `( )` as an argument of an unknown command, formats the same on every pass.
+
 ## [0.1.6] - 2026-10-21
 
 ### Added

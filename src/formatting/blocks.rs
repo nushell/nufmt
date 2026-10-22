@@ -8,8 +8,8 @@ use super::scan::{RegionKind, closing_param_pipe, scan_regions, top_level_positi
 use nu_protocol::{
     Span,
     ast::{
-        Argument, Block, Expr, Expression, ListItem, PipelineElement, PipelineRedirection,
-        RedirectionTarget,
+        Argument, Block, Expr, Expression, ExternalArgument, ListItem, PipelineElement,
+        PipelineRedirection, RedirectionTarget,
     },
 };
 
@@ -598,11 +598,34 @@ impl<'a> Formatter<'a> {
             Expr::Record(items) => items.len() > 2,
             // The parser wraps a list literal in a cell path with no members.
             Expr::FullCellPath(path) => self.expr_is_complex(&path.head),
+            // A parenthesised pipeline can be laid out across lines (a long one,
+            // or one holding a multiline list), which leaves the block no room
+            // to stay inline. Render it to find out.
+            Expr::Subexpression(_) => {
+                let indent_level = self.indent_level;
+                self.probe_format(|probe| {
+                    probe.indent_level = indent_level;
+                    probe.format_expression(expr);
+                })
+                .contains(&b'\n')
+            }
             Expr::Call(call) => call.arguments.iter().any(|arg| match arg {
                 Argument::Positional(e) | Argument::Unknown(e) | Argument::Spread(e) => {
                     self.expr_is_complex(e)
                 }
                 Argument::Named(n) => n.2.as_ref().is_some_and(|e| self.expr_is_complex(e)),
+            }),
+            // A command the parser does not know is an external call. Only its
+            // parenthesised arguments count here: a block or closure argument
+            // has never made the block around the call multiline.
+            Expr::ExternalCall(_, args) => args.iter().any(|arg| match arg {
+                ExternalArgument::Regular(e) | ExternalArgument::Spread(e) => {
+                    let head = match &e.expr {
+                        Expr::FullCellPath(path) => &path.head,
+                        _ => e,
+                    };
+                    matches!(head.expr, Expr::Subexpression(_)) && self.expr_is_complex(e)
+                }
             }),
             _ => false,
         }
