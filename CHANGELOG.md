@@ -8,9 +8,12 @@ All notable changes to nufmt are listed here. The format follows
 
 ### Fixed
 
-- A one-line block holding a parenthesised pipeline that is laid out across lines, such as
-  `{ return (ls | get name | each {|it| $it} | prepend "x") }` or a multiline list piped on
-  inside `( )` as an argument of an unknown command, formats the same on every pass.
+- A block (or a closure without parameters) that stays on one line formats the same on every
+  pass. The formatter now renders the statement to decide, instead of guessing from its shape, so
+  a parenthesised pipeline or a list that is laid out across lines no longer leaves `{ ... }`
+  inline on the first pass and expands it on the second. This covers unknown commands
+  (`ansi -e [...]`), operators, `not`, and `$in`, for example
+  `{ return (ls | get name | each {|it| $it} | prepend "x") }`.
 
 ## [0.1.6] - 2026-10-21
 

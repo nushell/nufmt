@@ -3,13 +3,13 @@
 //! Handles formatting of blocks (top-level and nested), pipelines,
 //! pipeline elements, redirections, block expressions, and closures.
 
-use super::Formatter;
 use super::scan::{RegionKind, closing_param_pipe, scan_regions, top_level_positions};
+use super::{BranchExpansionKey, Formatter};
 use nu_protocol::{
     Span,
     ast::{
-        Argument, Block, Expr, Expression, ExternalArgument, ListItem, PipelineElement,
-        PipelineRedirection, RedirectionTarget,
+        Argument, Block, Expr, Expression, ListItem, PipelineElement, PipelineRedirection,
+        RedirectionTarget,
     },
 };
 
@@ -407,10 +407,11 @@ impl<'a> Formatter<'a> {
         }
 
         let is_simple = !expand_branch
+            && !source_has_newline
             && self.has_single_statement(block)
             && block.pipelines[0].elements.len() == 1
             && !self.block_has_nested_structures(block)
-            && !source_has_newline;
+            && !self.inline_body_renders_multiline(block, span);
         let has_comments_in_block_span = self.has_comments_in_span(span.start, span.end);
         let preserve_compact_record_like =
             with_braces && is_simple && self.block_expression_looks_like_compact_record(span);
@@ -517,6 +518,49 @@ impl<'a> Formatter<'a> {
             .any(|e| self.expr_is_complex(&e.expr))
     }
 
+    /// Return `true` when the single statement of `block` (spanning `span`)
+    /// would be written across several lines if the block stayed inline.
+    ///
+    /// The AST cannot tell: a parenthesised pipeline, a list, or a call
+    /// argument may all be laid out over several lines depending on their
+    /// content and width. An inline block around such a body is expanded by
+    /// the next pass, which sees the newline in the source, so the layout is
+    /// settled by rendering the body, whatever its shape.
+    ///
+    /// Rendering a body formats the blocks nested in it, so the answer is
+    /// remembered per block and layout context; otherwise the work would
+    /// double with every level of nesting.
+    pub(super) fn inline_body_renders_multiline(&self, block: &Block, span: Span) -> bool {
+        let key = BranchExpansionKey {
+            head_start: span.start,
+            indent_level: self.indent_level,
+            force_pipeline_multiline: self.force_pipeline_multiline_depth > 0,
+            preserve_subexpr_parens: self.preserve_subexpr_parens_depth > 0,
+        };
+        let cached = self.inline_body_cache.borrow().get(&key).copied();
+        if let Some(multiline) = cached {
+            return multiline;
+        }
+
+        // Render the body as the real pass does after writing `{ `.
+        let indent_level = self.indent_level;
+        let preserve_subexpr_parens_depth = self.preserve_subexpr_parens_depth;
+        let force_pipeline_multiline_depth = self.force_pipeline_multiline_depth;
+        let multiline = self
+            .probe_format(|probe| {
+                probe.last_pos = probe.last_pos.max(span.start);
+                probe.at_line_start = false;
+                probe.indent_level = indent_level;
+                probe.preserve_subexpr_parens_depth = preserve_subexpr_parens_depth;
+                probe.force_pipeline_multiline_depth = force_pipeline_multiline_depth;
+                probe.inline_comment_upper_bound = Some(span.end.saturating_sub(1));
+                probe.format_block(block);
+            })
+            .contains(&b'\n');
+        self.inline_body_cache.borrow_mut().insert(key, multiline);
+        multiline
+    }
+
     /// Decide whether a pipeline should be expanded across multiple lines.
     pub(super) fn pipeline_requires_multiline(
         &self,
@@ -598,34 +642,11 @@ impl<'a> Formatter<'a> {
             Expr::Record(items) => items.len() > 2,
             // The parser wraps a list literal in a cell path with no members.
             Expr::FullCellPath(path) => self.expr_is_complex(&path.head),
-            // A parenthesised pipeline can be laid out across lines (a long one,
-            // or one holding a multiline list), which leaves the block no room
-            // to stay inline. Render it to find out.
-            Expr::Subexpression(_) => {
-                let indent_level = self.indent_level;
-                self.probe_format(|probe| {
-                    probe.indent_level = indent_level;
-                    probe.format_expression(expr);
-                })
-                .contains(&b'\n')
-            }
             Expr::Call(call) => call.arguments.iter().any(|arg| match arg {
                 Argument::Positional(e) | Argument::Unknown(e) | Argument::Spread(e) => {
                     self.expr_is_complex(e)
                 }
                 Argument::Named(n) => n.2.as_ref().is_some_and(|e| self.expr_is_complex(e)),
-            }),
-            // A command the parser does not know is an external call. Only its
-            // parenthesised arguments count here: a block or closure argument
-            // has never made the block around the call multiline.
-            Expr::ExternalCall(_, args) => args.iter().any(|arg| match arg {
-                ExternalArgument::Regular(e) | ExternalArgument::Spread(e) => {
-                    let head = match &e.expr {
-                        Expr::FullCellPath(path) => &path.head,
-                        _ => e,
-                    };
-                    matches!(head.expr, Expr::Subexpression(_)) && self.expr_is_complex(e)
-                }
             }),
             _ => false,
         }
