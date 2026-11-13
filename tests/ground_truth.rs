@@ -227,6 +227,11 @@ fixture_tests!(
         idempotency_signature_default_association
     ),
     (
+        "type_alias_in_signature_issue251",
+        ground_truth_type_alias_in_signature_issue251,
+        idempotency_type_alias_in_signature_issue251
+    ),
+    (
         "environment_key_with_parentheses",
         ground_truth_environment_key_with_parentheses,
         idempotency_environment_key_with_parentheses

@@ -4,6 +4,14 @@ All notable changes to nufmt are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- A user-defined type alias in a custom command signature is kept as written, in the parameters
+  (`[rect: Rectangle]`, `[...rects: Rectangle]`) and in the input/output annotation
+  (`: Rectangle -> Rectangle`), instead of being dropped or replaced with `any`.
+
 ## [0.1.6] - 2026-10-21
 
 ### Added
