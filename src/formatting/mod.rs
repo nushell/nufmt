@@ -100,6 +100,10 @@ pub(crate) struct Formatter<'a> {
     /// Expansion decision of each `if`/`try` chain in each layout context.
     /// Shared with probe formatters.
     pub(crate) branch_expansion_cache: BranchExpansionCache,
+    /// Whether the body of each block renders across lines, in each layout
+    /// context (keyed by the start of the block). Shared with probe
+    /// formatters.
+    pub(crate) inline_body_cache: BranchExpansionCache,
 }
 
 /// The chain and layout context an `if`/`try` expansion decision was made
@@ -107,7 +111,8 @@ pub(crate) struct Formatter<'a> {
 /// width is part of the key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct BranchExpansionKey {
-    /// Start of the chain head (`if`/`try`).
+    /// Start of the chain head (`if`/`try`), or of the block whose body is
+    /// measured.
     pub(crate) head_start: usize,
     pub(crate) indent_level: usize,
     /// Whether pipelines are forced onto several lines.
@@ -180,6 +185,7 @@ impl<'a> Formatter<'a> {
             pending_branch_expansion: None,
             pipeline_element_span: None,
             branch_expansion_cache: Rc::default(),
+            inline_body_cache: Rc::default(),
         }
     }
 
@@ -342,6 +348,7 @@ impl<'a> Formatter<'a> {
             pending_branch_expansion: None,
             pipeline_element_span: None,
             branch_expansion_cache: Rc::clone(&self.branch_expansion_cache),
+            inline_body_cache: Rc::clone(&self.inline_body_cache),
         };
         f(&mut probe);
         probe.output
@@ -762,6 +769,35 @@ mod tests {
             let output = format(&format!("let a = {chain}"));
             assert_eq!(output, format(&output));
         }
+    }
+
+    #[test]
+    fn deeply_nested_inline_blocks_format_in_linear_time() {
+        // Deciding whether an inline block may stay on one line renders its
+        // body, which formats the blocks nested in it. Without caching each
+        // block's answer this takes time exponential in the depth (about two
+        // seconds at 20 levels in a release build), so the bound only fails
+        // on that blow-up. The parser recurses once per level, so the test
+        // runs on a thread with room for it.
+        let depth = 20;
+        std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn(move || {
+                for (open, close) in [("do { print (", ") }"), ("if $a { return (", ") }")] {
+                    let chain = format!("{}$x | foo{}", open.repeat(depth), close.repeat(depth));
+                    let start = std::time::Instant::now();
+                    let output = format(&chain);
+                    assert!(
+                        start.elapsed() < std::time::Duration::from_secs(5),
+                        "formatting {depth} nested levels took {:?}",
+                        start.elapsed()
+                    );
+                    assert_eq!(output, format(&output));
+                }
+            })
+            .expect("failed to spawn the formatting thread")
+            .join()
+            .expect("formatting thread panicked");
     }
 
     fn format_with(input: &str, config: &Config) -> String {

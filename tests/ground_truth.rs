@@ -944,4 +944,9 @@ fixture_tests!(
         ground_truth_list_in_inline_if_block_is_idempotent_issue245,
         idempotency_list_in_inline_if_block_is_idempotent_issue245
     ),
+    (
+        "subexpression_in_inline_block_is_idempotent",
+        ground_truth_subexpression_in_inline_block_is_idempotent,
+        idempotency_subexpression_in_inline_block_is_idempotent
+    ),
 );

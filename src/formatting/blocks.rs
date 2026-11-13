@@ -3,8 +3,8 @@
 //! Handles formatting of blocks (top-level and nested), pipelines,
 //! pipeline elements, redirections, block expressions, and closures.
 
-use super::Formatter;
 use super::scan::{RegionKind, closing_param_pipe, scan_regions, top_level_positions};
+use super::{BranchExpansionKey, Formatter};
 use nu_protocol::{
     Span,
     ast::{
@@ -407,10 +407,11 @@ impl<'a> Formatter<'a> {
         }
 
         let is_simple = !expand_branch
+            && !source_has_newline
             && self.has_single_statement(block)
             && block.pipelines[0].elements.len() == 1
             && !self.block_has_nested_structures(block)
-            && !source_has_newline;
+            && !self.inline_body_renders_multiline(block, span);
         let has_comments_in_block_span = self.has_comments_in_span(span.start, span.end);
         let preserve_compact_record_like =
             with_braces && is_simple && self.block_expression_looks_like_compact_record(span);
@@ -515,6 +516,49 @@ impl<'a> Formatter<'a> {
             .iter()
             .flat_map(|p| &p.elements)
             .any(|e| self.expr_is_complex(&e.expr))
+    }
+
+    /// Return `true` when the single statement of `block` (spanning `span`)
+    /// would be written across several lines if the block stayed inline.
+    ///
+    /// The AST cannot tell: a parenthesised pipeline, a list, or a call
+    /// argument may all be laid out over several lines depending on their
+    /// content and width. An inline block around such a body is expanded by
+    /// the next pass, which sees the newline in the source, so the layout is
+    /// settled by rendering the body, whatever its shape.
+    ///
+    /// Rendering a body formats the blocks nested in it, so the answer is
+    /// remembered per block and layout context; otherwise the work would
+    /// double with every level of nesting.
+    pub(super) fn inline_body_renders_multiline(&self, block: &Block, span: Span) -> bool {
+        let key = BranchExpansionKey {
+            head_start: span.start,
+            indent_level: self.indent_level,
+            force_pipeline_multiline: self.force_pipeline_multiline_depth > 0,
+            preserve_subexpr_parens: self.preserve_subexpr_parens_depth > 0,
+        };
+        let cached = self.inline_body_cache.borrow().get(&key).copied();
+        if let Some(multiline) = cached {
+            return multiline;
+        }
+
+        // Render the body as the real pass does after writing `{ `.
+        let indent_level = self.indent_level;
+        let preserve_subexpr_parens_depth = self.preserve_subexpr_parens_depth;
+        let force_pipeline_multiline_depth = self.force_pipeline_multiline_depth;
+        let multiline = self
+            .probe_format(|probe| {
+                probe.last_pos = probe.last_pos.max(span.start);
+                probe.at_line_start = false;
+                probe.indent_level = indent_level;
+                probe.preserve_subexpr_parens_depth = preserve_subexpr_parens_depth;
+                probe.force_pipeline_multiline_depth = force_pipeline_multiline_depth;
+                probe.inline_comment_upper_bound = Some(span.end.saturating_sub(1));
+                probe.format_block(block);
+            })
+            .contains(&b'\n');
+        self.inline_body_cache.borrow_mut().insert(key, multiline);
+        multiline
     }
 
     /// Decide whether a pipeline should be expanded across multiple lines.
