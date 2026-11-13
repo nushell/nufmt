@@ -85,3 +85,88 @@ def shapes [a] {
         | str length
     ) dim }
 }
+
+def records [a] {
+    do {
+        {
+            name: (
+                $a
+                | into string
+                | str trim
+                | str upcase
+                | str length
+            )
+            size: 1
+        }
+    }
+    if $a {
+        {
+            name: (
+                $a
+                | get name
+                | each {|it| $it}
+                | prepend "y"
+                | str join
+            )
+            size: 1
+        }
+    }
+    do {
+        error make {
+            msg: (
+                $a
+                | into string
+                | str trim
+                | str upcase
+                | str length
+            )
+        }
+    }
+    if $a { {name: "x", size: 1} }
+}
+
+def matches [a] {
+    do {
+        match $a {
+            1 => (
+                $a
+                | into string
+                | str trim
+                | str upcase
+                | str length
+            )
+            _ => "other"
+        }
+    }
+    if $a {
+        match $a {
+            1 => "one"
+            _ => (
+                $a
+                | get name
+                | each {|it| $it}
+                | prepend "y"
+            )
+        }
+    }
+    try {
+        match $a {
+            1 => {
+                print (
+                    $a
+                    | into string
+                    | str trim
+                    | str upcase
+                    | str length
+                )
+            }
+            _ => null
+        }
+    }
+    if $a {
+        match $a {
+            1 => "one"
+            _ => "other"
+        }
+    }
+}

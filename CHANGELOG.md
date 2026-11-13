@@ -12,7 +12,7 @@ All notable changes to nufmt are listed here. The format follows
   pass. The formatter now renders the statement to decide, instead of guessing from its shape, so
   a parenthesised pipeline or a list that is laid out across lines no longer leaves `{ ... }`
   inline on the first pass and expands it on the second. This covers unknown commands
-  (`ansi -e [...]`), operators, `not`, and `$in`, for example
+  (`ansi -e [...]`), operators, `not`, `$in`, records, and `match`, for example
   `{ return (ls | get name | each {|it| $it} | prepend "x") }`.
 
 ## [0.1.6] - 2026-10-21
