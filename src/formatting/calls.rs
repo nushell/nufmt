@@ -7,7 +7,7 @@ use super::scan::parens_enclose;
 use super::{BranchExpansionKey, CommandType, Formatter};
 use crate::config::ConsistentBranches;
 use nu_protocol::{
-    CollectionColumns, Completion, Signature, Span, SyntaxShape,
+    CollectionColumns, Completion, Signature, Span, SyntaxShape, Type,
     ast::{Argument, Expr, Expression, ExternalArgument},
 };
 use nu_utils::NuCow;
@@ -1322,20 +1322,7 @@ impl<'a> Formatter<'a> {
                 }
             });
 
-            if param.shape != SyntaxShape::Any {
-                self.write(": ");
-                self.write_shape(&param.shape);
-
-                if let Some(completion_span) = arg_src
-                    .and_then(|a| a.types.first())
-                    .and_then(|t| t.completion)
-                {
-                    self.write("@");
-                    self.write_bytes(&self.source[completion_span.start..completion_span.end]);
-                } else {
-                    self.write_custom_completion(&param.completion);
-                }
-            }
+            self.write_positional_shape(&param.shape, &param.completion, arg_src);
             // Rare: parser may still leave a default only in source.
             if let Some(default_span) = arg_src.and_then(|a| a.default_values.first()) {
                 self.write(" = ");
@@ -1363,20 +1350,7 @@ impl<'a> Formatter<'a> {
             if param.default_value.is_none() && source_default.is_none() {
                 self.write("?");
             }
-            if param.shape != SyntaxShape::Any {
-                self.write(": ");
-                self.write_shape(&param.shape);
-
-                if let Some(completion_span) = arg_src
-                    .and_then(|a| a.types.first())
-                    .and_then(|t| t.completion)
-                {
-                    self.write("@");
-                    self.write_bytes(&self.source[completion_span.start..completion_span.end]);
-                } else {
-                    self.write_custom_completion(&param.completion);
-                }
-            }
+            self.write_positional_shape(&param.shape, &param.completion, arg_src);
             if let Some(span) = source_default {
                 self.write(" = ");
                 self.write_bytes(&self.source[span.start..span.end]);
@@ -1474,20 +1448,7 @@ impl<'a> Formatter<'a> {
                 }
             });
 
-            if rest.shape != SyntaxShape::Any {
-                self.write(": ");
-                self.write_shape(&rest.shape);
-
-                if let Some(completion_span) = arg_src
-                    .and_then(|a| a.types.first())
-                    .and_then(|t| t.completion)
-                {
-                    self.write("@");
-                    self.write_bytes(&self.source[completion_span.start..completion_span.end]);
-                } else {
-                    self.write_custom_completion(&rest.completion);
-                }
-            }
+            self.write_positional_shape(&rest.shape, &rest.completion, arg_src);
         }
 
         if has_multiline {
@@ -1499,16 +1460,91 @@ impl<'a> Formatter<'a> {
 
         // Input/output type annotations
         if !sig.input_output_types.is_empty() {
+            let source_annotation =
+                self.signature_type_annotation_from_source(sig_span)
+                    .filter(|_| {
+                        sig.input_output_types.iter().any(|(input, output)| {
+                            matches!(input, Type::Any) || matches!(output, Type::Any)
+                        })
+                    });
             self.write(": ");
-            for (i, (input, output)) in sig.input_output_types.iter().enumerate() {
-                if i > 0 {
-                    self.write(", ");
+            if let Some(span) = source_annotation {
+                self.write_bytes(&self.source[span.start..span.end]);
+            } else {
+                for (i, (input, output)) in sig.input_output_types.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.write(&input.to_string());
+                    self.write(" -> ");
+                    self.write(&output.to_string());
                 }
-                self.write(&input.to_string());
-                self.write(" -> ");
-                self.write(&output.to_string());
             }
         }
+    }
+
+    /// Write a positional parameter's type annotation.
+    ///
+    /// A user-defined type alias (`rect: Rectangle`) resolves to
+    /// `SyntaxShape::Any` in the AST, which is also the shape a parameter
+    /// without an annotation has, so the source text is the only place the
+    /// alias survives (issue #251).
+    fn write_positional_shape(
+        &mut self,
+        shape: &SyntaxShape,
+        completion: &Option<Completion>,
+        arg_src: Option<&ArgFromSource>,
+    ) {
+        let source_type = arg_src.and_then(|a| a.types.first()).map(|t| t.name);
+
+        if *shape != SyntaxShape::Any {
+            self.write(": ");
+            self.write_shape(shape);
+        } else if let Some(span) = source_type {
+            self.write(": ");
+            self.write_bytes(&self.source[span.start..span.end]);
+        } else {
+            return;
+        }
+
+        if let Some(completion_span) = arg_src
+            .and_then(|a| a.types.first())
+            .and_then(|t| t.completion)
+        {
+            self.write("@");
+            self.write_bytes(&self.source[completion_span.start..completion_span.end]);
+        } else {
+            self.write_custom_completion(completion);
+        }
+    }
+
+    /// The `: in -> out` annotation as the source spells it, used when the
+    /// parser resolved a type alias in it to `any` (issue #251).
+    fn signature_type_annotation_from_source(&self, sig_span: Span) -> Option<Span> {
+        if sig_span.end <= sig_span.start || sig_span.end > self.source.len() {
+            return None;
+        }
+        let body = &self.source[sig_span.start..sig_span.end];
+        // The parser extends the span over `: in -> out`, so the colon to look
+        // for is the one after the parameters, not the first one in the span:
+        // `[x: int]: nothing -> any` must not match the parameter's colon.
+        let (tokens, _) = nu_parser::lex(body, sig_span.start, &[], &[], true);
+        let params = tokens.first()?.span;
+        // An empty parameter list is lexed together with the colon (`[]:`).
+        let mut params_end = params.end;
+        if params_end > params.start && self.source[params_end - 1] == b':' {
+            params_end -= 1;
+        }
+        if params_end >= sig_span.end {
+            return None;
+        }
+        let rest = &self.source[params_end..sig_span.end];
+        let colon = rest.iter().position(|&b| b == b':')?;
+        let mut start = params_end + colon + 1;
+        while start < sig_span.end && matches!(self.source[start], b' ' | b'\t') {
+            start += 1;
+        }
+        Some(Span::new(start, sig_span.end))
     }
 
     /// Keep simple required-positional signatures inline when they fit the
