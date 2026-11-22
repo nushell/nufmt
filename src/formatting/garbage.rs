@@ -91,7 +91,9 @@ pub(super) fn expr_contains_garbage(working_set: &StateWorkingSet<'_>, expr: &Ex
                 || expr_contains_garbage(working_set, op)
                 || expr_contains_garbage(working_set, rhs)
         }
-        Expr::UnaryNot(inner) => expr_contains_garbage(working_set, inner),
+        Expr::UnaryNot(inner) | Expr::UnaryMinus(inner) => {
+            expr_contains_garbage(working_set, inner)
+        }
         Expr::Block(block_id) | Expr::Closure(block_id) | Expr::Subexpression(block_id) => {
             block_contains_garbage(working_set, working_set.get_block(*block_id))
         }

@@ -78,10 +78,6 @@ impl Command for ExportEnvKeyword {
         NuCommandType::Keyword
     }
 
-    fn requires_ast_for_arguments(&self) -> bool {
-        true
-    }
-
     fn run(
         &self,
         _engine_state: &EngineState,
