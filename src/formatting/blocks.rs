@@ -34,12 +34,18 @@ impl<'a> Formatter<'a> {
             return;
         }
 
-        let num_pipelines = block.pipelines.len();
+        let mut previous_is_multiline = false;
         for (i, pipeline) in block.pipelines.iter().enumerate() {
+            let separator_start = self.output.len();
+            if i > 0 {
+                self.newline();
+            }
+
             if let Some(first_elem) = pipeline.elements.first() {
                 self.write_comments_before(first_elem.expr.span.start);
             }
 
+            let pipeline_start = self.output.len();
             // Pipelines inside indented blocks (e.g. def bodies) need
             // explicit indentation when they start on a fresh line.
             if self.at_line_start {
@@ -54,27 +60,60 @@ impl<'a> Formatter<'a> {
                 self.last_pos = end_pos;
             }
 
-            if i < num_pipelines - 1 {
+            // The separator can depend on whether this pipeline came out on
+            // one line or several, which is only known once it is written.
+            // A declaration written on one line can expand, and one written
+            // across lines can collapse, so the source layout would give a
+            // different answer on the next pass.
+            let is_multiline = self.output[pipeline_start..].contains(&b'\n');
+            if i > 0 {
                 let separator_newlines = self.separator_newlines_between_top_level_pipelines(
+                    &block.pipelines[i - 1],
                     pipeline,
-                    &block.pipelines[i + 1],
+                    previous_is_multiline,
+                    is_multiline,
                 );
-
-                for _ in 0..separator_newlines {
-                    self.newline();
-                }
+                self.pad_separator(separator_start, separator_newlines);
             }
+            previous_is_multiline = is_multiline;
         }
     }
 
-    /// Decide how many newline characters to emit between adjacent pipelines.
+    /// Make the separator that starts at `separator_start` at least
+    /// `min_newlines` newlines long.
+    ///
+    /// Comments written before the next pipeline may already have added
+    /// newlines there, so only the missing ones are inserted. Everything
+    /// after `separator_start` moves forward by the same number of bytes,
+    /// which only adds blank lines and leaves every line's content and
+    /// indentation as it was.
+    fn pad_separator(&mut self, separator_start: usize, min_newlines: usize) {
+        let existing = self.output[separator_start..]
+            .iter()
+            .take_while(|&&byte| byte == b'\n')
+            .count();
+        if min_newlines > existing {
+            self.output.splice(
+                separator_start..separator_start,
+                std::iter::repeat_n(b'\n', min_newlines - existing),
+            );
+        }
+    }
+
+    /// Decide the minimum number of newline characters between adjacent
+    /// pipelines. Newlines that comment handling writes there are kept.
     ///
     /// At top-level this respects `margin` while keeping adjacent `use`
-    /// statements and same-family `let`/`const` groups compact.
+    /// statements and same-family `let`/`const` groups compact. A
+    /// declaration that formats across lines is set apart from its group;
+    /// `current_is_multiline` and `next_is_multiline` give the formatted
+    /// layout of each pipeline.
     fn separator_newlines_between_top_level_pipelines(
         &self,
         current: &nu_protocol::ast::Pipeline,
         next: &nu_protocol::ast::Pipeline,
+        current_is_multiline: bool,
+        next_is_multiline: bool,
     ) -> usize {
         if self.indent_level != 0 && self.config.margin > 1 {
             return 1;
@@ -91,9 +130,7 @@ impl<'a> Formatter<'a> {
             )
         {
             if current_family == next_family {
-                if self.pipeline_call_span_has_newline(current)
-                    || self.pipeline_call_span_has_newline(next)
-                {
+                if current_is_multiline || next_is_multiline {
                     return self.config.margin.saturating_add(1);
                 }
 
@@ -208,25 +245,6 @@ impl<'a> Formatter<'a> {
             .map_or(current_end, |element| element.expr.span.start);
 
         current_end < next_start && self.source[current_end..next_start].contains(&b'#')
-    }
-
-    /// Return `true` if the call span of `pipeline`'s first element contains
-    /// a newline, meaning the pipeline was originally written multiline.
-    fn pipeline_call_span_has_newline(&self, pipeline: &nu_protocol::ast::Pipeline) -> bool {
-        let Some(first) = pipeline.elements.first() else {
-            return false;
-        };
-        let Some(last) = pipeline.elements.last() else {
-            return false;
-        };
-
-        let Expr::Call(call) = &first.expr.expr else {
-            return false;
-        };
-
-        let start = call.head.start;
-        let end = self.get_element_end_pos(last);
-        start < end && self.source[start..end].contains(&b'\n')
     }
 
     /// Get the end position of a pipeline element, including redirections.

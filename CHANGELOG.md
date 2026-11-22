@@ -14,6 +14,10 @@ All notable changes to nufmt are listed here. The format follows
   inline on the first pass and expands it on the second. This covers unknown commands
   (`ansi -e [...]`), operators, `not`, `$in`, records, and `match`, for example
   `{ return (ls | get name | each {|it| $it} | prepend "x") }`.
+- A `let` or `const` declaration that nufmt expands or collapses gets its final blank lines on
+  the first pass. The spacing between declarations now follows the formatted layout. Before, a
+  declaration written on one line that expanded, such as `const b = { k: [x y] }`, or one written
+  across lines that collapsed, such as `let b = [\n]`, changed again on the second pass.
 
 ## [0.1.6] - 2026-10-21
 

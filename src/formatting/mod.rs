@@ -1219,4 +1219,32 @@ mod tests {
         let expected = "def foo [] {\n    let out = 1\n    out\n}\n\n\ndef bar [] {\n    let out = 1\n    out\n}";
         assert_eq!(output, expected);
     }
+
+    #[test]
+    fn declaration_spacing_follows_formatted_layout() {
+        // `{ k: [x y] }` expands and `[\n]` collapses, so the source layout
+        // of each declaration differs from its formatted layout.
+        for config in [
+            Config::default(),
+            Config::new(4, 80, 0),
+            Config::new(4, 80, 1),
+            Config::new(4, 80, 2),
+        ] {
+            let separator = "\n".repeat(config.margin + 1);
+            let expanded = format!(
+                "const a = 1{separator}const b = {{\n    k: [x y]\n}}{separator}const c = 2"
+            );
+            for input in [
+                "const a = 1\nconst b = { k: [x y] }\nconst c = 2",
+                &expanded,
+            ] {
+                assert_eq!(format_with(input, &config), expanded, "input:\n{input}");
+            }
+
+            let collapsed = "let a = 1\nlet b = []\nlet c = 2";
+            for input in ["let a = 1\nlet b = [\n]\nlet c = 2", collapsed] {
+                assert_eq!(format_with(input, &config), collapsed, "input:\n{input}");
+            }
+        }
+    }
 }

@@ -949,4 +949,9 @@ fixture_tests!(
         ground_truth_subexpression_in_inline_block_is_idempotent,
         idempotency_subexpression_in_inline_block_is_idempotent
     ),
+    (
+        "declaration_spacing_follows_formatted_layout",
+        ground_truth_declaration_spacing_follows_formatted_layout,
+        idempotency_declaration_spacing_follows_formatted_layout
+    ),
 );
