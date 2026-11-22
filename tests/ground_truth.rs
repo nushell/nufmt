@@ -404,21 +404,18 @@ fixture_tests!(
     ),
 );
 
-// Ground-truth-only tests (no idempotency pair)
-#[test]
-fn ground_truth_def_with_pipeline() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "def_with_pipeline_double_parens_issue82");
-}
-
-#[test]
-fn ground_truth_double_parentheses_for_subexpression_issue76() {
-    let test_binary = get_test_binary();
-    run_ground_truth_test(&test_binary, "double_parentheses_for_subexpression_issue76");
-}
-
 // Issue regression tests
 fixture_tests!(
+    (
+        "double_parentheses_for_subexpression_issue76",
+        ground_truth_double_parentheses_for_subexpression_issue76,
+        idempotency_double_parentheses_for_subexpression_issue76
+    ),
+    (
+        "def_with_pipeline_double_parens_issue82",
+        ground_truth_def_with_pipeline,
+        idempotency_def_with_pipeline_double_parens_issue82
+    ),
     (
         "custom_completion_signature_preserved_issue81",
         ground_truth_custom_completion_signature_preserved_issue81,
