@@ -22,9 +22,9 @@
           config.allowDeprecatedx86_64Darwin = true;
         }
       );
-      # The nushell 0.116 crates need Rust 1.96.1 or newer, and nixos-26.05
+      # nufmt requires Rust 1.98.1 or newer, and nixos-26.05
       # defaults to Rust 1.95.
-      rustPackagesFor = system: pkgsFor.${system}.rustPackages_1_97;
+      rustPackagesFor = system: pkgsFor.${system}.rustPackages_1_98;
     in
     {
       devShells = forEachSystem (

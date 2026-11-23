@@ -27,6 +27,7 @@ const TEST_CONSTRUCTS = {
         "closure"
         "subexpression"
         "binary_ops"
+        "unary_minus"
         "range"
         "cell_path_literals"
         "cell_path"

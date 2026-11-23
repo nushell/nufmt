@@ -90,6 +90,12 @@ impl<'a> Formatter<'a> {
                     self.format_expression(inner);
                 }
             }
+            Expr::UnaryMinus(inner) => {
+                self.write("-");
+                self.preserve_subexpr_parens_depth += 1;
+                self.format_expression(inner);
+                self.preserve_subexpr_parens_depth -= 1;
+            }
 
             Expr::Block(block_id) => {
                 self.format_block_expression(*block_id, expr.span, false);
@@ -567,6 +573,7 @@ impl<'a> Formatter<'a> {
                     matches!(member, PathMember::String { .. } | PathMember::Int { .. })
                 })
             }
+            Expr::UnaryMinus(inner) => self.is_simple_expr(inner),
             _ => false,
         }
     }

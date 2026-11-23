@@ -5,6 +5,8 @@
 # developer during a PR cycle, namely to (**1**) format the source base,
 # (**2**) catch classical flaws in the new changes with *clippy* and (**3**)
 # make sure all the tests pass.
+use std/log
+
 # print the pipe input inside backticks, dimmed and italic, as a pretty command
 def pretty-print-command [] { $"`(ansi default_dimmed)(ansi default_italic)($in)(ansi reset)`" }
 # check standard code formatting and apply the changes
