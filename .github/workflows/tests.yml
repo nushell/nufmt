@@ -1,0 +1,58 @@
+# Run before merging a pull request and after changes reach main
+
+name: Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: rustfmt, clippy
+      - uses: hustcer/setup-nu@v3
+      - shell: nu {0}
+        env:
+          NU_LIB_DIRS: ${{ github.workspace }}
+        run: |
+          use toolkit.nu
+          toolkit tests
+
+  test-msrv-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hustcer/setup-nu@v3
+      - shell: nu {0}
+        env:
+          NU_LIB_DIRS: ${{ github.workspace }}
+        run: |
+          use toolkit.nu
+          toolkit check-msrv
+
+  check-flake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v32
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - run: |
+          nix build .#nufmt
+          nix flake check --accept-flake-config

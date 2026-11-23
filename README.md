@@ -207,9 +207,11 @@ Tests are organized by Nushell construct category:
 
 #### Rust Tests
 
-```bash
-# Run all tests (unit + ground truth + idempotency)
-cargo test
+```nu
+use toolkit.nu
+
+# Run all tests
+toolkit tests
 
 # Run only ground truth tests
 cargo test --test ground_truth
