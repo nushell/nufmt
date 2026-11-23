@@ -6,6 +6,16 @@ All notable changes to nufmt are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Formatting for unary minus expressions such as `-$x` and `-(expr)`
+  ([#257](https://github.com/nushell/nufmt/pull/257)).
+
+### Changed
+
+- Updated Nushell crates from 0.116.1 to 0.117.0. Building from source now requires Rust 1.97.1
+  or newer ([#257](https://github.com/nushell/nufmt/pull/257)).
+
 ### Fixed
 
 - A block (or a closure without parameters) that stays on one line formats the same on every
