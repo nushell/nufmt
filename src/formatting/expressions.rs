@@ -573,6 +573,7 @@ impl<'a> Formatter<'a> {
                     matches!(member, PathMember::String { .. } | PathMember::Int { .. })
                 })
             }
+            Expr::UnaryMinus(inner) => self.is_simple_expr(inner),
             _ => false,
         }
     }

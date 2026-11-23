@@ -528,6 +528,15 @@ if not (has systemctl) {\n\
 }
 
 #[test]
+fn unary_minus_with_malformed_operand_preserves_source() {
+    let input = "let x  =  1\n-(1 +)\n";
+    let output = run_stdin(input);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), input);
+}
+
+#[test]
 fn no_args_prints_help_instead_of_formatting_current_directory_issue182() {
     let output = Command::new(get_test_binary()).output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);

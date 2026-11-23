@@ -326,6 +326,11 @@ fixture_tests!(
         ground_truth_binary_ops,
         idempotency_binary_ops
     ),
+    (
+        "unary_minus",
+        ground_truth_unary_minus,
+        idempotency_unary_minus
+    ),
     ("range", ground_truth_range, idempotency_range),
     (
         "cell_path_literals",
