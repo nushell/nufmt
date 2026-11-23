@@ -53,7 +53,9 @@ export def check-msrv [] {
     cd $repo_dir
 
     let version = open Cargo.toml | get package.rust-version
-    rustup run --install $version cargo check --locked --workspace --all-targets --all-features
+    with-env {CARGO_BUILD_WARNINGS: deny} {
+        rustup run --install $version cargo check --locked --workspace --all-targets --all-features
+    }
 }
 
 # Bump Nushell badge in README.md and Nushell dependencies in Cargo.toml.
