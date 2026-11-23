@@ -27,8 +27,16 @@ export def tests [] {
 
     cargo clippy --all-targets -- -D warnings
 
-    let rustdoc_flags = $"($env.RUSTDOCFLAGS? | default "") -D warnings"
-    RUSTDOCFLAGS=$rustdoc_flags cargo doc --no-deps
+    let rustdoc_env = if "CARGO_ENCODED_RUSTDOCFLAGS" in $env {
+        let separator = (char --unicode 001f)
+        let flags = ([$env.CARGO_ENCODED_RUSTDOCFLAGS '-D' warnings]
+            | where {|flag| $flag != "" }
+            | str join $separator)
+        {CARGO_ENCODED_RUSTDOCFLAGS: $flags}
+    } else {
+        {RUSTDOCFLAGS: $"($env.RUSTDOCFLAGS? | default "") -D warnings"}
+    }
+    with-env $rustdoc_env { cargo doc --no-deps --document-private-items }
 
     if (which ^cargo-nextest | is-not-empty) {
         cargo nextest run
@@ -44,7 +52,7 @@ export def tests [] {
 export def check-msrv [] {
     cd $repo_dir
 
-    let version = (open Cargo.toml | get package.rust-version)
+    let version = open Cargo.toml | get package.rust-version
     rustup run --install $version cargo check --locked --workspace --all-targets --all-features
 }
 
