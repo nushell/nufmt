@@ -9,3 +9,4 @@ let y  =  -$x
 [-(1  +  2)  3]
 let r  =  {a: 1}
 [-$r.a]
+if ([-(1  +  2)] | first | $in == -3) { print yes }
