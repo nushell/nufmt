@@ -3,18 +3,30 @@ name = "nufmt"
 version = "0.1.6"
 edition = "2024"
 rust-version = "1.98.1"
-license = "MIT"
 description = "An AST-based formatter for Nushell scripts, built on Nushell's own parser"
-homepage = "https://github.com/nushell/nufmt"
+homepage = "https://www.nushell.sh/"
 repository = "https://github.com/nushell/nufmt"
-readme = "README.md"
-keywords = ["nu", "nushell", "formatting", "cli"]
+license = "MIT"
+keywords = ["cli", "formatting", "nu", "nushell"]
 categories = ["command-line-utilities"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["bin"]
+bin = ["clap"]
+
+[lib]
+name = "nu_formatter"
+
+[[bin]]
+name = "nufmt"
+required-features = ["bin"]
+
+[[bench]]
+harness = false
+name = "file-format-bench"
 
 [dependencies]
-clap = { version = "4.6.7", optional = true, features = ["unicode", "derive"] }
+clap = { version = "4.6.7", features = ["derive", "unicode"], optional = true }
 env_logger = "0.11.11"
 ignore = "0.4.33"
 log = "0.4.34"
@@ -32,22 +44,12 @@ criterion = "0.8.2"
 rstest = "0.27.0"
 tempfile = "3.27.0"
 
-[features]
-default = ["bin"]
-bin = ["clap"]
-
-[lib]
-name = "nu_formatter"
-path = "src/lib.rs"
-
-[[bin]]
-name = "nufmt"
-path = "src/main.rs"
-required-features = ["bin"]
-
-[[bench]]
-name = "file-format-bench"
-harness = false
+[lints.clippy]
+doc_markdown = "warn"
+explicit_into_iter_loop = "warn"
+explicit_iter_loop = "warn"
+manual_let_else = "warn"
+semicolon_if_nothing_returned = "warn"
 
 # The profile that 'dist' will build with
 [profile.dist]
