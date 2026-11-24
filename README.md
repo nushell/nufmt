@@ -11,8 +11,8 @@
 [mit-url]: https://github.com/nushell/nufmt/blob/main/LICENSE
 [discord-badge]: https://img.shields.io/discord/678763474494423051?logo=discord&label=discord&color=brightgreen
 [discord-url]: https://discord.gg/NtAbbGn
-[ci-badge]: https://github.com/nushell/nufmt/actions/workflows/main.yml/badge.svg
-[ci-url]: https://github.com/nushell/nufmt/actions/workflows/main.yml
+[ci-badge]: https://github.com/nushell/nufmt/actions/workflows/tests.yml/badge.svg
+[ci-url]: https://github.com/nushell/nufmt/actions/workflows/tests.yml
 [nushell-badge]: https://img.shields.io/badge/nushell-v0.117.0-green
 [nushell-url]: https://crates.io/crates/nu
 
@@ -207,9 +207,19 @@ Tests are organized by Nushell construct category:
 
 #### Rust Tests
 
-```bash
-# Run all tests (unit + ground truth + idempotency)
-cargo test
+```nu
+use toolkit.nu
+
+# Run the same checks as CI
+toolkit ci
+
+# Run individual checks
+toolkit test
+toolkit clippy
+toolkit rustdoc
+
+# Check only benchmark tests
+cargo test --benches
 
 # Run only ground truth tests
 cargo test --test ground_truth

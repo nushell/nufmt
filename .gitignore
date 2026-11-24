@@ -8,13 +8,14 @@ result
 .direnv
 
 # editors
-.idea/
-.vscode/
+.local
+.idea
+.vscode
+.zed
 
 # Everyone their own
-tmp/
-tests/.DS_Store
+tmp
 .DS_Store
 
 # skills
-.github/skills/*
+/.github/skills

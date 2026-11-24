@@ -1,58 +1,85 @@
-# this module regroups a bunch of development tools to make the development
-# process easier for anyone.
-#
-# the main purpose of `toolkit` is to offer an easy to use interface for the
-# developer during a PR cycle, namely to (**1**) format the source base,
-# (**2**) catch classical flaws in the new changes with *clippy* and (**3**)
-# make sure all the tests pass.
+#!/usr/bin/env nu
+
 use std/log
 
-# print the pipe input inside backticks, dimmed and italic, as a pretty command
-def pretty-print-command [] { $"`(ansi default_dimmed)(ansi default_italic)($in)(ansi reset)`" }
-# check standard code formatting and apply the changes
-export def fmt [--check, --verbose] {
-    # do not apply the format changes, only check the syntax
-    # print extra information about the command's progress
-    if $verbose { print $"running ('toolkit fmt' | pretty-print-command)" }
-    if $check {
-        try { cargo fmt --all -- --check } catch {
-            error make --unspanned {
-                msg: $"\nplease run ('toolkit fmt' | pretty-print-command) to fix formatting!"
-            }
-        }
-    } else { cargo fmt --all }
-}
-# check that you're using the standard code style
+const repo_dir = path self .
+
+# Development tools of nufmt.
 #
-# > it is important to make `clippy` happy :relieved:
-export def clippy [--verbose] {
-    # print extra information about the command's progress
-    if $verbose { print $"running ('toolkit clippy' | pretty-print-command)" }
-    (
-        cargo clippy
-            --all-targets
-            --no-deps
-            --workspace
-            --
-            -D warnings
-            -W clippy::explicit_iter_loop
-            -W clippy::explicit_into_iter_loop
-            -W clippy::semicolon_if_nothing_returned
-            -W clippy::doc_markdown
-            -W clippy::manual_let_else
-    )
-    cargo doc --no-deps --workspace --all-features
+# Run `use toolkit.nu` in Nushell, then run `toolkit` to list commands.
+export def main [] {
+    let commands = (scope commands
+        | where name starts-with 'toolkit '
+        | select name description)
+
+    if ($commands | is-empty) {
+        return 'Run `use toolkit.nu` in Nushell, then run `toolkit` to list commands.'
+    }
+
+    $"Usage: toolkit <command>\n\n($commands | table)"
 }
-# check that all the tests pass
-export def test [--fast] {
-    # use the "nextext" `cargo` subcommand to speed up the tests (see [`cargo-nextest`](https://nexte.st/) and [`nextest-rs/nextest`](https://github.com/nextest-rs/nextest))
-    if $fast { cargo nextest run --all } else { cargo test --workspace }
+
+# Run rustfmt, lint, documentation, test, and benchmark checks.
+export def ci [] {
+    cd $repo_dir
+
+    cargo fmt --check
+    clippy
+    rustdoc
+    test
+    msrv
 }
-# update the Nushell badge and dependencies to a new version
-export def bump-nu [
-    version: string # the new version of Nushell, e.g. 0.116.1
-] {
-    log info "updating the badge in the README"
+
+# Run Clippy on all targets and deny warnings.
+export def clippy [] {
+    cd $repo_dir
+
+    cargo clippy --all-targets -- -D warnings
+}
+
+# Build Rust documentation, including private items, and deny warnings.
+export def rustdoc [] {
+    cd $repo_dir
+
+    let rustdoc_env = if "CARGO_ENCODED_RUSTDOCFLAGS" in $env {
+        let separator = (char --unicode 001f)
+        let flags = ([$env.CARGO_ENCODED_RUSTDOCFLAGS '-D' warnings]
+            | where {|flag| $flag != "" }
+            | str join $separator)
+        {CARGO_ENCODED_RUSTDOCFLAGS: $flags}
+    } else {
+        {RUSTDOCFLAGS: $"($env.RUSTDOCFLAGS? | default "") -D warnings"}
+    }
+    with-env $rustdoc_env { cargo doc --no-deps --document-private-items }
+}
+
+# Run Rust tests, including doctests and benchmark checks.
+export def test [] {
+    cd $repo_dir
+
+    if (which ^cargo-nextest | is-not-empty) {
+        cargo nextest run --all-targets
+    } else {
+        cargo test --all-targets
+    }
+    cargo test --doc
+}
+
+# Check the workspace with the minimum supported Rust version.
+export def msrv [] {
+    cd $repo_dir
+
+    let version = open Cargo.toml | get package.rust-version
+    with-env {CARGO_BUILD_WARNINGS: deny} {
+        rustup run --install $version cargo check --locked --workspace --all-targets --all-features
+    }
+}
+
+# Bump Nushell badge in README.md and Nushell dependencies in Cargo.toml.
+export def bump-nu [version: string] {
+    cd $repo_dir
+
+    log info "Updating Nushell badge in README.md."
     let badge_pattern = 'https://img.shields.io/badge/nushell-v\d+\.\d+\.\d+-green'
     let badge_replacement = $"https://img.shields.io/badge/nushell-v($version)-green"
     open --raw README.md
@@ -60,10 +87,6 @@ export def bump-nu [
     | save --force README.md
 
     for dependency in [nu-cmd-lang nu-parser nu-protocol nu-utils nuon] {
-        log info $"updating the `($dependency)` dependency"
         cargo add $"($dependency)@($version)"
     }
-
-    log warning "do not forget to commit and push this :wink:"
 }
-export def main [] { help toolkit }
