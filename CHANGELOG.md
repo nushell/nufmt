@@ -15,8 +15,10 @@ All notable changes to nufmt are listed here. The format follows
 
 - Updated Nushell crates from 0.116.1 to 0.117.0. Building from source now requires Rust 1.98.1
   or newer ([#257](https://github.com/nushell/nufmt/pull/257)).
-- Refactored `toolkit.nu` so 1. Tests now run the same checks locally and in CI; 2. You
-  can check MSRV compatibility more conveniently.
+- Added `toolkit ci` to run the Rust checks used in CI locally, and `toolkit msrv`
+  to check the minimum supported Rust version. Documentation checks moved from
+  `toolkit clippy` to `toolkit rustdoc`. `toolkit test` now uses `cargo-nextest`
+  automatically when available. ([#258](https://github.com/nushell/nufmt/pull/258)).
 
 ### Fixed
 
