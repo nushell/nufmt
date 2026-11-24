@@ -4,34 +4,30 @@ use std/log
 
 const repo_dir = path self .
 
-# Development tools of nufmt. Run `use toolkit.nu` in Nushell to load commands.
+# Development tools of nufmt.
 #
-# Subcommands:
-#   toolkit ci-tests
-#   toolkit clippy
-#   toolkit rustdoc
-#   toolkit test
-#   toolkit bench
-#   toolkit check-msrv
-#   toolkit bump-nu <version>
+# Run `use toolkit.nu` in Nushell, then run `toolkit` to list commands.
 export def main [] {
-    show-help
-}
+    let commands = (scope commands
+        | where name starts-with 'toolkit '
+        | select name description)
 
-# Define this after main so Nushell can resolve its built-in --help flag.
-def show-help [] {
-    main --help
+    if ($commands | is-empty) {
+        return 'Run `use toolkit.nu` in Nushell, then run `toolkit` to list commands.'
+    }
+
+    $"Usage: toolkit <command>\n\n($commands | table)"
 }
 
 # Run rustfmt, lint, documentation, test, and benchmark checks.
-export def ci-tests [] {
+export def ci [] {
     cd $repo_dir
 
     cargo fmt --check
     clippy
     rustdoc
     test
-    bench
+    msrv
 }
 
 # Run Clippy on all targets and deny warnings.
@@ -57,27 +53,20 @@ export def rustdoc [] {
     with-env $rustdoc_env { cargo doc --no-deps --document-private-items }
 }
 
-# Run Rust tests, including doctests.
+# Run Rust tests, including doctests and benchmark checks.
 export def test [] {
     cd $repo_dir
 
     if (which ^cargo-nextest | is-not-empty) {
-        cargo nextest run
-        cargo test --doc
+        cargo nextest run --all-targets
     } else {
-        cargo test
+        cargo test --all-targets
     }
-}
-
-# Check that the file formatting benchmark runs.
-export def bench [] {
-    cd $repo_dir
-
-    cargo test --bench file-format-bench
+    cargo test --doc
 }
 
 # Check the workspace with the minimum supported Rust version.
-export def check-msrv [] {
+export def msrv [] {
     cd $repo_dir
 
     let version = open Cargo.toml | get package.rust-version

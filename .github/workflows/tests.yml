@@ -27,24 +27,29 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: hustcer/setup-nu@v3
-      - shell: nu {0}
+      - name: Run tests
+        shell: nu {0}
         env:
           NU_LIB_DIRS: ${{ github.workspace }}
         run: |
+          cargo fmt --check
           use toolkit.nu
-          toolkit ci-tests
+          toolkit clippy
+          toolkit rustdoc
+          toolkit test
 
   test-msrv-ubuntu:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: hustcer/setup-nu@v3
-      - shell: nu {0}
+      - name: Check MSRV
+        shell: nu {0}
         env:
           NU_LIB_DIRS: ${{ github.workspace }}
         run: |
           use toolkit.nu
-          toolkit check-msrv
+          toolkit msrv
 
   check-flake:
     runs-on: ubuntu-latest
