@@ -210,8 +210,16 @@ Tests are organized by Nushell construct category:
 ```nu
 use toolkit.nu
 
-# Run all tests
-toolkit tests
+# Run the same checks as CI
+toolkit ci-tests
+
+# Run Rust tests and doctests
+toolkit test
+
+# Run individual checks
+toolkit clippy
+toolkit rustdoc
+toolkit bench
 
 # Run only ground truth tests
 cargo test --test ground_truth

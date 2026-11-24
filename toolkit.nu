@@ -7,7 +7,11 @@ const repo_dir = path self .
 # Development tools of nufmt. Run `use toolkit.nu` in Nushell to load commands.
 #
 # Subcommands:
-#   toolkit tests
+#   toolkit ci-tests
+#   toolkit clippy
+#   toolkit rustdoc
+#   toolkit test
+#   toolkit bench
 #   toolkit check-msrv
 #   toolkit bump-nu <version>
 export def main [] {
@@ -20,12 +24,26 @@ def show-help [] {
 }
 
 # Run rustfmt, lint, documentation, test, and benchmark checks.
-export def tests [] {
+export def ci-tests [] {
     cd $repo_dir
 
     cargo fmt --check
+    clippy
+    rustdoc
+    test
+    bench
+}
+
+# Run Clippy on all targets and deny warnings.
+export def clippy [] {
+    cd $repo_dir
 
     cargo clippy --all-targets -- -D warnings
+}
+
+# Build Rust documentation, including private items, and deny warnings.
+export def rustdoc [] {
+    cd $repo_dir
 
     let rustdoc_env = if "CARGO_ENCODED_RUSTDOCFLAGS" in $env {
         let separator = (char --unicode 001f)
@@ -37,6 +55,11 @@ export def tests [] {
         {RUSTDOCFLAGS: $"($env.RUSTDOCFLAGS? | default "") -D warnings"}
     }
     with-env $rustdoc_env { cargo doc --no-deps --document-private-items }
+}
+
+# Run Rust tests, including doctests.
+export def test [] {
+    cd $repo_dir
 
     if (which ^cargo-nextest | is-not-empty) {
         cargo nextest run
@@ -44,6 +67,11 @@ export def tests [] {
     } else {
         cargo test
     }
+}
+
+# Check that the file formatting benchmark runs.
+export def bench [] {
+    cd $repo_dir
 
     cargo test --bench file-format-bench
 }

@@ -32,7 +32,7 @@ jobs:
           NU_LIB_DIRS: ${{ github.workspace }}
         run: |
           use toolkit.nu
-          toolkit tests
+          toolkit ci-tests
 
   test-msrv-ubuntu:
     runs-on: ubuntu-latest
