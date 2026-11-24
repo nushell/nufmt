@@ -627,6 +627,11 @@ fixture_tests!(
         idempotency_long_command_calls_wrap_to_line_length_issue144
     ),
     (
+        "indentation_respects_line_length",
+        ground_truth_indentation_respects_line_length,
+        idempotency_indentation_respects_line_length
+    ),
+    (
         "redundant_pipeline_parentheses_simplified_issue145",
         ground_truth_redundant_pipeline_parentheses_simplified_issue145,
         idempotency_redundant_pipeline_parentheses_simplified_issue145
