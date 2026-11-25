@@ -171,5 +171,9 @@ let x = 1";
 
         assert_eq!(diagnostic, FileDiagnostic::Reformatted);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), expected);
+
+        let (_, diagnostic) = format_single_file(file.clone(), &Config::default(), &Mode::Normal);
+        assert_eq!(diagnostic, FileDiagnostic::AlreadyFormatted);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), expected);
     }
 }
