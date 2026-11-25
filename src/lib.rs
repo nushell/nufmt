@@ -77,7 +77,9 @@ fn write_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     writer.write_all(contents)
 }
 
-/// Format a string of Nushell code
+/// Format a string of Nushell code.
+///
+/// The result always ends with exactly one newline.
 pub fn format_string(input_string: &str, config: &Config) -> Result<String, FormatError> {
     let contents = input_string.as_bytes();
     let formatted_bytes = ensure_single_final_newline(format_inner(contents, config)?);
