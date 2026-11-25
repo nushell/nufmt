@@ -62,9 +62,8 @@ fn run_ground_truth_test(test_binary: &PathBuf, name: &str) {
     // Read expected output
     let expected = fs::read_to_string(&expected_path).expect("Failed to read expected file");
 
-    // Compare (normalize line endings)
-    let formatted_normalized = formatted.trim().replace("\r\n", "\n");
-    let expected_normalized = expected.trim().replace("\r\n", "\n");
+    let formatted_normalized = formatted.replace("\r\n", "\n");
+    let expected_normalized = expected.replace("\r\n", "\n");
 
     if formatted_normalized != expected_normalized {
         // Print detailed diff
@@ -76,8 +75,8 @@ fn run_ground_truth_test(test_binary: &PathBuf, name: &str) {
         eprintln!("\n--- Diff ---");
 
         // Line by line diff
-        let expected_lines: Vec<&str> = expected_normalized.lines().collect();
-        let formatted_lines: Vec<&str> = formatted_normalized.lines().collect();
+        let expected_lines: Vec<&str> = expected_normalized.split('\n').collect();
+        let formatted_lines: Vec<&str> = formatted_normalized.split('\n').collect();
 
         let max_lines = expected_lines.len().max(formatted_lines.len());
         for i in 0..max_lines {

@@ -4,7 +4,7 @@
 
 use config::Config;
 use format_error::FormatError;
-use formatting::{add_newline_at_end_of_file, format_inner};
+use formatting::{ensure_single_final_newline, format_inner};
 use log::debug;
 use std::fs::File;
 use std::io::Write;
@@ -46,7 +46,7 @@ pub fn format_single_file(
     };
 
     let formatted_bytes = match format_inner(&contents, config) {
-        Ok(bytes) => add_newline_at_end_of_file(bytes),
+        Ok(bytes) => ensure_single_final_newline(bytes),
         Err(err) => return (file, FileDiagnostic::Failure(err.to_string())),
     };
 
@@ -80,7 +80,7 @@ fn write_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
 /// Format a string of Nushell code
 pub fn format_string(input_string: &str, config: &Config) -> Result<String, FormatError> {
     let contents = input_string.as_bytes();
-    let formatted_bytes = format_inner(contents, config)?;
+    let formatted_bytes = ensure_single_final_newline(format_inner(contents, config)?);
     Ok(String::from_utf8(formatted_bytes)
         .expect("Formatted string could not be converted to a UTF-8 string"))
 }
@@ -119,18 +119,18 @@ mod test {
     {\"a\": 0}
     {}
     {\"a\": null}
-]";
+]\n";
         run_test(input, expected);
     }
 
     #[test]
     fn echoes_primitive() {
-        run_test("1.35", "1.35");
+        run_test("1.35", "1.35\n");
     }
 
     #[test]
     fn handle_escaped_strings() {
-        run_test("\"hallo\\\"\"", "\"hallo\\\"\"");
+        run_test("\"hallo\\\"\"", "\"hallo\\\"\"\n");
     }
 
     #[test]
@@ -145,30 +145,31 @@ let x = 1";
 
     #[test]
     fn ignore_whitespace_in_string() {
-        run_test("\" hallo \"", "\" hallo \"");
+        run_test("\" hallo \"", "\" hallo \"\n");
     }
 
     #[test]
     fn remove_additional_lines() {
-        run_test("let one = 1\n\n\n", "let one = 1");
+        run_test("\n\nlet one = 1\n\n\n", "let one = 1\n");
+        run_test("\r\n\n\r\n", "\r\n");
     }
 
     #[test]
     fn remove_leading_whitespace() {
-        run_test("   0", "0");
+        run_test("   0", "0\n");
     }
 
     #[test]
-    fn comment_only_file_is_left_untouched_issue231() {
-        // The exact input from the issue, including the trailing blank line.
-        let contents = "# this file only contains comments\n# just a few comments\n\n# comment comment comment\n\n";
+    fn comment_only_file_preserves_comments_and_their_spacing_issue231() {
+        let expected = "# this file only contains comments\n# just a few comments\n\n# comment comment comment\n";
+        let contents = format!("{expected}\n");
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("comments.nu");
         std::fs::write(&file, contents).unwrap();
 
         let (_, diagnostic) = format_single_file(file.clone(), &Config::default(), &Mode::Normal);
 
-        assert_eq!(diagnostic, FileDiagnostic::AlreadyFormatted);
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), contents);
+        assert_eq!(diagnostic, FileDiagnostic::Reformatted);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), expected);
     }
 }

@@ -630,12 +630,13 @@ fn stdin_output_ending_in_comment_has_no_extra_blank_line() {
 
 #[test]
 fn stdin_output_matches_file_mode_and_is_stable() {
-    // Trailing blank lines after a comment, and input that nufmt can't
-    // format and returns as written, used to lose a newline on every run.
-    for input in [
-        "let x = 1\n# c\n\n\n",
-        "let x = (1 +\n\n\n",
-        "# a\n# b\n\n# c\n\n",
+    for (input, expected) in [
+        ("let x = 1\n# c\n\n\n", "let x = 1\n# c\n"),
+        ("let x = (1 +\n\n\n", "let x = (1 +\n"),
+        ("# a\n# b\n\n# c\n\n", "# a\n# b\n\n# c\n"),
+        ("\n\necho hi", "echo hi\n"),
+        ("", "\n"),
+        ("\n\n", "\n"),
     ] {
         let dir = tempdir().unwrap();
         let file = dir.path().join("input.nu");
@@ -646,6 +647,7 @@ fn stdin_output_matches_file_mode_and_is_stable() {
             .expect("Failed to run nufmt");
         assert!(status.status.success(), "file mode failed for {input:?}");
         let file_output = fs::read_to_string(&file).unwrap();
+        assert_eq!(file_output, expected, "file mode output for {input:?}");
 
         let first = String::from_utf8(run_stdin(input).stdout).unwrap();
         assert_eq!(

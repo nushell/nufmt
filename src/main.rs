@@ -189,11 +189,7 @@ fn format_stdin(config: &Config) -> ExitCode {
     };
 
     match nu_formatter::format_string(&stdin_input, config) {
-        Ok(mut output) => {
-            // End the output with a newline, as file mode does.
-            if !output.ends_with('\n') {
-                output.push('\n');
-            }
+        Ok(output) => {
             print!("{output}");
             ExitCode::Success
         }
