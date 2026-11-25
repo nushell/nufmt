@@ -208,7 +208,7 @@ fn format_let_statement() {
 
     assert_eq!(output.status.code(), Some(0));
     let content = fs::read_to_string(&file).unwrap();
-    assert_eq!(content.trim(), "let x = 1");
+    assert_eq!(content, "let x = 1\n");
 }
 
 #[test]
