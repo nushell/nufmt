@@ -18,7 +18,9 @@ All notable changes to nufmt are listed here. The format follows
 - Added `toolkit ci` to run the Rust checks used in CI locally, and `toolkit msrv`
   to check the minimum supported Rust version. Documentation checks moved from
   `toolkit clippy` to `toolkit rustdoc`. `toolkit test` now uses `cargo-nextest`
-  automatically when available. ([#258](https://github.com/nushell/nufmt/pull/258)).
+  automatically when available ([#258](https://github.com/nushell/nufmt/pull/258)).
+- Formatted output now ends with exactly one newline.
+  Extra final newlines will be removed ([#262](https://github.com/nushell/nufmt/pull/262)).
 
 ### Fixed
 
