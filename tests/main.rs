@@ -637,6 +637,7 @@ fn stdin_output_matches_file_mode_and_is_stable() {
         ("\n\necho hi", "echo hi\n"),
         ("", "\n"),
         ("\n\n", "\n"),
+        ("\n\r", "\n"),
     ] {
         let dir = tempdir().unwrap();
         let file = dir.path().join("input.nu");

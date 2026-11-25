@@ -678,14 +678,14 @@ fn normalize_closure_pipe_spacing(line: &str) -> String {
 
 /// Make sure there is a single newline at the end of a buffer.
 pub(crate) fn ensure_single_final_newline(mut out: Vec<u8>) -> Vec<u8> {
+    if !out.ends_with(b"\n") {
+        out.push(b'\n');
+    }
     while out.ends_with(b"\n\n") || out.ends_with(b"\n\r\n") {
         out.pop();
         if out.last() == Some(&b'\r') {
             out.pop();
         }
-    }
-    if !out.ends_with(b"\n") {
-        out.push(b'\n');
     }
     out
 }
