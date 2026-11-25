@@ -59,6 +59,15 @@ def make_result [name: string, passed: bool, message: string = ""] {
     {name: $name, passed: $passed, message: $message}
 }
 
+def format-input [input: string] {
+    # Capture stdout verbatim, including its final newline.
+    let result = $input | ^$NUFMT_BINARY --stdin | complete
+    if $result.exit_code != 0 {
+        error make {msg: "Formatter failed"}
+    }
+    $result.stdout
+}
+
 # Run a single ground truth test
 def run_test [name: string] {
     let input_file = $"($INPUT_DIR)/($name).nu"
@@ -73,26 +82,25 @@ def run_test [name: string] {
     }
 
     # Read input
-    let input = open $input_file
+    let input = open --raw $input_file
 
     # Run formatter
     let result = try {
-        $input | ^$NUFMT_BINARY --stdin
+        format-input $input
     } catch {
         return (make_result $name false $"Formatter error")
     }
 
     # Read expected output
-    let expected = open $expected_file
+    let expected = open --raw $expected_file
 
-    # Compare (normalize line endings and trim)
-    let formatted_normalized = $result | str trim
-    let expected_normalized = $expected | str trim
+    let formatted_normalized = $result | str replace --all "\r\n" "\n"
+    let expected_normalized = $expected | str replace --all "\r\n" "\n"
 
     if $formatted_normalized == $expected_normalized {
         make_result $name true
     } else {
-        let diff_msg = $"Output differs from expected.\n--- Expected ---\n($expected_normalized)\n--- Got ---\n($formatted_normalized)"
+        let diff_msg = $"Output differs from expected.\n--- Expected ---\n($expected_normalized | to nuon)\n--- Got ---\n($formatted_normalized | to nuon)"
         make_result $name false $diff_msg
     }
 }
@@ -105,23 +113,23 @@ def run_idempotency_test [name: string] {
         return (make_result $"($name)_idempotency" false $"Input file not found")
     }
 
-    let input = open $input_file
+    let input = open --raw $input_file
 
     # First format
     let first = try {
-        $input | ^$NUFMT_BINARY --stdin
+        format-input $input
     } catch {
         return (make_result $"($name)_idempotency" false "First format failed")
     }
 
     # Second format
     let second = try {
-        $first | ^$NUFMT_BINARY --stdin
+        format-input $first
     } catch {
         return (make_result $"($name)_idempotency" false "Second format failed")
     }
 
-    if ($first | str trim) == ($second | str trim) {
+    if $first == $second {
         make_result $"($name)_idempotency" true
     } else {
         make_result $"($name)_idempotency" false "Output changed on second format"
